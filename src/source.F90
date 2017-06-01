@@ -112,6 +112,15 @@ contains
     ! Set weight to one by default
     site % wgt = ONE
 
+    ! Set parameters related to sensitivity calculation
+    site % ifp_id          = ONE
+    site % nuclide_born    = ONE
+    site % energy_fission  = ONE
+    site % energy_born     = ONE
+    site % mtnum_born      = ONE
+    site % mesh_born       = ONE
+    site % mesh_born_fm    = ONE
+
     ! Set the random number generator to the source stream.
     call prn_set_stream(STREAM_SOURCE)
 

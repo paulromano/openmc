@@ -19,6 +19,12 @@ module tracking
                                 score_collision_derivative, zero_flux_derivs
   use track_output,       only: initialize_particle_track, write_particle_track, &
                                 add_particle_track, finalize_particle_track
+  use sensitivity,        only: score_tracklength_sensitivity, &
+                                tally_secondarytocum, sensitivity_clutch, &
+                                score_inactive, score_directandintra, &
+                                score_gpt_value, sensitivity_gptclutch
+  use fissionmatrix,      only: count_greenterm_tracklength, &
+                                count_greenterm_collision
 
   implicit none
 
@@ -133,6 +139,27 @@ contains
         call score_tracklength_tally(p, distance)
       end if
 
+      ! Score track-length tallies related to sensitivity calculations
+      if (sen_on) then
+        if (adjointmethod == 1 .AND. original) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+        if (adjointmethod == 2 .AND. clutch_first) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+        if (adjointmethod == 3 .AND. clutch_first) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+        if (adjointmethod == 4 .AND. original) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+        if (adjointmethod == 5 .AND. clutch_first) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+        if (adjointmethod == 6 .AND. clutch_first) then
+          call score_tracklength_sensitivity(p,distance)
+        end if
+      end if
 
       ! Score track-length estimate of k-eff
       if (run_mode == MODE_EIGENVALUE) then
@@ -179,6 +206,36 @@ contains
 
         ! Clear surface component
         p % surface = NONE
+
+        ! Score fission matrix collision-estimator tallies
+        if (fismatrix_on .AND. current_batch > 10) call count_greenterm_collision(p)
+
+        ! Score sensitivities in CLUTCH calculations
+        if (sen_on) then
+          if (adjointmethod == 2 .OR. adjointmethod == 3) call sensitivity_clutch(p)
+          if (adjointmethod == 4) then
+            ! calculate reaction rate tally first
+            if (current_batch <= n_inactive) call score_inactive(p)
+            if (current_batch > n_inactive) then
+              if (original) call score_directandintra(p)
+              if (.NOT. original) call score_gpt_value(p)
+            end if
+          end if
+          if (adjointmethod == 5) then
+            if (current_batch <= n_inactive) then
+              if (.NOT. original) call score_gpt_value(p)
+            end if
+            if (current_batch > n_inactive) then
+              call sensitivity_gptclutch(p)
+            end if
+          end if
+          if (adjointmethod == 6) then
+            if (current_batch <= n_inactive) call score_inactive(p)
+            if (current_batch > n_inactive) then
+              call sensitivity_gptclutch(p)
+            end if
+          end if
+        end if
 
         if (run_CE) then
           call collision(p)
@@ -240,6 +297,15 @@ contains
         if (p % n_secondary > 0) then
           call p % initialize_from_source(p % secondary_bank(p % n_secondary), &
                                           run_CE, energy_bin_avg)
+          ! extract the cumulative tally information from secondary array
+          if (sen_on) then
+            if (adjointmethod == 1 .AND. original) call tally_secondarytocum(p)
+            if (adjointmethod == 2 .AND. clutch_first) call tally_secondarytocum(p)
+            if (adjointmethod == 3 .AND. clutch_first) call tally_secondarytocum(p)
+            if (adjointmethod == 4 .AND. original) call tally_secondarytocum(p)
+            if (adjointmethod == 5 .AND. clutch_first) call tally_secondarytocum(p)
+            if (adjointmethod == 6 .AND. clutch_first) call tally_secondarytocum(p)
+          end if
           p % n_secondary = p % n_secondary - 1
           n_event = 0
 

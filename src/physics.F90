@@ -8,7 +8,7 @@ module physics
   use global
   use material_header,        only: Material
   use math
-  use mesh,                   only: get_mesh_indices
+  use mesh,                   only: get_mesh_indices, get_mesh_bin
   use message_passing
   use nuclide_header
   use output,                 only: write_message
@@ -19,6 +19,15 @@ module physics
   use reaction_header,        only: Reaction
   use secondary_uncorrelated, only: UncorrelatedAngleEnergy
   use string,                 only: to_str
+  use sensitivity,            only: score_scattering_sensitivity, &
+                                    score_fission_sensitivity, &
+                                    score_denom_sensitivity, &
+                                    add_branch_sensitivity, &
+                                    tally_cumtosecondary, &
+                                    score_neutron_value, &
+                                    score_fission_sites, &
+                                    score_importance_dis, &
+                                    transfer_clutch_info
 
   implicit none
 
@@ -364,6 +373,34 @@ contains
              p % E, p % coord(1) % uvw, p % mu, p % wgt)
       end if
 
+      ! Sensitivity scoring of scattering term
+      if (sen_on) then
+        if (adjointmethod == 1 .and. original) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+        if (adjointmethod == 2 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+        if (adjointmethod == 3 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+        if (adjointmethod == 4 .and. original) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+        if (adjointmethod == 5 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+        if (adjointmethod == 6 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+        end if
+      end if
+
       p % event_MT = ELASTIC
 
     else
@@ -403,6 +440,34 @@ contains
           end associate
         end associate
       end do
+
+      ! Sensitivity scoring of scattering term
+      if (sen_on) then
+        if (adjointmethod == 1 .and. original) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+        if (adjointmethod == 2 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+        if (adjointmethod == 3 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+        if (adjointmethod == 4 .and. original) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+        if (adjointmethod == 5 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+        if (adjointmethod == 6 .and. clutch_first) then
+          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+        end if
+      end if
 
       ! Perform collision physics for inelastic scattering
       call inelastic_scatter(nuc, nuc%reactions(i), p)
@@ -1073,6 +1138,7 @@ contains
     integer :: i                        ! loop index
     integer :: nu                       ! actual number of neutrons produced
     integer :: ijk(3)                   ! indices in ufs mesh
+    integer :: bin                      ! index of bin in fission matrix mesh
     real(8) :: nu_t                     ! total nu
     real(8) :: weight                   ! weight adjustment for ufs method
     logical :: in_mesh                  ! source site in ufs mesh?
@@ -1137,6 +1203,16 @@ contains
     nu_d(:) = 0
 
     p % fission = .true. ! Fission neutrons will be banked
+
+    ! calculate the neutron importance by analog estimator at the asymptotic batch
+    if (sen_on) then
+      if (asymptotic) then ! keff sensitivity cal
+        if (adjointmethod == 1 .or. adjointmethod == 2) then
+          call score_neutron_value(p, nu)
+        end if
+      end if
+    end if
+
     do i = int(size_bank,4) + 1, int(min(size_bank + nu, int(size(bank_array),8)),4)
       ! Bank source neutrons by copying particle data
       bank_array(i) % xyz = p % coord(1) % xyz
@@ -1147,6 +1223,80 @@ contains
       ! Sample delayed group and angle/energy for fission reaction
       call sample_fission_neutron(nuc, nuc % reactions(i_reaction), &
            p % E, bank_array(i))
+
+      ! the definition of progenitor and IFP_ID transfer operation,
+      ! and the chi sensitivity calculation can also be placed here
+      if (sen_on) then
+        if (original) then ! original generation, add branch due to fission
+          call add_branch_sensitivity()
+          if (adjointmethod == 1) then
+            call score_denom_sensitivity()
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, SCORE_TOTAL)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, SCORE_FISSION)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, FISSION_NUBAR)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, FISSION_CHI)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, nuc%reactions(i_reaction)%MT)
+          end if
+          if (adjointmethod == 2) then
+            call score_importance_dis(p)
+            call score_fission_sites(p)
+          end if
+          if (adjointmethod == 4) then
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, SCORE_TOTAL)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, SCORE_FISSION)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, FISSION_NUBAR)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, FISSION_CHI)
+            call score_fission_sensitivity(p, bank_array(i), &
+                 i_nuclide, nuc%reactions(i_reaction)%MT)
+          end if
+          if (adjointmethod == 5) then
+            call score_importance_dis(p) ! tally  tally*value/fission=imp
+            call score_fission_sites(p)  ! fission
+          end if
+          bank_array(i) % ifp_id = progenitornum
+        else
+          bank_array(i) % ifp_id = p % ifp_id     ! the transferring of ifp_id
+        end if
+        if (adjointmethod == 2 .and. clutch_first) then
+          call transfer_clutch_info(p, bank_array(i), &
+               i_nuclide, nuc%reactions(i_reaction)%MT)
+        end if
+        if (adjointmethod == 3 .and. clutch_first) then
+          call transfer_clutch_info(p, bank_array(i), &
+               i_nuclide, nuc%reactions(i_reaction)%MT)
+        end if
+        if (adjointmethod == 5 .and. clutch_first) then
+          call transfer_clutch_info(p, bank_array(i), &
+               i_nuclide, nuc%reactions(i_reaction)%MT)
+        end if
+        if (adjointmethod == 6 .and. clutch_first) then
+          call transfer_clutch_info(p, bank_array(i), &
+               i_nuclide, nuc%reactions(i_reaction)%MT)
+        end if
+      else       ! there isn't sensitivity calculation, pass these information
+        bank_array(i) % ifp_id = p % ifp_id
+        bank_array(i) % nuclide_born = p % nuclide_born
+        bank_array(i) % energy_fission = p % energy_fission
+        bank_array(i) % energy_born = p % energy_born
+        bank_array(i) % mtnum_born = p % mtnum_born
+        bank_array(i) % mesh_born = p % mesh_born
+        bank_array(i) % mesh_born_fm = p % mesh_born_fm
+      end if
+
+      ! Score fission matrix analog tallies
+      if(fismatrix_on) then
+        call get_mesh_bin(fismatrix % fm_mesh, p % coord(1) % xyz, &
+             bank_array(i) % mesh_born_fm)
+      end if
 
       ! Set delayed group on particle too
       p % delayed_group = bank_array(i) % delayed_group
@@ -1330,8 +1480,49 @@ contains
     if (mod(yield, ONE) == ZERO) then
       ! If yield is integral, create exactly that many secondary particles
       do i = 1, nint(yield) - 1
+        ! the ifp_id number has been transferred by this create function
         call p % create_secondary(p % coord(1) % uvw, NEUTRON, run_CE=.true.)
+        ! transfer the cumulative tally to second neutrons
+        if (sen_on) then
+          if (adjointmethod == 1 .and. original) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+          if (adjointmethod == 2 .and. clutch_first) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+          if (adjointmethod == 3 .and. clutch_first) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+          if (adjointmethod == 4 .and. original) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+          if (adjointmethod == 5 .and. clutch_first) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+          if (adjointmethod == 6 .and. clutch_first) then
+            call tally_cumtosecondary(p)
+            if (maxsecondnum < p % n_secondary) then
+              maxsecondnum = p % n_secondary
+            end if
+          end if
+        end if
       end do
+
     else
       ! Otherwise, change weight of particle based on yield
       p % wgt = yield * p % wgt

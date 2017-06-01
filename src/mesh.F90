@@ -223,6 +223,65 @@ contains
 
   end subroutine count_bank_sites
 
+
+
+!===============================================================================
+! COUNT_BANK_SITES_BIN determines the number of fission bank sites in each cell of a
+! given mesh as well as an optional energy group structure. This can be used for
+! a variety of purposes (Shannon entropy, CMFD, uniform fission source
+! weighting)
+!===============================================================================
+
+  subroutine count_bank_sites_bin(m, bank_array, source, size_bank, &
+       sites_outside)
+
+    type(RegularMesh), pointer :: m             ! mesh to count sites
+    type(Bank), intent(in)     :: bank_array(:) ! fission or source bank
+    real(8),    intent(inout)  :: source(:)     ! number of source particles in each bin
+    integer(8), intent(in), optional :: size_bank     ! # of bank sites (on each proc)
+    logical, intent(inout), optional :: sites_outside ! were there sites outside mesh?
+
+    integer :: i        ! loop index for local fission sites
+    integer :: n_sites  ! size of bank array
+    integer :: bin      ! index of bin on mesh
+    logical :: outside  ! was any site outside mesh?
+#ifdef MPI
+    integer :: n        ! total size of count variable
+    real(8) :: dummy    ! temporary receive buffer for non-root reductions
+#endif
+
+    ! initialize variables
+    !source = ZERO
+    outside = .false.
+
+    ! Set size of bank
+    if (present(size_bank)) then
+      n_sites = int(size_bank,4)
+    else
+      n_sites = size(bank_array)
+    end if
+
+    ! loop over fission sites and count how many are in each mesh box
+    FISSION_SITES: do i = 1, n_sites
+      ! determine scoring bin for entropy mesh
+      call get_mesh_bin(m, bank_array(i) % xyz, bin)
+
+      ! if outside mesh, skip particle
+      if (bin == NO_BIN_FOUND) then
+        outside = .true.
+        cycle
+      end if
+
+      ! add to appropriate mesh box
+      source(bin) = source(bin) + bank_array(i) % wgt
+    end do FISSION_SITES
+
+    sites_outside = outside
+
+  end subroutine count_bank_sites_bin
+
+
+
 !===============================================================================
 ! MESH_INTERSECTS determines if a line between xyz0 and xyz1 intersects the
 ! outer boundary of the given mesh. This is important for determining whether a

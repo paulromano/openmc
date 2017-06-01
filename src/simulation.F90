@@ -15,6 +15,7 @@ module simulation
                              print_results, print_overlap_check, write_tallies
   use particle_header, only: Particle
   use random_lcg,      only: set_particle_seed
+  use sensitivity
   use source,          only: initialize_source, sample_external_source
   use state_point,     only: write_state_point, write_source_point
   use string,          only: to_str
@@ -40,6 +41,10 @@ contains
 
     type(Particle) :: p
     integer(8)     :: i_work
+    integer        :: i
+    integer        :: j
+    integer        :: k
+    integer        :: l
 
     if (.not. restart_run) call initialize_source()
 
@@ -115,6 +120,26 @@ contains
     ! Clear particle
     call p % clear()
 
+    do i = 1, sensitivities(1) % n_nuclide_bins
+      do j = 1, sensitivities(1) % n_score_bins
+        do k = 1, sensitivities(1) % n_mesh_bins
+          do l = 1, sensitivities(1) % n_energy_bins
+            if (master) print *, sensitivities(1) % results(1,i,j,k,l)
+          end do
+        end do
+      end do
+    end do
+
+    do i = 1, sensitivities(1) % n_nuclide_bins
+      do j = 1, sensitivities(1) % n_score_bins
+        do k = 1, sensitivities(1) % n_mesh_bins
+          do l = 1, sensitivities(1) %  n_energy_bins
+            if (master) print *, sensitivities(1) % results(2,i,j,k,l)
+          end do
+        end do
+      end do
+    end do
+
   end subroutine run_simulation
 
 !===============================================================================
@@ -160,6 +185,11 @@ contains
       end do
     end if
 
+    ! reset the cumulative tally for particle tracking, both in IFP and CLTUCH
+    if (sen_on) then
+      call sensitivity_initialize_history()
+    end if
+
   end subroutine initialize_history
 
 !===============================================================================
@@ -189,6 +219,11 @@ contains
 !$omp parallel
       call setup_active_usertallies()
 !$omp end parallel
+    end if
+
+    ! ifp tally reset in CLUTCH sensitivities calculation
+    if (sen_on) then
+      call sensitivity_initialize_batch()
     end if
 
     ! check CMFD initialize batch
@@ -342,6 +377,11 @@ contains
       ! Make sure combined estimate of k-effective is calculated at the last
       ! batch in case no state point is written
       call calculate_combined_keff()
+    end if
+
+    ! sensitivities calculation by combining tallies and neutron importances
+    if (sen_on) then
+      call sensitivity_finalize_batch()
     end if
 
   end subroutine finalize_batch

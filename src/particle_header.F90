@@ -43,6 +43,16 @@ module particle_header
     integer(8) :: id            ! Unique ID
     integer    :: type          ! Particle type (n, p, e, etc)
 
+    ! Iterated fission probability progenitor ID
+    integer :: ifp_id
+    ! CLUTCH needs the fission energy, nuclide, mt number and mesh
+    integer :: nuclide_born   ! index of fission nuclide
+    integer :: energy_fission ! index of energy causing fission
+    integer :: energy_born    ! index of energy of fission neutron
+    integer :: mtnum_born     ! index of MT number causing fission
+    integer :: mesh_born      ! index of fission mesh for clutch tally
+    integer :: mesh_born_fm   ! index of fission mesh for fission matrix
+
     ! Particle coordinates
     integer          :: n_coord          ! number of current coordinates
     type(LocalCoord) :: coord(MAX_COORD) ! coordinates for all levels
@@ -214,6 +224,15 @@ contains
     end if
     this % last_E           = this % E
 
+    ! related to iterated fission probability calculation
+    this % ifp_id            = src % ifp_id         ! index of progenitor ID
+    this % nuclide_born      = src % nuclide_born   ! index of fission nuclide
+    this % energy_fission    = src % energy_fission ! index of energy causing fission
+    this % energy_born       = src % energy_born    ! index of energy causing fission
+    this % mtnum_born        = src % mtnum_born     ! index of MT number causing fission
+    this % mesh_born         = src % mesh_born      ! index of fission mesh
+    this % mesh_born_fm      = src % mesh_born_fm   ! index of fission mesh
+
   end subroutine initialize_from_source
 
 !===============================================================================
@@ -244,7 +263,12 @@ contains
     if (.not. run_CE) then
       this % secondary_bank(this % n_secondary) % E = real(this % g, 8)
     end if
-
+    this % secondary_bank(n) % ifp_id          = this % ifp_id
+    this % secondary_bank(n) % nuclide_born    = this % nuclide_born
+    this % secondary_bank(n) % energy_born     = this % energy_born
+    this % secondary_bank(n) % mtnum_born      = this % mtnum_born
+    this % secondary_bank(n) % mesh_born       = this % mesh_born
+    this % secondary_bank(n) % mesh_born_fm    = this % mesh_born_fm
   end subroutine create_secondary
 
 end module particle_header

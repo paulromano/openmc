@@ -31,6 +31,7 @@ module input_xml
   use tally_filter
   use tally_initialize, only: add_tallies
   use xml_interface
+  use energystructure
 
   implicit none
   save
@@ -49,6 +50,7 @@ contains
     call read_materials()
     call read_tallies_xml()
     if (cmfd_run) call configure_cmfd()
+    call read_sensitivities_xml()
 
     if (.not. run_CE) then
       ! Create material macroscopic data for MGXS
@@ -4200,6 +4202,1623 @@ contains
     call doc % clear()
 
   end subroutine read_tallies_xml
+
+
+!===============================================================================
+! READ_sensitivities_XML reads data from a sensitivity.xml file and parses it,
+! checking for errors and placing properly-formatted data in the right data
+! structures
+!===============================================================================
+
+  subroutine read_sensitivities_xml()
+
+    integer :: d             ! delayed group index
+    integer :: i             ! loop over user-specified tallies
+    integer :: j             ! loop over words
+    integer :: k             ! another loop index
+    integer :: l             ! another loop index
+    integer :: id            ! user-specified identifier
+    integer :: i_mesh        ! index in meshes array
+    integer :: i_tally       ! index in tallies array
+    integer :: i_response    ! index in respones array
+    integer :: n             ! size of arrays in mesh specification
+    integer :: n_words       ! number of words read
+    integer :: n_filters     ! number of filters
+    integer :: n_new         ! number of new scores to add based on Yn/Pn tally
+    integer :: n_scores      ! number of tot scores after adjusting for Yn/Pn tally
+    integer :: n_bins        ! total new bins for this score
+    integer :: n_user_trig   ! number of user-specified tally triggers
+    integer :: trig_ind      ! index of triggers array for each tally
+    integer :: user_trig_ind ! index of user-specified triggers for each tally
+    real(8) :: threshold     ! trigger convergence threshold
+    integer :: n_order       ! moment order requested
+    integer :: n_order_pos   ! oosition of Scattering order in score name string
+    integer :: MT            ! user-specified MT for score
+    integer :: iarray3(3)    ! temporary integer array
+    integer :: imomstr       ! Index of MOMENT_STRS & MOMENT_N_STRS
+    logical :: file_exists   ! does tallies.xml file exist?
+    real(8) :: rarray3(3)    ! temporary double prec. array
+    integer :: Nangle        ! Number of angular bins
+    real(8) :: dangle        ! Mu spacing if using automatic allocation
+    integer :: iangle        ! Loop counter for building mu filter bins
+    character(MAX_LINE_LEN) :: filename
+    character(MAX_WORD_LEN) :: word
+    character(MAX_WORD_LEN) :: score_name
+    character(MAX_WORD_LEN) :: temp_str
+    character(MAX_WORD_LEN), allocatable :: sarray(:)
+    type(TallyFilterContainer), allocatable :: filters(:) ! temporary filters
+    type(DictCharInt) :: trigger_scores
+    type(ElemKeyValueCI),    pointer :: pair_list
+    type(ResponseObject),    pointer :: r
+    type(TallyObject),       pointer :: t
+    type(SensitivityObject), pointer :: s
+    type(RegularMesh),       pointer :: m
+    type(Node), pointer :: doc => null()
+    type(Node), pointer :: node_mesh => null()
+    type(Node), pointer :: node_tal => null()
+    type(Node), pointer :: node_filt => null()
+    type(Node), pointer :: node_resp => null()
+    type(Node), pointer :: node_sen => null()
+    type(NodeList), pointer :: node_mesh_list => null()
+    type(NodeList), pointer :: node_tal_list => null()
+    type(NodeList), pointer :: node_filt_list => null()
+    type(NodeList), pointer :: node_resp_list => null()
+    type(NodeList), pointer :: node_sen_list => null()
+    type(ElemKeyValueCI), pointer :: scores
+    type(ElemKeyValueCI), pointer :: next
+
+    ! Check if tallies.xml exists
+    filename = trim(path_input) // "sensitivities.xml"
+
+    inquire(FILE=filename, EXIST=file_exists)
+    if (.not. file_exists) then
+      ! Since a sensitivities.xml file is optional, no error is issued here
+      return
+    end if
+
+    ! Display output message
+    call write_message("Reading sensitivities XML file...", 5)
+
+
+    ! Parse tallies.xml file
+    call open_xmldoc(doc, filename)
+
+    ! ==========================================================================
+    ! DETERMINE SIZE OF ARRAYS AND ALLOCATE
+
+    ! Get pointer list to XML <mesh>
+    call get_node_list(doc, "mesh", node_mesh_list)
+
+
+    ! Get pointer list to XML <response>
+    call get_node_list(doc, "tally", node_tal_list)
+
+    ! Get pointer list to XML <response>
+    call get_node_list(doc, "response", node_resp_list)
+
+    ! Get pointer list to XML <sensitivity>
+    call get_node_list(doc, "sensitivity", node_sen_list)
+
+    ! Check for meshes
+    n_sen_meshes = get_list_size(node_mesh_list)
+
+    ! Allocate mesh array
+    if (n_sen_meshes > 0) then
+      allocate(sen_meshes(n_sen_meshes))
+    end if
+
+    ! Check for GPT tallies
+    n_resptallies = get_list_size(node_tal_list)
+
+
+    ! Allocate tally array
+    if (n_resptallies > 0) then
+      allocate(resp_tallies(n_resptallies))
+      allocate(resptalresult(n_resptallies))
+      allocate(respmatching_bins(10))  ! suppose there are ten filters
+      allocate(respfilter_weights(10)) ! suppose there are ten filters
+      resptalresult = 0
+    end if
+
+    ! Check for GPT responses
+    n_responses = get_list_size(node_resp_list)
+
+    ! Allocate response array
+    if (n_responses > 0) then
+      allocate(responses(n_responses))
+    end if
+
+
+    ! Check for user sensitivities
+    n_sens = get_list_size(node_sen_list)
+    if (n_sens == 0) then
+      if (master) call warning("No sensitivities present in sensitivities.xml file!")
+    end if
+
+    ! Allocate tally array
+    if (n_sens > 0) then
+      allocate(sensitivities(n_sens))
+    end if
+
+    ! ==========================================================================
+    ! READ MESH DATA
+
+    do i = 1, n_sen_meshes
+      m => sen_meshes(i)
+
+      ! Get pointer to mesh node
+      call get_list_item(node_mesh_list, i, node_mesh)
+
+      ! Copy mesh id
+      if (check_for_node(node_mesh, "id")) then
+        call get_node_value(node_mesh, "id", m % id)
+      else
+        call fatal_error("Must specify id for mesh in sensitivities XML file.")
+      end if
+
+      ! Check to make sure 'id' hasn't been used
+      if (senmesh_dict % has_key(m % id)) then
+        call fatal_error("Two or more meshes use the same unique ID: " &
+             // to_str(m % id))
+      end if
+
+      ! Read mesh type
+      temp_str = ''
+      if (check_for_node(node_mesh, "type")) &
+           call get_node_value(node_mesh, "type", temp_str)
+      select case (to_lower(temp_str))
+      case ('rect', 'rectangle', 'rectangular')
+        call warning("Mesh type '" // trim(temp_str) // "' is deprecated. &
+             &Please use 'regular' instead.")
+        m % type = MESH_REGULAR
+      case ('regular')
+        m % type = MESH_REGULAR
+      case default
+        call fatal_error("Invalid mesh type: " // trim(temp_str))
+      end select
+
+      ! Determine number of dimensions for mesh
+      n = get_arraysize_integer(node_mesh, "dimension")
+      if (n /= 3) then
+        call fatal_error("Mesh must be two or three dimensions.")
+      end if
+      m % n_dimension = n
+
+      ! Allocate attribute arrays
+      allocate(m % dimension(n))
+      allocate(m % lower_left(n))
+      allocate(m % width(n))
+      allocate(m % upper_right(n))
+
+      ! Check that dimensions are all greater than zero
+      call get_node_array(node_mesh, "dimension", iarray3(1:n))
+      if (any(iarray3(1:n) <= 0)) then
+        call fatal_error("All entries on the <dimension> element for a tally &
+             &mesh must be positive.")
+      end if
+
+      ! Read dimensions in each direction
+      m % dimension = iarray3(1:n)
+
+      ! Read mesh lower-left corner location
+      if (m % n_dimension /= get_arraysize_double(node_mesh, "lower_left")) then
+        call fatal_error("Number of entries on <lower_left> must be the same &
+             &as the number of entries on <dimension>.")
+      end if
+      call get_node_array(node_mesh, "lower_left", m % lower_left)
+
+      ! Make sure both upper-right or width were specified
+      if (check_for_node(node_mesh, "upper_right") .and. &
+           check_for_node(node_mesh, "width")) then
+        call fatal_error("Cannot specify both <upper_right> and <width> on a &
+             &tally mesh.")
+      end if
+
+      ! Make sure either upper-right or width was specified
+      if (.not. check_for_node(node_mesh, "upper_right") .and. &
+           .not. check_for_node(node_mesh, "width")) then
+        call fatal_error("Must specify either <upper_right> and <width> on a &
+             &tally mesh.")
+      end if
+
+      if (check_for_node(node_mesh, "width")) then
+        ! Check to ensure width has same dimensions
+        if (get_arraysize_double(node_mesh, "width") /= &
+             get_arraysize_double(node_mesh, "lower_left")) then
+          call fatal_error("Number of entries on <width> must be the same as &
+               &the number of entries on <lower_left>.")
+        end if
+
+        ! Check for negative widths
+        call get_node_array(node_mesh, "width", rarray3(1:n))
+        if (any(rarray3(1:n) < ZERO)) then
+          call fatal_error("Cannot have a negative <width> on a tally mesh.")
+        end if
+
+        ! Set width and upper right coordinate
+        m % width = rarray3(1:n)
+        m % upper_right = m % lower_left + m % dimension * m % width
+
+      elseif (check_for_node(node_mesh, "upper_right")) then
+        ! Check to ensure width has same dimensions
+        if (get_arraysize_double(node_mesh, "upper_right") /= &
+             get_arraysize_double(node_mesh, "lower_left")) then
+          call fatal_error("Number of entries on <upper_right> must be the &
+               &same as the number of entries on <lower_left>.")
+        end if
+
+        ! Check that upper-right is above lower-left
+        call get_node_array(node_mesh, "upper_right", rarray3(1:n))
+        if (any(rarray3(1:n) < m % lower_left)) then
+          call fatal_error("The <upper_right> coordinates must be greater than &
+               &the <lower_left> coordinates on a tally mesh.")
+        end if
+
+        ! Set width and upper right coordinate
+        m % upper_right = rarray3(1:n)
+        m % width = (m % upper_right - m % lower_left) / m % dimension
+      end if
+
+      ! Add senmesh to dictionary
+      call senmesh_dict % add_key(m % id, i)
+
+    end do
+
+    ! ==========================================================================
+    ! READ TALLY DATA
+
+    READ_TALLIES: do i = 1, n_resptallies
+      ! Get pointer to tally
+      t => resp_tallies(i)
+
+      ! Get pointer to tally xml node
+      call get_list_item(node_tal_list, i, node_tal)
+
+      ! Copy material id
+      if (check_for_node(node_tal, "id")) then
+        call get_node_value(node_tal, "id", t % id)
+      else
+        call fatal_error("Must specify id for tally in tally XML file.")
+      end if
+
+
+      ! Check to make sure 'id' hasn't been used
+      if (resptally_dict % has_key(t % id)) then
+        call fatal_error("Two or more tallies use the same unique ID: " &
+             // to_str(t % id))
+      end if
+
+      ! Copy tally name
+      if (check_for_node(node_tal, "name")) &
+           call get_node_value(node_tal, "name", t % name)
+
+      ! =======================================================================
+      ! READ DATA FOR FILTERS
+
+      ! Get pointer list to XML <filter> and get number of filters
+      call get_node_list(node_tal, "filter", node_filt_list)
+      n_filters = get_list_size(node_filt_list)
+
+      ! Allocate filters array
+      allocate(t % filters(n_filters))
+
+      READ_FILTERS: do j = 1, n_filters
+        ! Get pointer to filter xml node
+        call get_list_item(node_filt_list, j, node_filt)
+
+        ! Convert filter type to lower case
+        temp_str = ''
+        if (check_for_node(node_filt, "type")) &
+             call get_node_value(node_filt, "type", temp_str)
+        temp_str = to_lower(temp_str)
+
+        ! Determine number of bins
+        if (check_for_node(node_filt, "bins")) then
+          if (temp_str == 'energy' .or. temp_str == 'energyout' .or. &
+               temp_str == 'mu' .or. temp_str == 'polar' .or. &
+               temp_str == 'azimuthal') then
+            n_words = get_arraysize_double(node_filt, "bins")
+          else
+            n_words = get_arraysize_integer(node_filt, "bins")
+          end if
+        else
+          call fatal_error("Bins not set in filter on tally " &
+               // trim(to_str(t % id)))
+        end if
+
+        ! Determine type of filter
+        select case (temp_str)
+
+        case ('distribcell')
+          ! Allocate and declare the filter type
+          allocate(DistribcellFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (DistribcellFilter)
+            if (n_words /= 1) call fatal_error("Only one cell can be &
+                 &specified per distribcell filter.")
+            ! Store bins
+            call get_node_value(node_filt, "bins", filt % cell)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_DISTRIBCELL) = j
+
+        case ('cell')
+          ! Allocate and declare the filter type
+          allocate(CellFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (CellFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % cells(n_words))
+            call get_node_array(node_filt, "bins", filt % cells)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_CELL) = j
+
+        case ('cellborn')
+          ! Allocate and declare the filter type
+          allocate(CellbornFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (CellbornFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % cells(n_words))
+            call get_node_array(node_filt, "bins", filt % cells)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_CELLBORN) = j
+
+        case ('material')
+          ! Allocate and declare the filter type
+          allocate(MaterialFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (MaterialFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % materials(n_words))
+            call get_node_array(node_filt, "bins", filt % materials)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_MATERIAL) = j
+
+        case ('universe')
+          ! Allocate and declare the filter type
+          allocate(UniverseFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (UniverseFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % universes(n_words))
+            call get_node_array(node_filt, "bins", filt % universes)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_UNIVERSE) = j
+
+        case ('surface')
+          call fatal_error("Surface filter is not yet supported!")
+          ! Allocate and declare the filter type
+          allocate(SurfaceFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (SurfaceFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % surfaces(n_words))
+            call get_node_array(node_filt, "bins", filt % surfaces)
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_SURFACE) = j
+
+        case ('mesh')
+          ! Allocate and declare the filter type
+          allocate(MeshFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (MeshFilter)
+            if (n_words /= 1) call fatal_error("Only one mesh can be &
+                 &specified per mesh filter.")
+
+            ! Determine id of mesh
+            call get_node_value(node_filt, "bins", id)
+
+            ! Get pointer to mesh
+            if (senmesh_dict % has_key(id)) then
+              i_mesh = senmesh_dict % get_key(id)
+              m => sen_meshes(i_mesh)
+            else
+              call fatal_error("Could not find mesh " // trim(to_str(id)) &
+                   // " specified on tally " // trim(to_str(t % id)))
+            end if
+
+            ! Determine number of bins
+            filt % n_bins = product(m % dimension)
+
+            ! Store the index of the mesh
+            filt % mesh = i_mesh
+          end select
+
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_MESH) = j
+
+        case ('energy')
+
+          ! Allocate and declare the filter type
+          allocate(EnergyFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (EnergyFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words - 1
+            allocate(filt % bins(n_words))
+            call get_node_array(node_filt, "bins", filt % bins)
+
+            ! We can save tallying time if we know that the tally bins match
+            ! the energy group structure.  In that case, the matching bin
+            ! index is simply the group (after flipping for the different
+            ! ordering of the library and tallying systems).
+            if (.not. run_CE) then
+              if (n_words == energy_groups + 1) then
+                if (all(filt % bins == energy_bins(energy_groups + 1:1:-1))) &
+                     then
+                  filt % matches_transport_groups = .true.
+                end if
+              end if
+            end if
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_ENERGYIN) = j
+
+        case ('energyout')
+          ! Allocate and declare the filter type
+          allocate(EnergyoutFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (EnergyoutFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words - 1
+            allocate(filt % bins(n_words))
+            call get_node_array(node_filt, "bins", filt % bins)
+
+            ! We can save tallying time if we know that the tally bins match
+            ! the energy group structure.  In that case, the matching bin
+            ! index is simply the group (after flipping for the different
+            ! ordering of the library and tallying systems).
+            if (.not. run_CE) then
+              if (n_words == energy_groups + 1) then
+                if (all(filt % bins == energy_bins(energy_groups + 1:1:-1))) &
+                     then
+                  filt % matches_transport_groups = .true.
+                end if
+              end if
+            end if
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_ENERGYOUT) = j
+
+          ! Set to analog estimator
+          t % estimator = ESTIMATOR_ANALOG
+
+        case ('delayedgroup')
+          ! Check to see if running in MG mode, because if so, the current
+          ! system isnt set up yet to support delayed group data and thus
+          ! these tallies
+          if (.not. run_CE) then
+            call fatal_error("delayedgroup filter on tally " &
+                             // trim(to_str(t % id)) // " not yet supported&
+                             & for multi-group mode.")
+          end if
+
+          ! Allocate and declare the filter type
+          allocate(DelayedGroupFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (DelayedGroupFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words
+            allocate(filt % groups(n_words))
+            call get_node_array(node_filt, "bins", filt % groups)
+
+            ! Check that bins are all are between 1 and MAX_DELAYED_GROUPS
+            do d = 1, n_words
+              if (filt % groups(d) < 1 .or. &
+                   filt % groups(d) > MAX_DELAYED_GROUPS) then
+                call fatal_error("Encountered delayedgroup bin with index " &
+                     // trim(to_str(filt % groups(d))) // " that is outside &
+                     &the range of 1 to MAX_DELAYED_GROUPS ( " &
+                     // trim(to_str(MAX_DELAYED_GROUPS)) // ")")
+              end if
+            end do
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_DELAYEDGROUP) = j
+
+        case ('mu')
+          ! Allocate and declare the filter type
+          allocate(MuFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (MuFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words - 1
+            allocate(filt % bins(n_words))
+            call get_node_array(node_filt, "bins", filt % bins)
+
+            ! Allow a user to input a lone number which will mean that you
+            ! subdivide [-1,1] evenly with the input being the number of bins
+            if (n_words == 1) then
+              Nangle = int(filt % bins(1))
+              if (Nangle > 1) then
+                filt % n_bins = Nangle
+                dangle = TWO / real(Nangle,8)
+                deallocate(filt % bins)
+                allocate(filt % bins(Nangle + 1))
+                do iangle = 1, Nangle
+                  filt % bins(iangle) = -ONE + (iangle - 1) * dangle
+                end do
+                filt % bins(Nangle + 1) = ONE
+              else
+                call fatal_error("Number of bins for mu filter must be&
+                     & greater than 1 on tally " &
+                     // trim(to_str(t % id)) // ".")
+              end if
+            end if
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_MU) = j
+
+          ! Set to analog estimator
+          t % estimator = ESTIMATOR_ANALOG
+
+        case ('polar')
+          ! Allocate and declare the filter type
+          allocate(PolarFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (PolarFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words - 1
+            allocate(filt % bins(n_words))
+            call get_node_array(node_filt, "bins", filt % bins)
+
+            ! Allow a user to input a lone number which will mean that you
+            ! subdivide [0,pi] evenly with the input being the number of bins
+            if (n_words == 1) then
+              Nangle = int(filt % bins(1))
+              if (Nangle > 1) then
+                filt % n_bins = Nangle
+                dangle = PI / real(Nangle,8)
+                deallocate(filt % bins)
+                allocate(filt % bins(Nangle + 1))
+                do iangle = 1, Nangle
+                  filt % bins(iangle) = (iangle - 1) * dangle
+                end do
+                filt % bins(Nangle + 1) = PI
+              else
+                call fatal_error("Number of bins for mu filter must be&
+                     & greater than 1 on tally " &
+                     // trim(to_str(t % id)) // ".")
+              end if
+            end if
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_POLAR) = j
+
+        case ('azimuthal')
+          ! Allocate and declare the filter type
+          allocate(AzimuthalFilter::t % filters(j) % obj)
+          select type (filt => t % filters(j) % obj)
+          type is (AzimuthalFilter)
+            ! Allocate and store bins
+            filt % n_bins = n_words - 1
+            allocate(filt % bins(n_words))
+            call get_node_array(node_filt, "bins", filt % bins)
+
+            ! Allow a user to input a lone number which will mean that you
+            ! subdivide [-pi,pi) evenly with the input being the number of
+            ! bins
+            if (n_words == 1) then
+              Nangle = int(filt % bins(1))
+              if (Nangle > 1) then
+                filt % n_bins = Nangle
+                dangle = TWO * PI / real(Nangle,8)
+                deallocate(filt % bins)
+                allocate(filt % bins(Nangle + 1))
+                do iangle = 1, Nangle
+                  filt % bins(iangle) = -PI + (iangle - 1) * dangle
+                end do
+                filt % bins(Nangle + 1) = PI
+              else
+                call fatal_error("Number of bins for mu filter must be&
+                     & greater than 1 on tally " &
+                     // trim(to_str(t % id)) // ".")
+              end if
+            end if
+          end select
+          ! Set the filter index in the tally find_filter array
+          t % find_filter(FILTER_AZIMUTHAL) = j
+
+        case default
+          ! Specified tally filter is invalid, raise error
+          call fatal_error("Unknown filter type '" &
+               // trim(temp_str) // "' on tally " &
+               // trim(to_str(t % id)) // ".")
+
+        end select
+
+      end do READ_FILTERS
+
+      ! Check that both cell and surface weren't specified
+      if (t % find_filter(FILTER_CELL) > 0 .and. &
+           t % find_filter(FILTER_SURFACE) > 0) then
+        call fatal_error("Cannot specify both cell and surface filters for &
+             &tally " // trim(to_str(t % id)))
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR NUCLIDES
+
+      if (check_for_node(node_tal, "nuclides")) then
+
+        ! Allocate a temporary string array for nuclides and copy values over
+        allocate(sarray(get_arraysize_string(node_tal, "nuclides")))
+        call get_node_array(node_tal, "nuclides", sarray)
+
+        if (trim(sarray(1)) == 'all') then
+          ! Handle special case <nuclides>all</nuclides>
+          allocate(t % nuclide_bins(n_nuclides_total + 1))
+
+          ! Set bins to 1, 2, 3, ..., n_nuclides_total, -1
+          t % nuclide_bins(1:n_nuclides_total) = &
+               (/ (j, j=1, n_nuclides_total) /)
+          t % nuclide_bins(n_nuclides_total + 1) = -1
+
+          ! Set number of nuclide bins
+          t % n_nuclide_bins = n_nuclides_total + 1
+
+          ! Set flag so we can treat this case specially
+          t % all_nuclides = .true.
+        else
+          ! Any other case, e.g. <nuclides>U-235 Pu-239</nuclides>
+          n_words = get_arraysize_string(node_tal, "nuclides")
+          allocate(t % nuclide_bins(n_words))
+          do j = 1, n_words
+
+            ! Check if total material was specified
+            if (trim(sarray(j)) == 'total') then
+              t % nuclide_bins(j) = -1
+              cycle
+            end if
+
+            ! If a specific nuclide was specified
+            word = to_lower(sarray(j))
+
+            ! Search through nuclides
+            pair_list => nuclide_dict % keys()
+            do while (associated(pair_list))
+              if (starts_with(pair_list % key, word)) then
+                word = pair_list % key(1:150)
+                exit
+              end if
+
+              ! Advance to next
+              pair_list => pair_list % next
+            end do
+
+            ! Check if no nuclide was found
+            if (.not. associated(pair_list)) then
+              call fatal_error("Could not find the nuclide " &
+                   // trim(word) // " specified in tally " &
+                   // trim(to_str(t % id)) // " in any material.")
+            end if
+            deallocate(pair_list)
+
+            ! Set bin to index in nuclides array
+            t % nuclide_bins(j) = nuclide_dict % get_key(word)
+          end do
+
+          ! Set number of nuclide bins
+          t % n_nuclide_bins = n_words
+        end if
+
+        ! Deallocate temporary string array
+        deallocate(sarray)
+
+      else
+        ! No <nuclides> were specified -- create only one bin will be added
+        ! for the total material.
+        allocate(t % nuclide_bins(1))
+        t % nuclide_bins(1) = -1
+        t % n_nuclide_bins = 1
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR SCORES
+
+      if (check_for_node(node_tal, "scores")) then
+        n_words = get_arraysize_string(node_tal, "scores")
+        allocate(sarray(n_words))
+        call get_node_array(node_tal, "scores", sarray)
+
+        ! Before we can allocate storage for scores, we must determine the
+        ! number of additional scores required due to the moment scores
+        ! (i.e., scatter-p#, flux-y#)
+        n_new = 0
+        do j = 1, n_words
+          sarray(j) = to_lower(sarray(j))
+          ! Find if scores(j) is of the form 'moment-p' or 'moment-y' present in
+          ! MOMENT_STRS(:)
+          ! If so, check the order, store if OK, then reset the number to 'n'
+          score_name = trim(sarray(j))
+
+          ! Append the score to the list of possible trigger scores
+          if (trigger_on) call trigger_scores % add_key(trim(score_name), j)
+
+          do imomstr = 1, size(MOMENT_STRS)
+            if (starts_with(score_name,trim(MOMENT_STRS(imomstr)))) then
+              n_order_pos = scan(score_name,'0123456789')
+              n_order = int(str_to_int( &
+                   score_name(n_order_pos:(len_trim(score_name)))),4)
+              if (n_order > MAX_ANG_ORDER) then
+                ! User requested too many orders; throw a warning and set to the
+                ! maximum order.
+                ! The above scheme will essentially take the absolute value
+                if (master) call warning("Invalid scattering order of " &
+                     // trim(to_str(n_order)) // " requested. Setting to the &
+                     &maximum permissible value, " &
+                     // trim(to_str(MAX_ANG_ORDER)))
+                n_order = MAX_ANG_ORDER
+                sarray(j) = trim(MOMENT_STRS(imomstr)) &
+                     // trim(to_str(MAX_ANG_ORDER))
+              end if
+              ! Find total number of bins for this case
+              if (imomstr >= YN_LOC) then
+                n_bins = (n_order + 1)**2
+              else
+                n_bins = n_order + 1
+              end if
+              ! We subtract one since n_words already included
+              n_new = n_new + n_bins - 1
+              exit
+            end if
+          end do
+        end do
+        n_scores = n_words + n_new
+
+        ! Allocate score storage accordingly
+        allocate(t % score_bins(n_scores))
+        allocate(t % moment_order(n_scores))
+        t % moment_order = 0
+        j = 0
+        do l = 1, n_words
+          j = j + 1
+          ! Get the input string in scores(l) but if score is one of the moment
+          ! scores then strip off the n and store it as an integer to be used
+          ! later. Then perform the select case on this modified (number
+          ! removed) string
+          n_order = -1
+          score_name = sarray(l)
+          do imomstr = 1, size(MOMENT_STRS)
+            if (starts_with(score_name,trim(MOMENT_STRS(imomstr)))) then
+              n_order_pos = scan(score_name,'0123456789')
+              n_order = int(str_to_int( &
+                   score_name(n_order_pos:(len_trim(score_name)))),4)
+              if (n_order > MAX_ANG_ORDER) then
+                ! User requested too many orders; throw a warning and set to the
+                ! maximum order.
+                ! The above scheme will essentially take the absolute value
+                n_order = MAX_ANG_ORDER
+              end if
+              score_name = trim(MOMENT_STRS(imomstr)) // "n"
+              ! Find total number of bins for this case
+              if (imomstr >= YN_LOC) then
+                n_bins = (n_order + 1)**2
+              else
+                n_bins = n_order + 1
+              end if
+              exit
+            end if
+          end do
+          ! Now check the Moment_N_Strs, but only if we werent successful above
+          if (imomstr > size(MOMENT_STRS)) then
+            do imomstr = 1, size(MOMENT_N_STRS)
+              if (starts_with(score_name,trim(MOMENT_N_STRS(imomstr)))) then
+                n_order_pos = scan(score_name,'0123456789')
+                n_order = int(str_to_int( &
+                     score_name(n_order_pos:(len_trim(score_name)))),4)
+                if (n_order > MAX_ANG_ORDER) then
+                  ! User requested too many orders; throw a warning and set to the
+                  ! maximum order.
+                  ! The above scheme will essentially take the absolute value
+                  if (master) call warning("Invalid scattering order of " &
+                       // trim(to_str(n_order)) // " requested. Setting to &
+                       &the maximum permissible value, " &
+                       // trim(to_str(MAX_ANG_ORDER)))
+                  n_order = MAX_ANG_ORDER
+                end if
+                score_name = trim(MOMENT_N_STRS(imomstr)) // "n"
+                exit
+              end if
+            end do
+          end if
+
+          ! Check if delayed group filter is used with any score besides
+          ! delayed-nu-fission or decay-rate
+          if ((score_name /= 'delayed-nu-fission' .and. &
+               score_name /= 'decay-rate') .and. &
+               t % find_filter(FILTER_DELAYEDGROUP) > 0) then
+            call fatal_error("Cannot tally " // trim(score_name) // " with a &
+                 &delayedgroup filter.")
+          end if
+
+          ! Check to see if the mu filter is applied and if that makes sense.
+          if ((.not. starts_with(score_name,'scatter')) .and. &
+               (.not. starts_with(score_name,'nu-scatter'))) then
+            if (t % find_filter(FILTER_MU) > 0) then
+              call fatal_error("Cannot tally " // trim(score_name) //" with a &
+                               &change of angle (mu) filter.")
+            end if
+          ! Also check to see if this is a legendre expansion or not.
+          ! If so, we can accept this score and filter combo for p0, but not
+          ! elsewhere.
+          else if (n_order > 0) then
+            if (t % find_filter(FILTER_MU) > 0) then
+              call fatal_error("Cannot tally " // trim(score_name) //" with a &
+                               &change of angle (mu) filter unless order is 0.")
+            end if
+          end if
+
+          select case (trim(score_name))
+          case ('flux')
+            ! Prohibit user from tallying flux for an individual nuclide
+            if (.not. (t % n_nuclide_bins == 1 .and. &
+                 t % nuclide_bins(1) == -1)) then
+              call fatal_error("Cannot tally flux for an individual nuclide.")
+            end if
+
+            t % score_bins(j) = SCORE_FLUX
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally flux with an outgoing energy &
+                   &filter.")
+            end if
+          case ('flux-yn')
+            ! Prohibit user from tallying flux for an individual nuclide
+            if (.not. (t % n_nuclide_bins == 1 .and. &
+                 t % nuclide_bins(1) == -1)) then
+              call fatal_error("Cannot tally flux for an individual nuclide.")
+            end if
+
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally flux with an outgoing energy &
+                   &filter.")
+            end if
+
+            t % score_bins(j : j + n_bins - 1) = SCORE_FLUX_YN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins  - 1
+
+          case ('total', '(n,total)')
+            t % score_bins(j) = SCORE_TOTAL
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally total reaction rate with an &
+                   &outgoing energy filter.")
+            end if
+
+          case ('total-yn')
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally total reaction rate with an &
+                   &outgoing energy filter.")
+            end if
+
+            t % score_bins(j : j + n_bins - 1) = SCORE_TOTAL_YN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins - 1
+
+          case ('scatter')
+            t % score_bins(j) = SCORE_SCATTER
+
+          case ('nu-scatter')
+            t % score_bins(j) = SCORE_NU_SCATTER
+
+            ! Set tally estimator to analog for CE mode
+            ! (MG mode has all data available without a collision being
+            ! necessary)
+            if (run_CE) then
+              t % estimator = ESTIMATOR_ANALOG
+            end if
+
+          case ('scatter-n')
+            t % score_bins(j) = SCORE_SCATTER_N
+            t % moment_order(j) = n_order
+            t % estimator = ESTIMATOR_ANALOG
+
+          case ('nu-scatter-n')
+            t % score_bins(j) = SCORE_NU_SCATTER_N
+            t % moment_order(j) = n_order
+            t % estimator = ESTIMATOR_ANALOG
+
+          case ('scatter-pn')
+            t % estimator = ESTIMATOR_ANALOG
+            ! Setup P0:Pn
+            t % score_bins(j : j + n_bins - 1) = SCORE_SCATTER_PN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins - 1
+
+          case ('nu-scatter-pn')
+            t % estimator = ESTIMATOR_ANALOG
+            ! Setup P0:Pn
+            t % score_bins(j : j + n_bins - 1) = SCORE_NU_SCATTER_PN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins - 1
+
+          case ('scatter-yn')
+            t % estimator = ESTIMATOR_ANALOG
+            ! Setup P0:Pn
+            t % score_bins(j : j + n_bins - 1) = SCORE_SCATTER_YN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins - 1
+
+          case ('nu-scatter-yn')
+            t % estimator = ESTIMATOR_ANALOG
+            ! Setup P0:Pn
+            t % score_bins(j : j + n_bins - 1) = SCORE_NU_SCATTER_YN
+            t % moment_order(j : j + n_bins - 1) = n_order
+            j = j + n_bins - 1
+
+          case('transport')
+            call fatal_error("Transport score no longer supported for tallies, &
+                 &please remove")
+
+          case ('n1n')
+            call fatal_error("n1n score no longer supported for tallies, &
+                 &please remove")
+          case ('n2n', '(n,2n)')
+            t % score_bins(j) = N_2N
+
+          case ('n3n', '(n,3n)')
+            t % score_bins(j) = N_3N
+
+          case ('n4n', '(n,4n)')
+            t % score_bins(j) = N_4N
+
+          case ('absorption')
+            t % score_bins(j) = SCORE_ABSORPTION
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally absorption rate with an outgoing &
+                   &energy filter.")
+            end if
+
+          case ('capture')
+            t % score_bins(j) = SCORE_CAPTURE
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally capture rate with an outgoing &
+                   &energy filter.")
+            end if
+
+          case ('fission', '18')
+            t % score_bins(j) = SCORE_FISSION
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              call fatal_error("Cannot tally fission rate with an outgoing &
+                   &energy filter.")
+            end if
+          case ('nu-fission')
+            t % score_bins(j) = SCORE_NU_FISSION
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              ! Set tally estimator to analog
+              t % estimator = ESTIMATOR_ANALOG
+            end if
+          case ('decay-rate')
+            t % score_bins(j) = SCORE_DECAY_RATE
+            t % estimator = ESTIMATOR_ANALOG
+          case ('delayed-nu-fission')
+            t % score_bins(j) = SCORE_DELAYED_NU_FISSION
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              ! Set tally estimator to analog
+              t % estimator = ESTIMATOR_ANALOG
+            end if
+          case ('prompt-nu-fission')
+            t % score_bins(j) = SCORE_PROMPT_NU_FISSION
+            if (t % find_filter(FILTER_ENERGYOUT) > 0) then
+              ! Set tally estimator to analog
+              t % estimator = ESTIMATOR_ANALOG
+            end if
+
+            ! Disallow for MG mode since data not present
+            if (.not. run_CE) then
+              call fatal_error("Cannot tally delayed nu-fission rate in &
+                               &multi-group mode")
+            end if
+          case ('kappa-fission')
+            t % score_bins(j) = SCORE_KAPPA_FISSION
+          case ('inverse-velocity')
+            t % score_bins(j) = SCORE_INVERSE_VELOCITY
+          case ('fission-q-prompt')
+            t % score_bins(j) = SCORE_FISS_Q_PROMPT
+          case ('fission-q-recoverable')
+            t % score_bins(j) = SCORE_FISS_Q_RECOV
+          case ('current')
+            t % score_bins(j) = SCORE_CURRENT
+            t % type = TALLY_SURFACE_CURRENT
+
+            ! Check to make sure that current is the only desired response
+            ! for this tally
+            if (n_words > 1) then
+              call fatal_error("Cannot tally other scores in the &
+                   &same tally as surface currents")
+            end if
+
+            ! Get index of mesh filter
+            k = t % find_filter(FILTER_MESH)
+
+            ! Check to make sure mesh filter was specified
+            if (k == 0) then
+              call fatal_error("Cannot tally surface current without a mesh &
+                   &filter.")
+            end if
+
+            ! Copy filters to temporary array
+            allocate(filters(size(t % filters) + 1))
+            filters(1:size(t % filters)) = t % filters
+
+            ! Move allocation back -- filters becomes deallocated during
+            ! this call
+            call move_alloc(FROM=filters, TO=t%filters)
+
+            ! Add surface filter
+            n_filters = size(t % filters)
+            allocate(SurfaceFilter :: t % filters(n_filters) % obj)
+            select type (filt => t % filters(size(t % filters)) % obj)
+            type is (SurfaceFilter)
+              filt % n_bins = 4 * m % n_dimension
+              allocate(filt % surfaces(4 * m % n_dimension))
+              if (m % n_dimension == 2) then
+                filt % surfaces = (/ OUT_LEFT, OUT_RIGHT, OUT_BACK, OUT_FRONT, &
+                     IN_LEFT, IN_RIGHT, IN_BACK, IN_FRONT /)
+              elseif (m % n_dimension == 3) then
+                filt % surfaces = (/ OUT_LEFT, OUT_RIGHT, OUT_BACK, OUT_FRONT, &
+                     OUT_BOTTOM, OUT_TOP, IN_LEFT, IN_RIGHT, IN_BACK, &
+                     IN_FRONT, IN_BOTTOM, IN_TOP /)
+              end if
+            end select
+            t % find_filter(FILTER_SURFACE) = size(t % filters)
+
+          case ('events')
+            t % score_bins(j) = SCORE_EVENTS
+
+          case ('elastic', '(n,elastic)')
+            t % score_bins(j) = ELASTIC
+          case ('(n,2nd)')
+            t % score_bins(j) = N_2ND
+          case ('(n,na)')
+            t % score_bins(j) = N_2NA
+          case ('(n,n3a)')
+            t % score_bins(j) = N_N3A
+          case ('(n,2na)')
+            t % score_bins(j) = N_2NA
+          case ('(n,3na)')
+            t % score_bins(j) = N_3NA
+          case ('(n,np)')
+            t % score_bins(j) = N_NP
+          case ('(n,n2a)')
+            t % score_bins(j) = N_N2A
+          case ('(n,2n2a)')
+            t % score_bins(j) = N_2N2A
+          case ('(n,nd)')
+            t % score_bins(j) = N_ND
+          case ('(n,nt)')
+            t % score_bins(j) = N_NT
+          case ('(n,nHe-3)')
+            t % score_bins(j) = N_N3HE
+          case ('(n,nd2a)')
+            t % score_bins(j) = N_ND2A
+          case ('(n,nt2a)')
+            t % score_bins(j) = N_NT2A
+          case ('(n,3nf)')
+            t % score_bins(j) = N_3NF
+          case ('(n,2np)')
+            t % score_bins(j) = N_2NP
+          case ('(n,3np)')
+            t % score_bins(j) = N_3NP
+          case ('(n,n2p)')
+            t % score_bins(j) = N_N2P
+          case ('(n,npa)')
+            t % score_bins(j) = N_NPA
+          case ('(n,n1)')
+            t % score_bins(j) = N_N1
+          case ('(n,nc)')
+            t % score_bins(j) = N_NC
+          case ('(n,gamma)')
+            t % score_bins(j) = N_GAMMA
+          case ('(n,p)')
+            t % score_bins(j) = N_P
+          case ('(n,d)')
+            t % score_bins(j) = N_D
+          case ('(n,t)')
+            t % score_bins(j) = N_T
+          case ('(n,3He)')
+            t % score_bins(j) = N_3HE
+          case ('(n,a)')
+            t % score_bins(j) = N_A
+          case ('(n,2a)')
+            t % score_bins(j) = N_2A
+          case ('(n,3a)')
+            t % score_bins(j) = N_3A
+          case ('(n,2p)')
+            t % score_bins(j) = N_2P
+          case ('(n,pa)')
+            t % score_bins(j) = N_PA
+          case ('(n,t2a)')
+            t % score_bins(j) = N_T2A
+          case ('(n,d2a)')
+            t % score_bins(j) = N_D2A
+          case ('(n,pd)')
+            t % score_bins(j) = N_PD
+          case ('(n,pt)')
+            t % score_bins(j) = N_PT
+          case ('(n,da)')
+            t % score_bins(j) = N_DA
+
+          case default
+            ! Assume that user has specified an MT number
+            MT = int(str_to_int(score_name))
+
+            if (MT /= ERROR_INT) then
+              ! Specified score was an integer
+              if (MT > 1) then
+                t % score_bins(j) = MT
+              else
+                call fatal_error("Invalid MT on <scores>: " &
+                     // trim(sarray(l)))
+              end if
+
+            else
+              ! Specified score was not an integer
+              call fatal_error("Unknown scoring function: " &
+                   // trim(sarray(l)))
+            end if
+
+          end select
+
+          ! Do a check at the end (instead of for every case) to make sure
+          ! the tallies are compatible with MG mode where we have less detailed
+          ! nuclear data
+          if (.not. run_CE .and. t % score_bins(j) > 0) then
+            call fatal_error("Cannot tally " // trim(score_name) // &
+                             " reaction rate in multi-group mode")
+          end if
+        end do
+
+        t % n_score_bins = n_scores
+        t % n_user_score_bins = n_words
+
+        ! Deallocate temporary string array of scores
+        deallocate(sarray)
+
+        ! Check that no duplicate scores exist
+        j = 1
+        do while (j < n_scores)
+          ! Determine number of bins for scores with expansions
+          n_order = t % moment_order(j)
+          select case (t % score_bins(j))
+          case (SCORE_SCATTER_PN, SCORE_NU_SCATTER_PN)
+            n_bins = n_order + 1
+          case (SCORE_FLUX_YN, SCORE_TOTAL_YN, SCORE_SCATTER_YN, &
+               SCORE_NU_SCATTER_YN)
+            n_bins = (n_order + 1)**2
+          case default
+            n_bins = 1
+          end select
+
+          do k = j + n_bins, n_scores
+            if (t % score_bins(j) == t % score_bins(k) .and. &
+                 t % moment_order(j) == t % moment_order(k)) then
+              call fatal_error("Duplicate score of type '" // trim(&
+                   reaction_name(t % score_bins(j))) // "' found in tally " &
+                   // trim(to_str(t % id)))
+            end if
+          end do
+          j = j + n_bins
+        end do
+      else
+        call fatal_error("No <scores> specified on tally " &
+             // trim(to_str(t % id)) // ".")
+      end if
+
+
+      ! Add tally to dictionary
+      call resptally_dict % add_key(t % id, i)
+
+    end do READ_TALLIES
+
+
+    ! ==========================================================================
+    ! READ RESPONSE DATA
+
+    READ_RESPONSES :do i = 1, n_responses
+      ! Get pointer to tally
+      r => responses(i)
+
+      ! Get pointer to response xml node
+      call get_list_item(node_resp_list, i, node_resp)
+
+      ! Copy response id
+      if (check_for_node(node_resp, "id")) then
+        call get_node_value(node_resp, "id", r % id)
+      end if
+
+      ! Check to make sure 'id' hasn't been used
+      if (response_dict % has_key(r % id)) then
+        call fatal_error("Two or more tallies use the same unique ID: " &
+             // to_str(r % id))
+      end if
+
+      ! =======================================================================
+      ! READ TALLY FOR RESPONSE
+
+      if (check_for_node(node_resp, "numerator")) then
+        call get_node_value(node_resp, "numerator", r % numerid)
+        ! Get pointer to tally
+        if (resptally_dict % has_key(r % numerid)) then
+          i_tally = resptally_dict % get_key(r % numerid)
+        else
+          call fatal_error("Could not find tally " // trim(to_str(r % numerid)) &
+               // " specified on response " // trim(to_str(r % id)))
+        end if
+      end if
+
+      if (check_for_node(node_resp, "denominator")) then
+        call get_node_value(node_resp, "denominator", r % denomid)
+        ! Get pointer to tally
+        if (resptally_dict % has_key(r % denomid)) then
+          i_tally = resptally_dict % get_key(r % denomid)
+        else
+          call fatal_error("Could not find tally " // trim(to_str(r % denomid)) &
+               // " specified on response " // trim(to_str(r % id)))
+        end if
+      end if
+
+      ! Add tally to dictionary
+      call response_dict % add_key(r % id, i)
+
+    end do READ_RESPONSES
+
+
+    ! ==========================================================================
+    ! READ SENSITIVITY DATA
+
+    READ_SENSITIVITIES :do i = 1, n_sens
+      ! Get pointer to tally
+      s => sensitivities(i)
+
+      ! Get pointer to tally xml node
+      call get_list_item(node_sen_list, i, node_sen)
+
+      ! Copy material id
+      if (check_for_node(node_sen, "id")) then
+        call get_node_value(node_sen, "id", s % id)
+      else
+        call fatal_error("Must specify id for sensitivity in XML file.")
+      end if
+
+      ! Check to make sure 'id' hasn't been used
+      if (sensitivity_dict % has_key(s % id)) then
+        call fatal_error("Two or more tallies use the same unique ID: " &
+             // to_str(s % id))
+      end if
+
+      ! Copy tally name
+      if (check_for_node(node_sen, "name")) &
+           call get_node_value(node_sen, "name", s % name)
+
+      ! =======================================================================
+      ! READ DATA FOR RESPONSE
+
+      if (check_for_node(node_sen, "response")) then
+        call get_node_value(node_sen, "response", s % response)
+        if (response_dict % has_key(s % response)) then
+          i_response = response_dict % get_key(s % response)
+        else
+          call fatal_error("Could not find response " // trim(to_str(s % response)) &
+               // " specified on sensitivity " // trim(to_str(s % id)))
+        end if
+      end if
+
+
+      ! =======================================================================
+      ! READ DATA FOR ADJOINT CALCULATION METHOD
+
+      if (check_for_node(node_sen, "method")) then
+        call get_node_value(node_sen, "method", s % method)
+        adjointmethod = s % method
+      end if
+
+      if (check_for_node(node_sen, "blocklen")) then
+        call get_node_value(node_sen, "blocklen", s % blocklen)
+        ifp_block = s % blocklen
+      end if
+
+      ! for IFP calculation, blocklen must be specified
+      if (s % method /= 3) then
+        if (s % blocklen == 0) then
+          call fatal_error("Must specify block len for this adjoint method.")
+        end if
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR MESH ID
+
+      if (check_for_node(node_sen, "mesh")) then
+        call get_node_value(node_sen, "mesh", s % meshid)
+        ! Get pointer to mesh
+        if (senmesh_dict % has_key(s % meshid)) then
+          i_mesh = senmesh_dict % get_key(s % meshid)
+          m => sen_meshes(i_mesh)
+          s % n_mesh_bins = product(m % dimension)
+        else
+          call fatal_error("Could not find mesh " // trim(to_str(s % meshid)) &
+               // " specified on sensitivity " // trim(to_str(s % id)))
+        end if
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR IMPORTANCE MESH ID
+
+      if (check_for_node(node_sen, "impmesh")) then
+        call get_node_value(node_sen, "impmesh", s % impmeshid)
+        ! Get pointer to mesh
+        if (senmesh_dict % has_key(s % impmeshid)) then
+          i_mesh = senmesh_dict % get_key(s % impmeshid)
+          m => sen_meshes(i_mesh)
+          s % imp_mesh_bins = product(m % dimension)
+        else
+          call fatal_error("Could not find mesh " // trim(to_str(s % impmeshid)) &
+               // " specified on sensitivity " // trim(to_str(s % id)))
+        end if
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR ENERGY STRUCTURE
+
+      if (check_for_node(node_sen, "energystructure")) then
+        call get_node_value(node_sen, "energystructure", s % n_energy_bins)
+        if (s % n_energy_bins == 238) then
+          allocate(s % energystructure(239))
+          s % energystructure = energystructure238
+        else if (s % n_energy_bins == 44) then
+          allocate(s % energystructure(45))
+          s % energystructure = energystructure44
+        else if (s % n_energy_bins == 1) then
+          allocate(s % energystructure(2))
+          s % energystructure = energystructure1
+        else
+          call fatal_error("Could not find energystrcuture " &
+               // trim(to_str(s % n_energy_bins)) &
+               // " specified on sensitivity " // trim(to_str(s % id)))
+        end if
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR NUCLIDES
+
+      if (check_for_node(node_sen, "nuclides")) then
+
+        ! Allocate a temporary string array for nuclides and copy values over
+        allocate(sarray(get_arraysize_string(node_sen, "nuclides")))
+        call get_node_array(node_sen, "nuclides", sarray)
+
+        ! Nuclide case, e.g. <nuclides>U-235 Pu-239</nuclides>
+        n_words = get_arraysize_string(node_sen, "nuclides")
+        allocate(s % nuclide_bins(n_words))
+        do j = 1, n_words
+
+          ! If a specific nuclide was specified
+          word = to_lower(sarray(j))
+
+          ! Search through nuclides
+          pair_list => nuclide_dict % keys()
+          do while (associated(pair_list))
+            if (starts_with(pair_list % key, word)) then
+              word = pair_list % key(1:150)
+              exit
+            end if
+
+            ! Advance to next
+            pair_list => pair_list % next
+          end do
+
+          ! Check if no nuclide was found
+          if (.not. associated(pair_list)) then
+            call fatal_error("Could not find the nuclide " &
+                 // trim(word) // " specified in sensitivity " &
+                 // trim(to_str(s % id)) // " in any material.")
+          end if
+          deallocate(pair_list)
+
+          ! Set bin to index in nuclides array
+          s % nuclide_bins(j) = nuclide_dict % get_key(word)
+
+        end do
+
+        ! Set number of nuclide bins
+        s % n_nuclide_bins = n_words
+
+        ! Deallocate temporary string array
+        deallocate(sarray)
+
+      end if
+
+      ! =======================================================================
+      ! READ DATA FOR SCORES
+
+      if (check_for_node(node_sen, "scores")) then
+        n_words = get_arraysize_string(node_sen, "scores")
+        allocate(sarray(n_words))
+        call get_node_array(node_sen, "scores", sarray)
+        n_scores = n_words
+
+        ! Allocate score storage accordingly
+        allocate(s % score_bins(n_scores))
+
+        do j = 1, n_words
+
+          score_name = sarray(j)
+
+          select case (trim(score_name))
+
+          case ('total', '(n,total)')
+            s % score_bins(j) = SCORE_TOTAL
+
+          case ('scatter')
+            s % score_bins(j) = SCORE_SCATTER
+
+          case ('n2n', '(n,2n)')
+            s % score_bins(j) = N_2N
+
+          case ('n3n', '(n,3n)')
+            s % score_bins(j) = N_3N
+
+          case ('n4n', '(n,4n)')
+            s % score_bins(j) = N_4N
+
+          case ('absorption')
+            s % score_bins(j) = SCORE_ABSORPTION
+
+          case ('capture')
+            s % score_bins(j) = SCORE_CAPTURE
+
+          case ('fission', '18')
+            s % score_bins(j) = SCORE_FISSION
+
+          case ('elastic', '(n,elastic)')
+            s % score_bins(j) = ELASTIC
+
+          case ('chi')
+            s % score_bins(j) = FISSION_CHI
+
+          case ('nubar')
+            s % score_bins(j) = FISSION_NUBAR
+
+          case ('(n,2nd)')
+            s % score_bins(j) = N_2ND
+          case ('(n,na)')
+            s % score_bins(j) = N_2NA
+          case ('(n,n3a)')
+            s % score_bins(j) = N_N3A
+          case ('(n,2na)')
+            s % score_bins(j) = N_2NA
+          case ('(n,3na)')
+            s % score_bins(j) = N_3NA
+          case ('(n,np)')
+            s % score_bins(j) = N_NP
+          case ('(n,n2a)')
+            s % score_bins(j) = N_N2A
+          case ('(n,2n2a)')
+            s % score_bins(j) = N_2N2A
+          case ('(n,nd)')
+            s % score_bins(j) = N_ND
+          case ('(n,nt)')
+            s % score_bins(j) = N_NT
+          case ('(n,nHe-3)')
+            s % score_bins(j) = N_N3HE
+          case ('(n,nd2a)')
+            s % score_bins(j) = N_ND2A
+          case ('(n,nt2a)')
+            s % score_bins(j) = N_NT2A
+          case ('(n,3nf)')
+            s % score_bins(j) = N_3NF
+          case ('(n,2np)')
+            s % score_bins(j) = N_2NP
+          case ('(n,3np)')
+            s % score_bins(j) = N_3NP
+          case ('(n,n2p)')
+            s % score_bins(j) = N_N2P
+          case ('(n,npa)')
+            s % score_bins(j) = N_NPA
+          case ('(n,n1)')
+            s % score_bins(j) = N_N1
+          case ('(n,nc)')
+            s % score_bins(j) = N_NC
+          case ('(n,gamma)')
+            s % score_bins(j) = N_GAMMA
+          case ('(n,p)')
+            s % score_bins(j) = N_P
+          case ('(n,d)')
+            s % score_bins(j) = N_D
+          case ('(n,t)')
+            s % score_bins(j) = N_T
+          case ('(n,3He)')
+            s % score_bins(j) = N_3HE
+          case ('(n,a)')
+            s % score_bins(j) = N_A
+          case ('(n,2a)')
+            s % score_bins(j) = N_2A
+          case ('(n,3a)')
+            s % score_bins(j) = N_3A
+          case ('(n,2p)')
+            s % score_bins(j) = N_2P
+          case ('(n,pa)')
+            s % score_bins(j) = N_PA
+          case ('(n,t2a)')
+            s % score_bins(j) = N_T2A
+          case ('(n,d2a)')
+            s % score_bins(j) = N_D2A
+          case ('(n,pd)')
+            s % score_bins(j) = N_PD
+          case ('(n,pt)')
+            s % score_bins(j) = N_PT
+          case ('(n,da)')
+            s % score_bins(j) = N_DA
+
+          case default
+            ! Assume that user has specified an MT number
+            MT = int(str_to_int(score_name))
+
+            if (MT /= ERROR_INT) then
+              ! Specified score was an integer
+              if (MT > 1) then
+                s % score_bins(j) = MT
+              else
+                call fatal_error("Invalid MT on <scores>: " &
+                     // trim(sarray(l)))
+              end if
+
+            else
+              ! Specified score was not an integer
+              call fatal_error("Unknown scoring function: " &
+                   // trim(sarray(l)))
+            end if
+
+          end select
+
+        end do
+
+        s % n_score_bins = n_scores
+
+
+        ! Deallocate temporary string array of scores
+        deallocate(sarray)
+
+        ! Check that no duplicate scores exist
+        j = 1
+        do while (j < n_scores)
+          n_bins = 1
+          do k = j + n_bins, n_scores
+            if (s % score_bins(j) == s % score_bins(k)) then
+              call fatal_error("Duplicate score of type '" // trim(&
+                   reaction_name(s % score_bins(j))) // "' found in tally " &
+                   // trim(to_str(s % id)))
+            end if
+          end do
+          j = j + n_bins
+        end do
+      else
+        call fatal_error("No <scores> specified on tally " &
+             // trim(to_str(s % id)) // ".")
+      end if
+
+      ! Add sensitivity to dictionary
+      call sensitivity_dict % add_key(s % id, i)
+
+    end do READ_SENSITIVITIES
+
+    sen_on = .true.
+    ! Close XML document
+    call close_xmldoc(doc)
+
+  end subroutine read_sensitivities_xml
+
 
 !===============================================================================
 ! READ_PLOTS_XML reads data from a plots.xml file
