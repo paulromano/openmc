@@ -280,8 +280,11 @@ set(LIBOPENMC_FORTRAN_SRC
   src/endf_header.F90
   src/energy_distribution.F90
   src/energy_grid.F90
+  src/energystructure.F90
   src/error.F90
   src/finalize.F90
+  src/fissionmatrix.F90
+  src/fissionmatrix_header.F90
   src/geometry.F90
   src/geometry_header.F90
   src/global.F90
@@ -313,13 +316,15 @@ set(LIBOPENMC_FORTRAN_SRC
   src/progress_header.F90
   src/random_lcg.F90
   src/reaction_header.F90
-  src/relaxng
+  src/response_header.F90
   src/sab_header.F90
   src/scattdata_header.F90
   src/secondary_correlated.F90
   src/secondary_kalbach.F90
   src/secondary_nbody.F90
   src/secondary_uncorrelated.F90
+  src/sensitivity.F90
+  src/sensitivity_header.F90
   src/set_header.F90
   src/simulation.F90
   src/source.F90
