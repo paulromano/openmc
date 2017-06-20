@@ -374,7 +374,7 @@ contains
       end if
 
       ! Sensitivity scoring of scattering term
-      if (sen_on) then
+      if (sensitivity_on) then
         if (adjointmethod == 1 .and. original) then
           call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
           call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
@@ -442,7 +442,7 @@ contains
       end do
 
       ! Sensitivity scoring of scattering term
-      if (sen_on) then
+      if (sensitivity_on) then
         if (adjointmethod == 1 .and. original) then
           call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
           call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
@@ -1205,7 +1205,7 @@ contains
     p % fission = .true. ! Fission neutrons will be banked
 
     ! calculate the neutron importance by analog estimator at the asymptotic batch
-    if (sen_on) then
+    if (sensitivity_on) then
       if (asymptotic) then ! keff sensitivity cal
         if (adjointmethod == 1 .or. adjointmethod == 2) then
           call score_neutron_value(p, nu)
@@ -1226,7 +1226,7 @@ contains
 
       ! the definition of progenitor and IFP_ID transfer operation,
       ! and the chi sensitivity calculation can also be placed here
-      if (sen_on) then
+      if (sensitivity_on) then
         if (original) then ! original generation, add branch due to fission
           call add_branch_sensitivity()
           if (adjointmethod == 1) then
@@ -1483,7 +1483,7 @@ contains
         ! the ifp_id number has been transferred by this create function
         call p % create_secondary(p % coord(1) % uvw, NEUTRON, run_CE=.true.)
         ! transfer the cumulative tally to second neutrons
-        if (sen_on) then
+        if (sensitivity_on) then
           if (adjointmethod == 1 .and. original) then
             call tally_cumtosecondary(p)
             if (maxsecondnum < p % n_secondary) then

@@ -186,7 +186,7 @@ contains
     end if
 
     ! reset the cumulative tally for particle tracking, both in IFP and CLTUCH
-    if (sen_on) then
+    if (sensitivity_on) then
       call sensitivity_initialize_history()
     end if
 
@@ -222,7 +222,7 @@ contains
     end if
 
     ! ifp tally reset in CLUTCH sensitivities calculation
-    if (sen_on) then
+    if (sensitivity_on) then
       call sensitivity_initialize_batch()
     end if
 
@@ -380,7 +380,7 @@ contains
     end if
 
     ! sensitivities calculation by combining tallies and neutron importances
-    if (sen_on) then
+    if (sensitivity_on) then
       call sensitivity_finalize_batch()
     end if
 

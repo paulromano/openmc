@@ -279,7 +279,7 @@ module global
 
   ! ============================================================================
   ! SENSITIVITIES CALCULATION VARIABLES
-  logical :: sen_on = .false.
+  logical :: sensitivity_on = .false.
   type(RegularMesh), allocatable, target :: sen_meshes(:)
   type(TallyObject), allocatable, target :: resp_tallies(:)
   real(8), allocatable :: resptalresult(:)

@@ -5813,7 +5813,7 @@ contains
 
     end do READ_SENSITIVITIES
 
-    sen_on = .true.
+    sensitivity_on = .true.
     ! Close XML document
     call close_xmldoc(doc)
 

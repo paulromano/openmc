@@ -140,7 +140,7 @@ contains
       end if
 
       ! Score track-length tallies related to sensitivity calculations
-      if (sen_on) then
+      if (sensitivity_on) then
         if (adjointmethod == 1 .AND. original) then
           call score_tracklength_sensitivity(p,distance)
         end if
@@ -211,7 +211,7 @@ contains
         if (fismatrix_on .AND. current_batch > 10) call count_greenterm_collision(p)
 
         ! Score sensitivities in CLUTCH calculations
-        if (sen_on) then
+        if (sensitivity_on) then
           if (adjointmethod == 2 .OR. adjointmethod == 3) call sensitivity_clutch(p)
           if (adjointmethod == 4) then
             ! calculate reaction rate tally first
@@ -298,7 +298,7 @@ contains
           call p % initialize_from_source(p % secondary_bank(p % n_secondary), &
                                           run_CE, energy_bin_avg)
           ! extract the cumulative tally information from secondary array
-          if (sen_on) then
+          if (sensitivity_on) then
             if (adjointmethod == 1 .AND. original) call tally_secondarytocum(p)
             if (adjointmethod == 2 .AND. clutch_first) call tally_secondarytocum(p)
             if (adjointmethod == 3 .AND. clutch_first) call tally_secondarytocum(p)
