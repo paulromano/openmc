@@ -12,6 +12,7 @@ module fissionmatrix
                          mesh_indices_to_bin, mesh_intersects_2d, &
                          mesh_intersects_3d, get_mesh_indices, &
                          bin_to_mesh_indices
+  use message_passing
   use particle_header,  only: Particle
 
   implicit none

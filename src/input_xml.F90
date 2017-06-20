@@ -4253,17 +4253,18 @@ contains
     type(TallyObject),       pointer :: t
     type(SensitivityObject), pointer :: s
     type(RegularMesh),       pointer :: m
-    type(Node), pointer :: doc => null()
-    type(Node), pointer :: node_mesh => null()
-    type(Node), pointer :: node_tal => null()
-    type(Node), pointer :: node_filt => null()
-    type(Node), pointer :: node_resp => null()
-    type(Node), pointer :: node_sen => null()
-    type(NodeList), pointer :: node_mesh_list => null()
-    type(NodeList), pointer :: node_tal_list => null()
-    type(NodeList), pointer :: node_filt_list => null()
-    type(NodeList), pointer :: node_resp_list => null()
-    type(NodeList), pointer :: node_sen_list => null()
+    type(XMLDocument) :: doc
+    type(XMLNode) :: root
+    type(XMLNode) :: node_mesh
+    type(XMLNode) :: node_tal
+    type(XMLNode) :: node_filt
+    type(XMLNode) :: node_resp
+    type(XMLNode) :: node_sen
+    type(XMLNode), allocatable :: node_mesh_list(:)
+    type(XMLNode), allocatable :: node_tal_list(:)
+    type(XMLNode), allocatable :: node_filt_list(:)
+    type(XMLNode), allocatable :: node_resp_list(:)
+    type(XMLNode), allocatable :: node_sen_list(:)
     type(ElemKeyValueCI), pointer :: scores
     type(ElemKeyValueCI), pointer :: next
 
@@ -4279,37 +4280,33 @@ contains
     ! Display output message
     call write_message("Reading sensitivities XML file...", 5)
 
-
-    ! Parse tallies.xml file
-    call open_xmldoc(doc, filename)
+    ! Openc sensitivities.xml file
+    call doc % load_file(filename)
+    root = doc % document_element()
 
     ! ==========================================================================
     ! DETERMINE SIZE OF ARRAYS AND ALLOCATE
 
     ! Get pointer list to XML <mesh>
-    call get_node_list(doc, "mesh", node_mesh_list)
-
-
-    ! Get pointer list to XML <response>
-    call get_node_list(doc, "tally", node_tal_list)
+    call get_node_list(root, "mesh", node_mesh_list)
 
     ! Get pointer list to XML <response>
-    call get_node_list(doc, "response", node_resp_list)
+    call get_node_list(root, "tally", node_tal_list)
+
+    ! Get pointer list to XML <response>
+    call get_node_list(root, "response", node_resp_list)
 
     ! Get pointer list to XML <sensitivity>
-    call get_node_list(doc, "sensitivity", node_sen_list)
+    call get_node_list(root, "sensitivity", node_sen_list)
 
     ! Check for meshes
-    n_sen_meshes = get_list_size(node_mesh_list)
+    n_sen_meshes = size(node_mesh_list)
 
     ! Allocate mesh array
-    if (n_sen_meshes > 0) then
-      allocate(sen_meshes(n_sen_meshes))
-    end if
+    if (n_sen_meshes > 0) allocate(sen_meshes(n_sen_meshes))
 
     ! Check for GPT tallies
-    n_resptallies = get_list_size(node_tal_list)
-
+    n_resptallies = size(node_tal_list)
 
     ! Allocate tally array
     if (n_resptallies > 0) then
@@ -4321,24 +4318,19 @@ contains
     end if
 
     ! Check for GPT responses
-    n_responses = get_list_size(node_resp_list)
+    n_responses = size(node_resp_list)
 
     ! Allocate response array
-    if (n_responses > 0) then
-      allocate(responses(n_responses))
-    end if
-
+    if (n_responses > 0) allocate(responses(n_responses))
 
     ! Check for user sensitivities
-    n_sens = get_list_size(node_sen_list)
+    n_sens = size(node_sen_list)
     if (n_sens == 0) then
       if (master) call warning("No sensitivities present in sensitivities.xml file!")
     end if
 
     ! Allocate tally array
-    if (n_sens > 0) then
-      allocate(sensitivities(n_sens))
-    end if
+    if (n_sens > 0) allocate(sensitivities(n_sens))
 
     ! ==========================================================================
     ! READ MESH DATA
@@ -4347,7 +4339,7 @@ contains
       m => sen_meshes(i)
 
       ! Get pointer to mesh node
-      call get_list_item(node_mesh_list, i, node_mesh)
+      node_mesh = node_mesh_list(i)
 
       ! Copy mesh id
       if (check_for_node(node_mesh, "id")) then
@@ -4378,9 +4370,9 @@ contains
       end select
 
       ! Determine number of dimensions for mesh
-      n = get_arraysize_integer(node_mesh, "dimension")
+      n = node_word_count(node_mesh, "dimension")
       if (n /= 3) then
-        call fatal_error("Mesh must be two or three dimensions.")
+        call fatal_error("Mesh must be three dimensions.")
       end if
       m % n_dimension = n
 
@@ -4401,7 +4393,7 @@ contains
       m % dimension = iarray3(1:n)
 
       ! Read mesh lower-left corner location
-      if (m % n_dimension /= get_arraysize_double(node_mesh, "lower_left")) then
+      if (m % n_dimension /= node_word_count(node_mesh, "lower_left")) then
         call fatal_error("Number of entries on <lower_left> must be the same &
              &as the number of entries on <dimension>.")
       end if
@@ -4423,8 +4415,8 @@ contains
 
       if (check_for_node(node_mesh, "width")) then
         ! Check to ensure width has same dimensions
-        if (get_arraysize_double(node_mesh, "width") /= &
-             get_arraysize_double(node_mesh, "lower_left")) then
+        if (node_word_count(node_mesh, "width") /= &
+             node_word_count(node_mesh, "lower_left")) then
           call fatal_error("Number of entries on <width> must be the same as &
                &the number of entries on <lower_left>.")
         end if
@@ -4441,8 +4433,8 @@ contains
 
       elseif (check_for_node(node_mesh, "upper_right")) then
         ! Check to ensure width has same dimensions
-        if (get_arraysize_double(node_mesh, "upper_right") /= &
-             get_arraysize_double(node_mesh, "lower_left")) then
+        if (node_word_count(node_mesh, "upper_right") /= &
+             node_word_count(node_mesh, "lower_left")) then
           call fatal_error("Number of entries on <upper_right> must be the &
                &same as the number of entries on <lower_left>.")
         end if
@@ -4472,7 +4464,7 @@ contains
       t => resp_tallies(i)
 
       ! Get pointer to tally xml node
-      call get_list_item(node_tal_list, i, node_tal)
+      node_tal = node_tal_list(i)
 
       ! Copy material id
       if (check_for_node(node_tal, "id")) then
@@ -4497,14 +4489,14 @@ contains
 
       ! Get pointer list to XML <filter> and get number of filters
       call get_node_list(node_tal, "filter", node_filt_list)
-      n_filters = get_list_size(node_filt_list)
+      n_filters = size(node_filt_list)
 
       ! Allocate filters array
       allocate(t % filters(n_filters))
 
       READ_FILTERS: do j = 1, n_filters
         ! Get pointer to filter xml node
-        call get_list_item(node_filt_list, j, node_filt)
+        node_filt = node_filt_list(j)
 
         ! Convert filter type to lower case
         temp_str = ''
@@ -4517,9 +4509,9 @@ contains
           if (temp_str == 'energy' .or. temp_str == 'energyout' .or. &
                temp_str == 'mu' .or. temp_str == 'polar' .or. &
                temp_str == 'azimuthal') then
-            n_words = get_arraysize_double(node_filt, "bins")
+            n_words = node_word_count(node_filt, "bins")
           else
-            n_words = get_arraysize_integer(node_filt, "bins")
+            n_words = node_word_count(node_filt, "bins")
           end if
         else
           call fatal_error("Bins not set in filter on tally " &
@@ -4654,8 +4646,8 @@ contains
             ! index is simply the group (after flipping for the different
             ! ordering of the library and tallying systems).
             if (.not. run_CE) then
-              if (n_words == energy_groups + 1) then
-                if (all(filt % bins == energy_bins(energy_groups + 1:1:-1))) &
+              if (n_words == num_energy_groups + 1) then
+                if (all(filt % bins == energy_bins(num_energy_groups + 1:1:-1))) &
                      then
                   filt % matches_transport_groups = .true.
                 end if
@@ -4680,8 +4672,8 @@ contains
             ! index is simply the group (after flipping for the different
             ! ordering of the library and tallying systems).
             if (.not. run_CE) then
-              if (n_words == energy_groups + 1) then
-                if (all(filt % bins == energy_bins(energy_groups + 1:1:-1))) &
+              if (n_words == num_energy_groups + 1) then
+                if (all(filt % bins == energy_bins(num_energy_groups + 1:1:-1))) &
                      then
                   filt % matches_transport_groups = .true.
                 end if
@@ -4853,7 +4845,7 @@ contains
       if (check_for_node(node_tal, "nuclides")) then
 
         ! Allocate a temporary string array for nuclides and copy values over
-        allocate(sarray(get_arraysize_string(node_tal, "nuclides")))
+        allocate(sarray(node_word_count(node_tal, "nuclides")))
         call get_node_array(node_tal, "nuclides", sarray)
 
         if (trim(sarray(1)) == 'all') then
@@ -4872,7 +4864,7 @@ contains
           t % all_nuclides = .true.
         else
           ! Any other case, e.g. <nuclides>U-235 Pu-239</nuclides>
-          n_words = get_arraysize_string(node_tal, "nuclides")
+          n_words = node_word_count(node_tal, "nuclides")
           allocate(t % nuclide_bins(n_words))
           do j = 1, n_words
 
@@ -4928,7 +4920,7 @@ contains
       ! READ DATA FOR SCORES
 
       if (check_for_node(node_tal, "scores")) then
-        n_words = get_arraysize_string(node_tal, "scores")
+        n_words = node_word_count(node_tal, "scores")
         allocate(sarray(n_words))
         call get_node_array(node_tal, "scores", sarray)
 
@@ -5431,7 +5423,7 @@ contains
       r => responses(i)
 
       ! Get pointer to response xml node
-      call get_list_item(node_resp_list, i, node_resp)
+      node_resp = node_resp_list(i)
 
       ! Copy response id
       if (check_for_node(node_resp, "id")) then
@@ -5483,7 +5475,7 @@ contains
       s => sensitivities(i)
 
       ! Get pointer to tally xml node
-      call get_list_item(node_sen_list, i, node_sen)
+      node_sen = node_sen_list(i)
 
       ! Copy material id
       if (check_for_node(node_sen, "id")) then
@@ -5595,11 +5587,11 @@ contains
       if (check_for_node(node_sen, "nuclides")) then
 
         ! Allocate a temporary string array for nuclides and copy values over
-        allocate(sarray(get_arraysize_string(node_sen, "nuclides")))
+        allocate(sarray(node_word_count(node_sen, "nuclides")))
         call get_node_array(node_sen, "nuclides", sarray)
 
         ! Nuclide case, e.g. <nuclides>U-235 Pu-239</nuclides>
-        n_words = get_arraysize_string(node_sen, "nuclides")
+        n_words = node_word_count(node_sen, "nuclides")
         allocate(s % nuclide_bins(n_words))
         do j = 1, n_words
 
@@ -5643,7 +5635,7 @@ contains
       ! READ DATA FOR SCORES
 
       if (check_for_node(node_sen, "scores")) then
-        n_words = get_arraysize_string(node_sen, "scores")
+        n_words = node_word_count(node_sen, "scores")
         allocate(sarray(n_words))
         call get_node_array(node_sen, "scores", sarray)
         n_scores = n_words
@@ -5814,8 +5806,9 @@ contains
     end do READ_SENSITIVITIES
 
     sensitivity_on = .true.
+
     ! Close XML document
-    call close_xmldoc(doc)
+    call doc % clear()
 
   end subroutine read_sensitivities_xml
 
