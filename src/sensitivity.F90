@@ -61,28 +61,28 @@ contains
   subroutine sensitivity_finalize_batch()
 
     if (adjointmethod == 1) then
-      if (asymptotic) call sensitivity_cal()
+      if (asymptotic) call sensitivity_calc()
     end if
     if (adjointmethod == 2) then
-      if (asymptotic) call importance_cal()
-      if (clutch_second) call sensitivity_cal_clutch()
+      if (asymptotic) call importance_calc()
+      if (clutch_second) call sensitivity_calc_clutch()
     end if
     if (adjointmethod == 3) then
-      if (current_batch == n_inactive) call importance_cal_fm()
-      if (clutch_second) call sensitivity_cal_clutch()
+      if (current_batch == n_inactive) call importance_calc_fm()
+      if (clutch_second) call sensitivity_calc_clutch()
     end if
     if (adjointmethod == 4) then
       if (current_batch == n_inactive) call reaction_rates()
-      if (asymptotic) call sensitivity_gpt_cal()
+      if (asymptotic) call sensitivity_gpt_calc()
     end if
     if (adjointmethod == 5) then
-      if (asymptotic) call importance_gpt_cal()
-      if (clutch_second) call sensitivity_cal_gclutch()
+      if (asymptotic) call importance_gpt_calc()
+      if (clutch_second) call sensitivity_calc_gclutch()
     end if
     if (adjointmethod == 6) then
       if (current_batch == n_inactive) call reaction_rates()
       if (current_batch == n_inactive) call importance_gpt_fm()
-      if (clutch_second) call sensitivity_cal_gclutch()
+      if (clutch_second) call sensitivity_calc_gclutch()
     end if
     if (current_batch == n_max_batches) call sen_statistics()
 
@@ -759,20 +759,14 @@ contains
 #endif
 
 !===============================================================================
-! SENSITIVITY_CAL combines the ifp tallies and neutron importances to calculate
+! SENSITIVITY_CALC combines the ifp tallies and neutron importances to calculate
 ! real sensitivities
 !===============================================================================
 
-  subroutine sensitivity_cal()
+  subroutine sensitivity_calc()
 
-    type(SensitivityObject), pointer :: t
-    integer :: i
-    integer :: j
-    integer :: k
-    integer :: l
-    integer :: m
-    integer :: n
-    real(8) :: value
+    integer :: i, j, k, l, m, n
+    real(8) :: val
 
 #ifdef MPI
     call collect_ifpcal()
@@ -782,34 +776,36 @@ contains
       ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
-        t => sensitivities(i)
-        t % n_realizations = t % n_realizations + 1
-        t % denom = 0
-        do j = 1, 3 * n_particles
-          t % denom = t % denom + t % neutronfission(j) * t % neutronvalue(j)
-        end do
+        associate (t => sensitivities(i))
+          t % n_realizations = t % n_realizations + 1
+          t % denom = 0
+          do j = 1, 3 * n_particles
+            t % denom = t % denom + t % neutronfission(j) * t % neutronvalue(j)
+          end do
 
-        do k = 1, t % n_nuclide_bins
-          do l = 1, t % n_score_bins
+          do n = 1, t % n_energy_bins
             do m = 1, t % n_mesh_bins
-              do n = 1, t % n_energy_bins
-                value = sum(t%neutrontally(:,k,l,m,n)*t%neutronvalue(:))/t % denom
-                t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
-                t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value * value
+              do l = 1, t % n_score_bins
+                do k = 1, t % n_nuclide_bins
+                  val = sum(t % neutrontally(:,k,l,m,n) * t % neutronvalue(:)) / &
+                       t % denom
+                  t % results(1,k,l,m,n) = t % results(1,k,l,m,n) + val
+                  t % results(2,k,l,m,n) = t % results(2,k,l,m,n) + val * val
+                end do
               end do
             end do
           end do
-        end do
+        end associate
       end do SENSITIVITY_LOOP
     end if
 
-  end subroutine sensitivity_cal
+  end subroutine sensitivity_calc
 
 !===============================================================================
-! IMPORTANCE_CAL calculates the importance function via IFP method
+! IMPORTANCE_CALC calculates the importance function via IFP method
 !===============================================================================
 
-  subroutine importance_cal()
+  subroutine importance_calc()
 
     type(SensitivityObject), pointer :: t
     integer :: i
@@ -858,13 +854,13 @@ contains
 #endif
     end if
 
-  end subroutine importance_cal
+  end subroutine importance_calc
 
 !===============================================================================
-! IMPORTANCE_CAL_FM calculates the importance function via fission matrix method
+! IMPORTANCE_CALC_FM calculates the importance function via fission matrix method
 !===============================================================================
 
-  subroutine importance_cal_fm()
+  subroutine importance_calc_fm()
 
     type(SensitivityObject), pointer :: t
     integer :: i
@@ -903,7 +899,7 @@ contains
     end do
 #endif
 
-  end subroutine importance_cal_fm
+  end subroutine importance_calc_fm
 
 !===============================================================================
 ! SENSITIVITY_CLUTCH_SCACOL CALCULATES SCATTERING AND COLLISION TERMS IN CLUTCH
@@ -1220,10 +1216,10 @@ contains
 #endif
 
 !===============================================================================
-! SENSITIVITY_CAL_CLUTCH calculates sensitivities at every second clutch batches
+! SENSITIVITY_CALC_CLUTCH calculates sensitivities at every second clutch batches
 !===============================================================================
 
-  subroutine sensitivity_cal_clutch()
+  subroutine sensitivity_calc_clutch()
 
     type(SensitivityObject), pointer :: t
     integer :: i
@@ -1259,7 +1255,7 @@ contains
       end do SENSITIVITY_LOOP
     end if
 
-  end subroutine sensitivity_cal_clutch
+  end subroutine sensitivity_calc_clutch
 
 !===============================================================================
 ! SEN_STATISTICS computes the mean and standard deviation of the mean of each
@@ -1937,11 +1933,11 @@ contains
 #endif
 
 !===============================================================================
-! SENSITIVITY_GPT_CAL combines the ifp tallies and neutron importances to calculate
+! SENSITIVITY_GPT_CALC combines the ifp tallies and neutron importances to calculate
 ! real sensitivities
 !===============================================================================
 
-  subroutine sensitivity_gpt_cal()
+  subroutine sensitivity_gpt_calc()
 
     type(SensitivityObject), pointer :: s
     integer :: i
@@ -1979,13 +1975,13 @@ contains
       end do SENSITIVITY_LOOP
     end if
 
-  end subroutine sensitivity_gpt_cal
+  end subroutine sensitivity_gpt_calc
 
 !===============================================================================
-! IMPORTANCE_GPT_CAL calculates the GPT importance function via IFP method
+! IMPORTANCE_GPT_CALC calculates the GPT importance function via IFP method
 !===============================================================================
 
-  subroutine importance_gpt_cal()
+  subroutine importance_gpt_calc()
 
     type(SensitivityObject), pointer :: t
     integer :: i
@@ -2050,7 +2046,7 @@ contains
 #endif
     end if
 
-  end subroutine importance_gpt_cal
+  end subroutine importance_gpt_calc
 
 !===============================================================================
 ! IMPORTANCE_GPT_FM calculates the importance function via fission matrix method
@@ -2440,10 +2436,10 @@ contains
 #endif
 
 !===============================================================================
-! SENSITIVITY_CAL_GCLUTCH calculates sensitivities at every second clutch batches
+! SENSITIVITY_CALC_GCLUTCH calculates sensitivities at every second clutch batches
 !===============================================================================
 
-  subroutine sensitivity_cal_gclutch()
+  subroutine sensitivity_calc_gclutch()
 
     type(SensitivityObject), pointer :: t
     integer :: i
@@ -2479,7 +2475,7 @@ contains
       end do SENSITIVITY_LOOP
     end if
 
-  end subroutine sensitivity_cal_gclutch
+  end subroutine sensitivity_calc_gclutch
 
 !===============================================================================
 ! TALLY_IN_SENLIST decides whether one tally is in the sensitivity list
