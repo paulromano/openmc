@@ -480,15 +480,14 @@ contains
 
   subroutine score_denom_sensitivity()
 
-    type(SensitivityObject), pointer :: t
-
     integer :: i
 
     ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
-      t => sensitivities(i)
-      t % neutronfission(progenitornum) = t % neutronfission(progenitornum) + 1
+      associate (t => sensitivities(i))
+        t % neutronfission(progenitornum) = t % neutronfission(progenitornum) + 1
+      end associate
     end do SENSITIVITY_LOOP
 
   end subroutine score_denom_sensitivity
@@ -560,7 +559,6 @@ contains
 
   subroutine add_branch_sensitivity()
 
-    type(SensitivityObject), pointer :: t
     integer :: i
 
     progenitornum = progenitornum + 1 ! number of progenitor has been added
@@ -568,10 +566,11 @@ contains
     ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
-      t => sensitivities(i)
-      if (t % method == 1) then
-        t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
-      end if
+      associate (t => sensitivities(i))
+        if (t % method == 1) then
+          t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
+        end if
+      end associate
     end do SENSITIVITY_LOOP
 
   end subroutine add_branch_sensitivity
@@ -584,13 +583,13 @@ contains
   subroutine tally_cumtosecondary(p)
 
     type(Particle), intent(in) :: p
-    type(SensitivityObject), pointer :: t
     integer :: i
 
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
-      t => sensitivities(i)
-      t % secondtally(p % n_secondary,:,:,:,:) = t % cumtally(:,:,:,:)
+      associate (t => sensitivities(i))
+        t % secondtally(p % n_secondary,:,:,:,:) = t % cumtally(:,:,:,:)
+      end associate
     end do SENSITIVITY_LOOP
   end subroutine tally_cumtosecondary
 
@@ -2019,7 +2018,6 @@ contains
           end if
           if (current_batch == n_inactive) then
             t % importance(k) = t % importance(k) / t % imp_realizations
-            !print *, t % importance(k)
           end if
         end do
 

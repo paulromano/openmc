@@ -1486,39 +1486,27 @@ contains
         if (sensitivity_on) then
           if (adjointmethod == 1 .and. original) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
           if (adjointmethod == 2 .and. clutch_first) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
           if (adjointmethod == 3 .and. clutch_first) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
           if (adjointmethod == 4 .and. original) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
           if (adjointmethod == 5 .and. clutch_first) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
           if (adjointmethod == 6 .and. clutch_first) then
             call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) then
-              maxsecondnum = p % n_secondary
-            end if
+            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
           end if
         end if
       end do
