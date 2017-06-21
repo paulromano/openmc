@@ -16,7 +16,7 @@ module bank_header
     real(C_DOUBLE) :: uvw(3)         ! diretional cosines
     real(C_DOUBLE) :: E              ! energy / energy group if in MG mode.
     integer(C_INT) :: delayed_group  ! delayed group
-    integer(C_INT) :: ifp_id         ! index of progenitor
+    integer(C_LONG_LONG) :: ifp_id   ! index of progenitor
     integer(C_INT) :: nuclide_born   ! index of fission nuclide
     integer(C_INT) :: energy_fission ! index of energy causing fission
     integer(C_INT) :: energy_born    ! index of energy of fission neutron

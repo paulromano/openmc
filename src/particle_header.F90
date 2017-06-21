@@ -44,7 +44,7 @@ module particle_header
     integer    :: type          ! Particle type (n, p, e, etc)
 
     ! Iterated fission probability progenitor ID
-    integer :: ifp_id
+    integer(8) :: ifp_id
     ! CLUTCH needs the fission energy, nuclide, mt number and mesh
     integer :: nuclide_born   ! index of fission nuclide
     integer :: energy_fission ! index of energy causing fission

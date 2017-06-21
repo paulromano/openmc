@@ -222,7 +222,6 @@ contains
     integer :: j                    ! loop index for scoring bins
     integer :: k                    ! loop index for nuclide bins
     type(SensitivityObject), pointer :: t
-    type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
 
@@ -334,7 +333,6 @@ contains
     integer :: j                    ! loop index for scoring bins
     integer :: k                    ! loop index for nuclide bins
     type(SensitivityObject), pointer :: t
-    type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
 
@@ -620,7 +618,6 @@ contains
   subroutine ifptally_reset_batch()
 
     integer :: i
-    integer :: j
     integer :: n_discard
 
     original = .false.
@@ -663,7 +660,6 @@ contains
   subroutine clutch_reset_batch()
 
     integer :: i
-    integer :: n_discard
 
     original = .false.
     asymptotic = .false.
@@ -716,9 +712,9 @@ contains
 
     type(SensitivityObject), pointer :: t
     integer :: i         ! sensitivity loop index
-    integer :: n1        ! total size of count variable neutrontally
-    integer :: n2        ! total size of count variable neutronfission
-    integer :: n3        ! total size of count variable neutronvalue
+    integer(8) :: n1     ! total size of count variable neutrontally
+    integer(8) :: n2     ! total size of count variable neutronfission
+    integer(8) :: n3     ! total size of count variable neutronvalue
     real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
     ! A loop over all sensitivities is necessary
@@ -765,7 +761,8 @@ contains
 
   subroutine sensitivity_calc()
 
-    integer :: i, j, k, l, m, n
+    integer :: i, k, l, m, n
+    integer(8) :: j
     real(8) :: val
 
 #ifdef MPI
@@ -809,7 +806,6 @@ contains
 
     type(SensitivityObject), pointer :: t
     integer :: i
-    integer :: j
     integer :: k
     integer :: n
 
@@ -864,8 +860,6 @@ contains
 
     type(SensitivityObject), pointer :: t
     integer :: i
-    integer :: j
-    integer :: k
     integer :: n
 
 #ifdef MPI
@@ -972,7 +966,6 @@ contains
     integer :: j                    ! loop index for scoring bins
     integer :: k                    ! loop index for nuclide bins
     type(SensitivityObject), pointer :: t
-    type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
 
@@ -1073,8 +1066,6 @@ contains
 
     integer :: i_mesh
     integer :: i
-    integer :: j                    ! loop index for scoring bins
-    integer :: k                    ! loop index for nuclide bins
     type(SensitivityObject), pointer :: t
     type(RegularMesh), pointer :: m
 
@@ -1221,13 +1212,12 @@ contains
 
   subroutine sensitivity_calc_clutch()
 
-    type(SensitivityObject), pointer :: t
     integer :: i
     integer :: k
     integer :: l
     integer :: m
     integer :: n
-    real(8) :: value
+    real(8) :: val
 
 #ifdef MPI
     call collect_clutchcal()
@@ -1237,20 +1227,21 @@ contains
       ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
-        t => sensitivities(i)
-        t % n_realizations = t % n_realizations + 1
+        associate (t => sensitivities(i))
+          t % n_realizations = t % n_realizations + 1
 
-        do k = 1, t % n_nuclide_bins
-          do l = 1, t % n_score_bins
+          do n = 1, t % n_energy_bins
             do m = 1, t % n_mesh_bins
-              do n = 1, t % n_energy_bins
-                value = t%clutchsen(k,l,m,n)/t % denom
-                t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
-                t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value *value
+              do l = 1, t % n_score_bins
+                do k = 1, t % n_nuclide_bins
+                  val = t%clutchsen(k,l,m,n)/t % denom
+                  t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + val
+                  t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + val * val
+                end do
               end do
             end do
           end do
-        end do
+        end associate
 
       end do SENSITIVITY_LOOP
     end if
@@ -1270,23 +1261,25 @@ contains
     integer :: l
     integer :: m
     integer :: n
-    type(SensitivityObject), pointer :: t
 
     ! Calculate statistics for user-defined tallies
-    do i = 1, n_sens
-      t => sensitivities(i)
-      do k = 1, t % n_nuclide_bins
-        do l = 1, t % n_score_bins
-          do m = 1, t % n_mesh_bins
-            do n = 1, t % n_energy_bins
-              t%results(1,k,l,m,n) = t%results(1,k,l,m,n)/t%n_realizations
-              t%results(2,k,l,m,n) = sqrt((t%results(2,k,l,m,n)/t%n_realizations - &
-                   t%results(1,k,l,m,n)*t%results(1,k,l,m,n))/(t%n_realizations-1))
+    if (master) then
+      do i = 1, n_sens
+        associate (t => sensitivities(i))
+          do n = 1, t % n_energy_bins
+            do m = 1, t % n_mesh_bins
+              do l = 1, t % n_score_bins
+                do k = 1, t % n_nuclide_bins
+                  t%results(1,k,l,m,n) = t%results(1,k,l,m,n)/t%n_realizations
+                  t%results(2,k,l,m,n) = sqrt((t%results(2,k,l,m,n)/t%n_realizations - &
+                       t%results(1,k,l,m,n)*t%results(1,k,l,m,n))/(t%n_realizations-1))
+                end do
+              end do
             end do
           end do
-        end do
+        end associate
       end do
-    end do
+    end if
 
   end subroutine sen_statistics
 
@@ -1511,20 +1504,13 @@ contains
     real(8),           intent(in)    :: atom_density   ! atom/b-cm
 
     integer :: i                    ! loop index for scoring bins
-    integer :: l                    ! loop index for nuclides in material
     integer :: m                    ! loop index for reactions
     integer :: q                    ! loop index for scoring bins
     integer :: i_temp               ! temperature index
-    integer :: i_nuc                ! index in nuclides array (from material)
     integer :: i_energy             ! index in nuclide energy grid
     integer :: score_bin            ! scoring bin, e.g. SCORE_FLUX
-    integer :: score_index          ! scoring bin index
-    integer :: d                    ! delayed neutron index
-    integer :: g                    ! delayed neutron index
-    integer :: k                    ! loop index for bank sites
     real(8) :: f                    ! interpolation factor
     real(8) :: score                ! analog tally score
-    real(8) :: E                    ! particle energy
 
     i = 0
     SCORE_LOOP: do q = 1, t % n_score_bins
@@ -1620,7 +1606,6 @@ contains
 
     integer :: i_sen       ! index in sensitivities array
     integer :: n
-    integer :: j
     type(SensitivityObject), pointer :: s
     real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
@@ -1697,7 +1682,6 @@ contains
 
     type(SensitivityObject), pointer :: s
     type(ResponseObject), pointer :: r
-    type(TallyObject), pointer :: t
 
     call score_tally(p)  ! get all tallies at one collision point
 
@@ -1744,8 +1728,6 @@ contains
     type(TallyObject), pointer :: t
     type(RegularMesh), pointer :: m
 
-    integer :: k
-    integer :: j
     integer :: bin_mesh
     integer :: bin_energy
     integer :: bin_nuclide_numer
@@ -1867,9 +1849,9 @@ contains
 
     type(SensitivityObject), pointer :: s
     integer :: i         ! sensitivity loop index
-    integer :: n1        ! total size of count variable neutrontally
-    integer :: n2        ! total size of count variable neutronfission
-    integer :: n3        ! total size of count variable neutronvalue
+    integer(8) :: n1     ! total size of count variable neutrontally
+    integer(8) :: n2     ! total size of count variable neutronfission
+    integer(8) :: n3     ! total size of count variable neutronvalue
     real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
     ! A loop over all sensitivities is necessary
@@ -1941,7 +1923,6 @@ contains
 
     type(SensitivityObject), pointer :: s
     integer :: i
-    integer :: j
     integer :: k
     integer :: l
     integer :: m
@@ -1985,7 +1966,6 @@ contains
 
     type(SensitivityObject), pointer :: t
     integer :: i
-    integer :: j
     integer :: k
     integer :: n
     real(8) :: tallynumer
@@ -2055,8 +2035,6 @@ contains
 
     type(SensitivityObject), pointer :: t
     integer :: i
-    integer :: j
-    integer :: k
     integer :: n
     real(8), allocatable :: gptsource(:)
     allocate(gptsource(fismatrix % fm_dimension))
@@ -2072,9 +2050,6 @@ contains
         t => sensitivities(i)
         gptsource = t%tallynumer/t%respnumer-t%tallydenom/t%respdenom
         call fm_fixedsource(gptsource,t % importance)
-        !do j = 1, t % imp_mesh_bins
-        !   print *, t % importance(j)
-        !end do
       end do SENSITIVITY_LOOP
     end if
 
@@ -2182,8 +2157,6 @@ contains
     type(RegularMesh), pointer :: m
     type(RegularMesh), pointer :: impm
 
-    integer :: k
-    integer :: j
     integer :: bin_mesh
     integer :: bin_impmesh
     integer :: bin_energy
@@ -2282,7 +2255,6 @@ contains
     integer :: k                    ! loop index for nuclide bins
     type(SensitivityObject), pointer :: t
     type(ResponseObject), pointer :: r
-    type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
     real(8) :: gptimportance
 
@@ -2534,15 +2506,10 @@ contains
     integer :: i_tally
     integer :: i_filt
     integer :: j                    ! loop index for scoring bins
-    integer :: k                    ! loop index for nuclide bins
-    integer :: filter_index         ! single index for single bin
     integer :: i_nuclide            ! index in nuclides array (from bins)
-    integer :: matching_bins        ! matching bin for filter
-    real(8) :: filter_weights       ! weight for filter
     real(8) :: flux                 ! collision estimate of flux
     real(8) :: atom_density         ! atom density of single nuclide
     !   in atom/b-cm
-    real(8) :: filter_weight        ! combined weight of all filters
     type(TallyObject), pointer :: t
     type(Material),    pointer :: mat
 
@@ -2634,23 +2601,11 @@ contains
     real(8),           intent(in)    :: atom_density   ! atom/b-cm
     real(8),           intent(out)   :: score          ! score of this collision
 
-    integer :: l                    ! loop index for nuclides in material
     integer :: m                    ! loop index for reactions
-    integer :: q                    ! loop index for scoring bins
     integer :: i_temp               ! temperature index
-    integer :: i_nuc                ! index in nuclides array (from material)
     integer :: i_energy             ! index in nuclide energy grid
     integer :: score_bin            ! scoring bin, e.g. SCORE_FLUX
-    integer :: score_index          ! scoring bin index
-    integer :: d                    ! delayed neutron index
-    integer :: g                    ! delayed neutron index
-    integer :: k                    ! loop index for bank sites
-    integer :: d_bin                ! delayed group bin index
-    integer :: dg_filter            ! index of delayed group filter
-    real(8) :: yield                ! delayed neutron yield
-    real(8) :: atom_density_        ! atom/b-cm
     real(8) :: f                    ! interpolation factor
-    real(8) :: E                    ! particle energy
 
     ! determine what type of score bin
     score_bin = t % score_bins(1)

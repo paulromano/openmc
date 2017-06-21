@@ -1138,7 +1138,6 @@ contains
     integer :: i                        ! loop index
     integer :: nu                       ! actual number of neutrons produced
     integer :: ijk(3)                   ! indices in ufs mesh
-    integer :: bin                      ! index of bin in fission matrix mesh
     real(8) :: nu_t                     ! total nu
     real(8) :: weight                   ! weight adjustment for ufs method
     logical :: in_mesh                  ! source site in ufs mesh?

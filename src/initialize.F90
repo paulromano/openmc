@@ -216,9 +216,9 @@ contains
 
     ! Define MPI_BANK for fission sites
     bank_blocks = (/ 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1 /)
-    bank_types = (/ MPI_REAL8, MPI_REAL8, MPI_REAL8, MPI_REAL8, MPI_INTEGER, &
-                    MPI_INTEGER, MPI_INTEGER, MPI_INTEGER, MPI_INTEGER, &
-                    MPI_INTEGER, MPI_INTEGER, MPI_INTEGER /)
+    bank_types = (/ MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, &
+         MPI_LONG_LONG, MPI_INT, MPI_INT, MPI_INT, MPI_INT, &
+         MPI_INT, MPI_INT /)
     call MPI_TYPE_CREATE_STRUCT(12, bank_blocks, bank_disp, &
          bank_types, MPI_BANK, mpi_err)
     call MPI_TYPE_COMMIT(MPI_BANK, mpi_err)

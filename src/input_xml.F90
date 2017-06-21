@@ -4227,10 +4227,6 @@ contains
     integer :: n_new         ! number of new scores to add based on Yn/Pn tally
     integer :: n_scores      ! number of tot scores after adjusting for Yn/Pn tally
     integer :: n_bins        ! total new bins for this score
-    integer :: n_user_trig   ! number of user-specified tally triggers
-    integer :: trig_ind      ! index of triggers array for each tally
-    integer :: user_trig_ind ! index of user-specified triggers for each tally
-    real(8) :: threshold     ! trigger convergence threshold
     integer :: n_order       ! moment order requested
     integer :: n_order_pos   ! oosition of Scattering order in score name string
     integer :: MT            ! user-specified MT for score
@@ -4265,8 +4261,6 @@ contains
     type(XMLNode), allocatable :: node_filt_list(:)
     type(XMLNode), allocatable :: node_resp_list(:)
     type(XMLNode), allocatable :: node_sen_list(:)
-    type(ElemKeyValueCI), pointer :: scores
-    type(ElemKeyValueCI), pointer :: next
 
     ! Check if tallies.xml exists
     filename = trim(path_input) // "sensitivities.xml"

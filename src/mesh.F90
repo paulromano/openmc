@@ -245,10 +245,6 @@ contains
     integer :: n_sites  ! size of bank array
     integer :: bin      ! index of bin on mesh
     logical :: outside  ! was any site outside mesh?
-#ifdef MPI
-    integer :: n        ! total size of count variable
-    real(8) :: dummy    ! temporary receive buffer for non-root reductions
-#endif
 
     ! initialize variables
     !source = ZERO
@@ -279,8 +275,6 @@ contains
     sites_outside = outside
 
   end subroutine count_bank_sites_bin
-
-
 
 !===============================================================================
 ! MESH_INTERSECTS determines if a line between xyz0 and xyz1 intersects the

@@ -292,8 +292,8 @@ module global
   integer :: n_responses = 0   ! # of different GPT responses
   integer :: n_sens = 0        ! # of different tally for sensitivities
 
-  integer :: progenitornum = 0 ! # of different progenitors
-  integer :: maxsecondnum  = 0 ! # of maximum secondary neutrons
+  integer(8) :: progenitornum = 0 ! # of different progenitors
+  integer(8) :: maxsecondnum  = 0 ! # of maximum secondary neutrons
   integer :: ifp_block = 0     ! block length of IFP calculation
   logical :: original        = .false.   ! logic used in IFP calculation
   logical :: asymptotic      = .false.   ! logic used in IFP calculation
