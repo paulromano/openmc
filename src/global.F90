@@ -299,7 +299,7 @@ module global
   logical :: asymptotic      = .false.   ! logic used in IFP calculation
   logical :: clutch_first    = .false.   ! first batch in CLUTCH calculation
   logical :: clutch_second   = .false.   ! second batch in CLUTCH calculation
-  integer :: adjointmethod   = 0         ! IFP, CLUTCH(IFP), CLUTCH(FM)
+  integer :: adjointmethod               ! IFP, CLUTCH(IFP), CLUTCH(FM)
 
   ! ============================================================================
   ! PARALLEL PROCESSING VARIABLES

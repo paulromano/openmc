@@ -20,11 +20,10 @@ module sensitivity_header
     integer :: id                   ! user-defined identifier
     integer :: meshid               ! user-defined mesh identifier
     integer :: impmeshid            ! importance mesh identifier (for CLUTCH)
-    integer :: blocklen = 0         ! user-defined block length (IFP and CLUTCH(IFP))
     character(len=104) :: name = "" ! user-defined name
     ! If method == 1, it is IFP method
     ! If method == 2, it is CLUTCH method using IFP to calculate IMP
-    ! If method == 3, it is CLUTCH method using FM to calculate IMP, blocklen = 0
+    ! If method == 3, it is CLUTCH method using FM to calculate IMP
 
     ! response numerator and denominator for a GPT sensitivity calculation
     integer              :: response = 0  ! response id

@@ -454,6 +454,18 @@ module constants
   real(8), parameter :: CMFD_NORES = 99999.0_8
 
   !=============================================================================
+  ! SENSITIVITY CONSTANTS
+
+  ! method used for calculating adjoint-weighted parameters
+  integer, parameter :: &
+       IFP            = 1, & ! k-sensitivity using IFP
+       CLUTCH_IFP     = 2, & ! k-sensitivity using CLUTCH with IFP-importance
+       CLUTCH_FM      = 3, & ! k-sensitivity using CLUTCH with FM-importance
+       GPT_IFP        = 4, & ! general sensitivitity using IFP
+       GPT_CLUTCH_IFP = 5, & ! general sensitivitity using CLUTCH with IFP-importance
+       GPT_CLUTCH_FM  = 6    ! general sensitivitity using CLUTCH with FM-importance
+
+  !=============================================================================
   ! DELAYED NEUTRON PRECURSOR CONSTANTS
 
   ! Since cross section libraries come with different numbers of delayed groups

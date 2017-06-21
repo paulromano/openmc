@@ -5408,6 +5408,45 @@ contains
 
     end do READ_TALLIES
 
+    ! =======================================================================
+    ! READ DATA FOR ADJOINT CALCULATION METHOD
+
+    if (check_for_node(root, "adjoint_method")) then
+      call get_node_value(root, "adjoint_method", temp_str)
+      select case (to_lower(temp_str))
+      case ('ifp')
+        adjointmethod = IFP
+
+      case ('clutch-ifp')
+        adjointmethod = CLUTCH_IFP
+
+      case ('clutch-fm')
+        adjointmethod = CLUTCH_FM
+
+      case ('gpt-ifp')
+        adjointmethod = GPT_IFP
+
+      case ('gpt-clutch-ifp')
+        adjointmethod = GPT_CLUTCH_IFP
+
+      case ('gpt-clutch-fm')
+        adjointmethod = GPT_CLUTCH_FM
+
+      case default
+        call fatal_error('Unrecognized adjoint method: ' // trim(temp_str) &
+             // '.')
+
+      end select
+    end if
+
+    ! for IFP calculation, block length must be specified
+    if (adjointmethod /= CLUTCH_FM .and. adjointmethod /= GPT_CLUTCH_FM) then
+      if (check_for_node(root, "ifp_block_length")) then
+        call get_node_value(root, "ifp_block_length", ifp_block)
+      else
+        call fatal_error("Must specify block len for this adjoint method.")
+      end if
+    end if
 
     ! ==========================================================================
     ! READ RESPONSE DATA
@@ -5501,25 +5540,6 @@ contains
         end if
       end if
 
-
-      ! =======================================================================
-      ! READ DATA FOR ADJOINT CALCULATION METHOD
-
-      if (check_for_node(node_sen, "method")) then
-        call get_node_value(node_sen, "method", adjointmethod)
-      end if
-
-      if (check_for_node(node_sen, "blocklen")) then
-        call get_node_value(node_sen, "blocklen", s % blocklen)
-        ifp_block = s % blocklen
-      end if
-
-      ! for IFP calculation, blocklen must be specified
-      if (adjointmethod /= 3) then
-        if (s % blocklen == 0) then
-          call fatal_error("Must specify block len for this adjoint method.")
-        end if
-      end if
 
       ! =======================================================================
       ! READ DATA FOR MESH ID
