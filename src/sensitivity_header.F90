@@ -20,7 +20,6 @@ module sensitivity_header
     integer :: id                   ! user-defined identifier
     integer :: meshid               ! user-defined mesh identifier
     integer :: impmeshid            ! importance mesh identifier (for CLUTCH)
-    integer :: method               ! user-defined method identifier
     integer :: blocklen = 0         ! user-defined block length (IFP and CLUTCH(IFP))
     character(len=104) :: name = "" ! user-defined name
     ! If method == 1, it is IFP method

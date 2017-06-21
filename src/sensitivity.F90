@@ -563,14 +563,13 @@ contains
     progenitornum = progenitornum + 1 ! number of progenitor has been added
 
     ! A loop over all sensitivities is necessary
-    SENSITIVITY_LOOP: do i = 1, n_sens
-      ! Get index of tally and pointer to tally
-      associate (t => sensitivities(i))
-        if (t % method == 1) then
+    if (adjointmethod == 1) then
+      SENSITIVITY_LOOP: do i = 1, n_sens
+        associate (t => sensitivities(i))
           t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
-        end if
-      end associate
-    end do SENSITIVITY_LOOP
+        end associate
+      end do SENSITIVITY_LOOP
+    end if
 
   end subroutine add_branch_sensitivity
 
@@ -710,7 +709,6 @@ contains
 !===============================================================================
   subroutine collect_ifpcal()
 
-    type(SensitivityObject), pointer :: t
     integer :: i         ! sensitivity loop index
     integer(8) :: n1     ! total size of count variable neutrontally
     integer(8) :: n2     ! total size of count variable neutronfission
@@ -720,35 +718,35 @@ contains
     ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
-      t => sensitivities(i)
-      if (t % method == 1) then
-        n1 = 3 * n_particles * t % n_nuclide_bins * t % n_score_bins * &
-             t % n_mesh_bins * t % n_energy_bins
-        n2 = 3 * n_particles
-        n3 = 3 * n_particles
-      end if
-      if (t % method == 2) then
-        n1 = 3 * n_particles * t % imp_mesh_bins
-        n2 = t % imp_mesh_bins
-        n3 = 3 * n_particles
-      end if
-      ! collect values from all processors
-      if (master) then
-        call MPI_REDUCE(MPI_IN_PLACE, t % neutrontally, n1, MPI_REAL8, &
-             MPI_SUM, 0, mpi_intracomm, mpi_err)
-        call MPI_REDUCE(MPI_IN_PLACE, t % neutronfission, n2, MPI_REAL8, &
-             MPI_SUM, 0, mpi_intracomm, mpi_err)
-        call MPI_REDUCE(MPI_IN_PLACE, t % neutronvalue, n3, MPI_REAL8, &
-             MPI_SUM, 0, mpi_intracomm, mpi_err)
-      else
-        ! Receive buffer not significant at other processors
-        call MPI_REDUCE(t % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-             mpi_intracomm, mpi_err)
-        call MPI_REDUCE(t % neutronfission, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-             mpi_intracomm, mpi_err)
-        call MPI_REDUCE(t % neutronvalue, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-             mpi_intracomm, mpi_err)
-      end if
+      associate (t => sensitivities(i))
+        if (adjointmethod == 1) then
+          n1 = 3 * n_particles * t % n_nuclide_bins * t % n_score_bins * &
+               t % n_mesh_bins * t % n_energy_bins
+          n2 = 3 * n_particles
+          n3 = 3 * n_particles
+        elseif (adjointmethod == 2) then
+          n1 = 3 * n_particles * t % imp_mesh_bins
+          n2 = t % imp_mesh_bins
+          n3 = 3 * n_particles
+        end if
+        ! collect values from all processors
+        if (master) then
+          call MPI_REDUCE(MPI_IN_PLACE, t % neutrontally, n1, MPI_REAL8, &
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
+          call MPI_REDUCE(MPI_IN_PLACE, t % neutronfission, n2, MPI_REAL8, &
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
+          call MPI_REDUCE(MPI_IN_PLACE, t % neutronvalue, n3, MPI_REAL8, &
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
+        else
+          ! Receive buffer not significant at other processors
+          call MPI_REDUCE(t % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
+               mpi_intracomm, mpi_err)
+          call MPI_REDUCE(t % neutronfission, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
+               mpi_intracomm, mpi_err)
+          call MPI_REDUCE(t % neutronvalue, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
+               mpi_intracomm, mpi_err)
+        end if
+      end associate
     end do SENSITIVITY_LOOP
 
   end subroutine collect_ifpcal
@@ -1847,7 +1845,6 @@ contains
 
   subroutine collect_gptifpcal()
 
-    type(SensitivityObject), pointer :: s
     integer :: i         ! sensitivity loop index
     integer(8) :: n1     ! total size of count variable neutrontally
     integer(8) :: n2     ! total size of count variable neutronfission
@@ -1857,57 +1854,57 @@ contains
     ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
-      s => sensitivities(i)
-      if (s % method == 4) then
-        n1 = 3 * n_particles * s % n_nuclide_bins * s % n_score_bins * &
-             s % n_mesh_bins * s % n_energy_bins
-        n2 = 3 * n_particles
-        n3 = s % n_nuclide_bins * s % n_score_bins * &
-             s % n_mesh_bins * s % n_energy_bins
-        ! collect values from all processors
-        if (master) then
-          call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-          call MPI_REDUCE(MPI_IN_PLACE, s % neutronvalue, n2, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-          call MPI_REDUCE(MPI_IN_PLACE, s % results(3,:,:,:,:), n3, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-        else
-          ! Receive buffer not significant at other processors
-          call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-          call MPI_REDUCE(s % neutronvalue, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-          call MPI_REDUCE(s % results(3,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
+      associate (s => sensitivities(i))
+        if (adjointmethod == 4) then
+          n1 = 3 * n_particles * s % n_nuclide_bins * s % n_score_bins * &
+               s % n_mesh_bins * s % n_energy_bins
+          n2 = 3 * n_particles
+          n3 = s % n_nuclide_bins * s % n_score_bins * &
+               s % n_mesh_bins * s % n_energy_bins
+          ! collect values from all processors
+          if (master) then
+            call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+            call MPI_REDUCE(MPI_IN_PLACE, s % neutronvalue, n2, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+            call MPI_REDUCE(MPI_IN_PLACE, s % results(3,:,:,:,:), n3, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+          else
+            ! Receive buffer not significant at other processors
+            call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+            call MPI_REDUCE(s % neutronvalue, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+            call MPI_REDUCE(s % results(3,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+          end if
+        elseif (adjointmethod == 5) then
+          n1 = 3 * n_particles * s % imp_mesh_bins
+          n2 = 3 * n_particles
+          n3 = s % imp_mesh_bins
+          ! collect values from all processors
+          if (master) then
+            call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+            call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluenumer, n2, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+            call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluedenom, n2, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+            call MPI_REDUCE(MPI_IN_PLACE, s % neutronfission, n3, MPI_REAL8, &
+                 MPI_SUM, 0, mpi_intracomm, mpi_err)
+          else
+            ! Receive buffer not significant at other processors
+            call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+            call MPI_REDUCE(s % gptvaluenumer, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+            call MPI_REDUCE(s % gptvaluedenom, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+            call MPI_REDUCE(s % neutronfission, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
+                 mpi_intracomm, mpi_err)
+          end if
         end if
-      end if
-      if (s % method == 5) then
-        n1 = 3 * n_particles * s % imp_mesh_bins
-        n2 = 3 * n_particles
-        n3 = s % imp_mesh_bins
-        ! collect values from all processors
-        if (master) then
-          call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-          call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluenumer, n2, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-          call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluedenom, n2, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-          call MPI_REDUCE(MPI_IN_PLACE, s % neutronfission, n3, MPI_REAL8, &
-               MPI_SUM, 0, mpi_intracomm, mpi_err)
-        else
-          ! Receive buffer not significant at other processors
-          call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-          call MPI_REDUCE(s % gptvaluenumer, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-          call MPI_REDUCE(s % gptvaluedenom, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-          call MPI_REDUCE(s % neutronfission, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-               mpi_intracomm, mpi_err)
-        end if
-      end if
+      end associate
 
     end do SENSITIVITY_LOOP
 

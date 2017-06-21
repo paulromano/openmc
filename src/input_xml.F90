@@ -5506,8 +5506,7 @@ contains
       ! READ DATA FOR ADJOINT CALCULATION METHOD
 
       if (check_for_node(node_sen, "method")) then
-        call get_node_value(node_sen, "method", s % method)
-        adjointmethod = s % method
+        call get_node_value(node_sen, "method", adjointmethod)
       end if
 
       if (check_for_node(node_sen, "blocklen")) then
@@ -5516,7 +5515,7 @@ contains
       end if
 
       ! for IFP calculation, blocklen must be specified
-      if (s % method /= 3) then
+      if (adjointmethod /= 3) then
         if (s % blocklen == 0) then
           call fatal_error("Must specify block len for this adjoint method.")
         end if
