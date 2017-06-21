@@ -739,19 +739,19 @@ contains
       ! collect values from all processors
       if (master) then
         call MPI_REDUCE(MPI_IN_PLACE, t % neutrontally, n1, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
         call MPI_REDUCE(MPI_IN_PLACE, t % neutronfission, n2, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
         call MPI_REDUCE(MPI_IN_PLACE, t % neutronvalue, n3, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
       else
         ! Receive buffer not significant at other processors
         call MPI_REDUCE(t % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
         call MPI_REDUCE(t % neutronfission, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
         call MPI_REDUCE(t % neutronvalue, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
       end if
     end do SENSITIVITY_LOOP
 
@@ -849,7 +849,7 @@ contains
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
         n = t % imp_mesh_bins
-        call MPI_BCAST(t % importance, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+        call MPI_BCAST(t % importance, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
       end do
 #endif
     end if
@@ -895,7 +895,7 @@ contains
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
       n = t % imp_mesh_bins
-      call MPI_BCAST(t % importance, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+      call MPI_BCAST(t % importance, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
     end do
 #endif
 
@@ -1200,15 +1200,15 @@ contains
            t % n_mesh_bins * t % n_energy_bins
       if (master) then
         call MPI_REDUCE(MPI_IN_PLACE, t % clutchsen, n, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
         call MPI_REDUCE(MPI_IN_PLACE, t % denom, 1, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
       else
         ! Receive buffer not significant at other processors
         call MPI_REDUCE(t % clutchsen, dummy, n, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
         call MPI_REDUCE(t % denom, dummy, 1, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
       end if
     end do SENSITIVITY_LOOP
 
@@ -1633,28 +1633,28 @@ contains
       ! collect values from all processors
       if (master) then
         call MPI_REDUCE(MPI_IN_PLACE, s % respnumer, 1, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
         call MPI_REDUCE(MPI_IN_PLACE, s % respdenom, 1, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
         if (adjointmethod == 6) then
           n = s % imp_mesh_bins
           call MPI_REDUCE(MPI_IN_PLACE, s % tallynumer, n, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % tallydenom, n, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
         end if
       else
         ! Receive buffer not significant at other processors
         call MPI_REDUCE(s % respnumer, dummy, 1, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
         call MPI_REDUCE(s % respdenom, dummy, 1, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
         if (adjointmethod == 6) then
           n = s % imp_mesh_bins
           call MPI_REDUCE(s % tallynumer, dummy, n, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % tallydenom, dummy, n, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
         end if
       end if
 #endif
@@ -1670,12 +1670,12 @@ contains
       end if
 
 #ifdef MPI
-      call MPI_BCAST(s % respnumer, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
-      call MPI_BCAST(s % respdenom, 1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+      call MPI_BCAST(s % respnumer, 1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
+      call MPI_BCAST(s % respdenom, 1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
       if (adjointmethod == 6) then
         n = s % imp_mesh_bins
-        call MPI_BCAST(s % tallynumer, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
-        call MPI_BCAST(s % tallydenom, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+        call MPI_BCAST(s % tallynumer, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
+        call MPI_BCAST(s % tallydenom, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
       end if
 #endif
 
@@ -1885,19 +1885,19 @@ contains
         ! collect values from all processors
         if (master) then
           call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % neutronvalue, n2, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % results(3,:,:,:,:), n3, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
         else
           ! Receive buffer not significant at other processors
           call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % neutronvalue, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % results(3,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
         end if
       end if
       if (s % method == 5) then
@@ -1907,23 +1907,23 @@ contains
         ! collect values from all processors
         if (master) then
           call MPI_REDUCE(MPI_IN_PLACE, s % neutrontally, n1, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluenumer, n2, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % gptvaluedenom, n2, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
           call MPI_REDUCE(MPI_IN_PLACE, s % neutronfission, n3, MPI_REAL8, &
-               MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+               MPI_SUM, 0, mpi_intracomm, mpi_err)
         else
           ! Receive buffer not significant at other processors
           call MPI_REDUCE(s % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % gptvaluenumer, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % gptvaluedenom, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
           call MPI_REDUCE(s % neutronfission, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
-               MPI_COMM_WORLD, mpi_err)
+               mpi_intracomm, mpi_err)
         end if
       end if
 
@@ -2038,9 +2038,9 @@ contains
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
         n = t % imp_mesh_bins
-        call MPI_BCAST(t % importance, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
-        call MPI_BCAST(t % respnumer,  1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
-        call MPI_BCAST(t % respdenom,  1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+        call MPI_BCAST(t % importance, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
+        call MPI_BCAST(t % respnumer,  1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
+        call MPI_BCAST(t % respdenom,  1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
       end do
 #endif
     end if
@@ -2088,7 +2088,7 @@ contains
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
       n = t % imp_mesh_bins
-      call MPI_BCAST(t % importance, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
+      call MPI_BCAST(t % importance, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
     end do
 #endif
 
@@ -2423,11 +2423,11 @@ contains
            t % n_mesh_bins * t % n_energy_bins
       if (master) then
         call MPI_REDUCE(MPI_IN_PLACE, t % clutchsen, n, MPI_REAL8, &
-             MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+             MPI_SUM, 0, mpi_intracomm, mpi_err)
       else
         ! Receive buffer not significant at other processors
         call MPI_REDUCE(t % clutchsen, dummy, n, MPI_REAL8, MPI_SUM, 0, &
-             MPI_COMM_WORLD, mpi_err)
+             mpi_intracomm, mpi_err)
       end if
     end do SENSITIVITY_LOOP
 

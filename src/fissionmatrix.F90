@@ -369,15 +369,15 @@ contains
     ! collect values from all processors
     if (master) then
       call MPI_REDUCE(MPI_IN_PLACE, fismatrix % greenterm, n1, MPI_REAL8, MPI_SUM, 0, &
-           MPI_COMM_WORLD, mpi_err)
+           mpi_intracomm, mpi_err)
       call MPI_REDUCE(MPI_IN_PLACE, fismatrix % source, n2, MPI_REAL8, MPI_SUM, 0, &
-           MPI_COMM_WORLD, mpi_err)
+           mpi_intracomm, mpi_err)
     else
       ! Receive buffer not significant at other processors
       call MPI_REDUCE(fismatrix % greenterm, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
-           MPI_COMM_WORLD, mpi_err)
+           mpi_intracomm, mpi_err)
       call MPI_REDUCE(fismatrix % source, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
-           MPI_COMM_WORLD, mpi_err)
+           mpi_intracomm, mpi_err)
     end if
 #endif
 
