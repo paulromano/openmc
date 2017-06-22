@@ -45,7 +45,7 @@ contains
     integer(HID_T) :: file_id
     integer(HID_T) :: cmfd_group, tallies_group, tally_group, meshes_group, &
                       mesh_group, filter_group, derivs_group, deriv_group, &
-                      runtime_group
+                      runtime_group, sens_group
     character(MAX_WORD_LEN), allocatable :: str_array(:)
     character(MAX_FILE_LEN)    :: filename
     type(TallyObject), pointer    :: tally
@@ -372,6 +372,42 @@ contains
         call write_attribute(file_id, "tallies_present", 0)
       end if
 
+      if (n_sens > 0) then
+        sens_group = create_group(file_id, "sensitivities")
+
+        ! Write adjoint method
+        select case (adjointmethod)
+        case (IFP)
+          call write_dataset(sens_group, "adjoint_method", "ifp")
+        case (CLUTCH_IFP)
+          call write_dataset(sens_group, "adjoint_method", "clutch-ifp")
+        case (CLUTCH_FM)
+          call write_dataset(sens_group, "adjoint_method", "clutch-fm")
+        case (GPT_IFP)
+          call write_dataset(sens_group, "adjoint_method", "gpt-ifp")
+        case (GPT_CLUTCH_IFP)
+          call write_dataset(sens_group, "adjoint_method", "gpt-clutch-ifp")
+        case (GPT_CLUTCH_FM)
+          call write_dataset(sens_group, "adjoint_method", "gpt-clutch-fm")
+        end select
+
+        ! If IFP is being used, write block length
+        if (adjointmethod /= CLUTCH_FM .and. adjointmethod /= GPT_CLUTCH_FM) then
+          call write_dataset(sens_group, "ifp_block_length", ifp_block)
+        end if
+
+        ! Write information for meshes used for sensitivities
+        call write_attribute(sens_group, "n_meshes", n_sen_meshes)
+        do i = 1, n_sen_meshes
+          call sen_meshes(i) % to_hdf5(sens_group)
+        end do
+
+        ! Write information for each sensitivity
+        call write_attribute(sens_group, "n_sensitivities", n_sens)
+        do i = 1, n_sens
+          call sensitivities(i) % to_hdf5(sens_group, nuclides)
+        end do
+      end if
 
       ! Write out the runtime metrics.
       runtime_group = create_group(file_id, "runtime")

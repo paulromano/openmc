@@ -5617,29 +5617,14 @@ contains
           ! If a specific nuclide was specified
           word = to_lower(sarray(j))
 
-          ! Search through nuclides
-          pair_list => nuclide_dict % keys()
-          do while (associated(pair_list))
-            if (starts_with(pair_list % key, word)) then
-              word = pair_list % key(1:150)
-              exit
-            end if
-
-            ! Advance to next
-            pair_list => pair_list % next
-          end do
-
-          ! Check if no nuclide was found
-          if (.not. associated(pair_list)) then
+          if (.not. nuclide_dict % has_key(word)) then
             call fatal_error("Could not find the nuclide " &
                  // trim(word) // " specified in sensitivity " &
                  // trim(to_str(s % id)) // " in any material.")
           end if
-          deallocate(pair_list)
 
           ! Set bin to index in nuclides array
           s % nuclide_bins(j) = nuclide_dict % get_key(word)
-
         end do
 
         ! Set number of nuclide bins

@@ -1,10 +1,16 @@
 module sensitivity_header
 
-  use constants,           only: NONE, N_FILTER_TYPES
-  use tally_filter_header, only: TallyFilterContainer
-  use mesh_header,         only: RegularMesh
-
   use, intrinsic :: ISO_C_BINDING
+
+  use hdf5, only: HID_T
+
+  use constants
+  use endf,                only: reaction_name
+  use hdf5_interface
+  use mesh_header,         only: RegularMesh
+  use nuclide_header,      only: Nuclide
+  use string,              only: to_str
+  use tally_filter_header, only: TallyFilterContainer
 
   implicit none
 
@@ -94,6 +100,46 @@ module sensitivity_header
     ! Number of realizations of tally random variables
     integer :: imp_realizations = 0
 
+  contains
+    procedure :: to_hdf5 => sensitivity_to_hdf5
   end type SensitivityObject
+
+contains
+
+  subroutine sensitivity_to_hdf5(this, group, nuclides)
+    class(SensitivityObject), intent(in) :: this
+    integer(HID_T), intent(in) :: group
+    type(Nuclide), intent(in) :: nuclides(:)
+
+    integer :: i
+    integer(HID_T) :: sgroup
+    character(MAX_WORD_LEN), allocatable :: str_array(:)
+
+    sgroup = create_group(group, "sensitivity " // trim(to_str(this % id)))
+    call write_dataset(sgroup, "mesh_id", this % meshid)
+
+    ! Write energies
+    call write_dataset(sgroup, "energies", this % energystructure)
+
+    ! Set up nuclide bin array and then write
+    allocate(str_array(this % n_nuclide_bins))
+    NUCLIDE_LOOP: do i = 1, this % n_nuclide_bins
+      str_array(i) = nuclides(this % nuclide_bins(i)) % name
+    end do NUCLIDE_LOOP
+    call write_dataset(sgroup, "nuclides", str_array)
+    deallocate(str_array)
+
+    ! Write scores
+    allocate(str_array(size(this % score_bins)))
+    do i = 1, size(this % score_bins)
+      str_array(i) = reaction_name(this % score_bins(i))
+    end do
+    call write_dataset(sgroup, "scores", str_array)
+    deallocate(str_array)
+
+    call write_dataset(sgroup, "n_realizations", this % n_realizations)
+    call write_dataset(sgroup, "results", this % results)
+    call close_group(sgroup)
+  end subroutine sensitivity_to_hdf5
 
 end module sensitivity_header

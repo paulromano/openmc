@@ -41,10 +41,6 @@ contains
 
     type(Particle) :: p
     integer(8)     :: i_work
-    integer        :: i
-    integer        :: j
-    integer        :: k
-    integer        :: l
 
     if (.not. restart_run) call initialize_source()
 
@@ -119,26 +115,6 @@ contains
 
     ! Clear particle
     call p % clear()
-
-    do i = 1, sensitivities(1) % n_nuclide_bins
-      do j = 1, sensitivities(1) % n_score_bins
-        do k = 1, sensitivities(1) % n_mesh_bins
-          do l = 1, sensitivities(1) % n_energy_bins
-            if (master) print *, sensitivities(1) % results(1,i,j,k,l)
-          end do
-        end do
-      end do
-    end do
-
-    do i = 1, sensitivities(1) % n_nuclide_bins
-      do j = 1, sensitivities(1) % n_score_bins
-        do k = 1, sensitivities(1) % n_mesh_bins
-          do l = 1, sensitivities(1) %  n_energy_bins
-            if (master) print *, sensitivities(1) % results(2,i,j,k,l)
-          end do
-        end do
-      end do
-    end do
 
   end subroutine run_simulation
 
