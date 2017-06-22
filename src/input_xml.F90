@@ -5576,7 +5576,13 @@ contains
       ! =======================================================================
       ! READ DATA FOR ENERGY STRUCTURE
 
-      if (check_for_node(node_sen, "energystructure")) then
+      if (check_for_node(node_sen, "energies")) then
+        n = node_word_count(node_sen, "energies")
+        allocate(s % energystructure(n))
+        call get_node_array(node_sen, "energies", s % energystructure)
+        s % n_energy_bins = n - 1
+
+      elseif (check_for_node(node_sen, "energystructure")) then
         call get_node_value(node_sen, "energystructure", s % n_energy_bins)
         if (s % n_energy_bins == 238) then
           allocate(s % energystructure(239))
