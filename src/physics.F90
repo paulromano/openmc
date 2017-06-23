@@ -375,30 +375,19 @@ contains
 
       ! Sensitivity scoring of scattering term
       if (sensitivity_on) then
-        if (adjointmethod == 1 .and. original) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
-        if (adjointmethod == 2 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
-        if (adjointmethod == 3 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
-        if (adjointmethod == 4 .and. original) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
-        if (adjointmethod == 5 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
-        if (adjointmethod == 6 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
-        end if
+        select case (adjointmethod)
+        case (IFP, GPT_IFP)
+          if (original) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+            call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+          end if
+
+        case default
+          if (clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+            call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
+          end if
+        end select
       end if
 
       p % event_MT = ELASTIC
@@ -443,30 +432,20 @@ contains
 
       ! Sensitivity scoring of scattering term
       if (sensitivity_on) then
-        if (adjointmethod == 1 .and. original) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
-        if (adjointmethod == 2 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
-        if (adjointmethod == 3 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
-        if (adjointmethod == 4 .and. original) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
-        if (adjointmethod == 5 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
-        if (adjointmethod == 6 .and. clutch_first) then
-          call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
-          call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
-        end if
+        select case (adjointmethod)
+        case (IFP, GPT_IFP)
+          if (original) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+            call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+          end if
+
+        case default
+          if (clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
+            call score_scattering_sensitivity(p, i_nuclide, nuc%reactions(i)%MT)
+          end if
+
+        end select
       end if
 
       ! Perform collision physics for inelastic scattering
@@ -1206,7 +1185,7 @@ contains
     ! calculate the neutron importance by analog estimator at the asymptotic batch
     if (sensitivity_on) then
       if (asymptotic) then ! keff sensitivity cal
-        if (adjointmethod == 1 .or. adjointmethod == 2) then
+        if (adjointmethod == IFP .or. adjointmethod == CLUTCH_IFP) then
           call score_neutron_value(p, nu)
         end if
       end if
@@ -1228,7 +1207,8 @@ contains
       if (sensitivity_on) then
         if (original) then ! original generation, add branch due to fission
           call add_branch_sensitivity()
-          if (adjointmethod == 1) then
+          select case (adjointmethod)
+          case (IFP)
             call score_denom_sensitivity()
             call score_fission_sensitivity(p, bank_array(i), &
                  i_nuclide, SCORE_TOTAL)
@@ -1240,12 +1220,12 @@ contains
                  i_nuclide, FISSION_CHI)
             call score_fission_sensitivity(p, bank_array(i), &
                  i_nuclide, nuc%reactions(i_reaction)%MT)
-          end if
-          if (adjointmethod == 2) then
+
+          case (CLUTCH_IFP)
             call score_importance_dis(p)
             call score_fission_sites(p)
-          end if
-          if (adjointmethod == 4) then
+
+          case (GPT_IFP)
             call score_fission_sensitivity(p, bank_array(i), &
                  i_nuclide, SCORE_TOTAL)
             call score_fission_sensitivity(p, bank_array(i), &
@@ -1256,31 +1236,24 @@ contains
                  i_nuclide, FISSION_CHI)
             call score_fission_sensitivity(p, bank_array(i), &
                  i_nuclide, nuc%reactions(i_reaction)%MT)
-          end if
-          if (adjointmethod == 5) then
+
+          case (GPT_CLUTCH_IFP)
             call score_importance_dis(p) ! tally  tally*value/fission=imp
             call score_fission_sites(p)  ! fission
-          end if
+
+          end select
           bank_array(i) % ifp_id = progenitornum
         else
           bank_array(i) % ifp_id = p % ifp_id     ! the transferring of ifp_id
         end if
-        if (adjointmethod == 2 .and. clutch_first) then
-          call transfer_clutch_info(p, bank_array(i), &
-               i_nuclide, nuc%reactions(i_reaction)%MT)
-        end if
-        if (adjointmethod == 3 .and. clutch_first) then
-          call transfer_clutch_info(p, bank_array(i), &
-               i_nuclide, nuc%reactions(i_reaction)%MT)
-        end if
-        if (adjointmethod == 5 .and. clutch_first) then
-          call transfer_clutch_info(p, bank_array(i), &
-               i_nuclide, nuc%reactions(i_reaction)%MT)
-        end if
-        if (adjointmethod == 6 .and. clutch_first) then
-          call transfer_clutch_info(p, bank_array(i), &
-               i_nuclide, nuc%reactions(i_reaction)%MT)
-        end if
+        select case (adjointmethod)
+        case (CLUTCH_IFP, CLUTCH_FM, GPT_CLUTCH_IFP, GPT_CLUTCH_FM)
+          if (clutch_first) then
+            call transfer_clutch_info(p, bank_array(i), &
+                 i_nuclide, nuc%reactions(i_reaction)%MT)
+          end if
+        end select
+
       else       ! there isn't sensitivity calculation, pass these information
         bank_array(i) % ifp_id = p % ifp_id
         bank_array(i) % nuclide_born = p % nuclide_born
@@ -1483,30 +1456,20 @@ contains
         call p % create_secondary(p % coord(1) % uvw, NEUTRON, run_CE=.true.)
         ! transfer the cumulative tally to second neutrons
         if (sensitivity_on) then
-          if (adjointmethod == 1 .and. original) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
-          if (adjointmethod == 2 .and. clutch_first) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
-          if (adjointmethod == 3 .and. clutch_first) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
-          if (adjointmethod == 4 .and. original) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
-          if (adjointmethod == 5 .and. clutch_first) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
-          if (adjointmethod == 6 .and. clutch_first) then
-            call tally_cumtosecondary(p)
-            if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
-          end if
+          select case (adjointmethod)
+          case (IFP, GPT_IFP)
+            if (original) then
+              call tally_cumtosecondary(p)
+              if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
+            end if
+
+          case default
+            if (clutch_first) then
+              call tally_cumtosecondary(p)
+              if (maxsecondnum < p % n_secondary) maxsecondnum = p % n_secondary
+            end if
+
+          end select
         end if
       end do
 

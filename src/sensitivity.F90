@@ -30,28 +30,20 @@ contains
 
   subroutine sensitivity_initialize_batch()
 
-    if (adjointmethod == 1) then
+    select case (adjointmethod)
+    case (IFP, GPT_IFP)
       if (current_batch > n_inactive) call ifptally_reset_batch()
-    end if
-    if (adjointmethod == 2) then
+
+    case (CLUTCH_IFP, GPT_CLUTCH_IFP)
       if (current_batch <= n_inactive) call ifptally_reset_batch()
       if (current_batch > n_inactive) call clutch_reset_batch()
-    end if
-    if (adjointmethod == 3) then   ! fission matrix approach
+
+    case (CLUTCH_FM, GPT_CLUTCH_FM)
+      ! fission matrix approach
       if (current_batch > 10 .and. current_batch <= n_inactive) call count_source_for_fm()
       if (current_batch > n_inactive) call clutch_reset_batch()
-    end if
-    if (adjointmethod == 4) then
-      if (current_batch > n_inactive) call ifptally_reset_batch()
-    end if
-    if (adjointmethod == 5) then
-      if (current_batch <= n_inactive) call ifptally_reset_batch()
-      if (current_batch > n_inactive) call clutch_reset_batch()
-    end if
-    if (adjointmethod == 6) then   ! fission matrix approach
-      if (current_batch > 10 .and. current_batch <= n_inactive) call count_source_for_fm()
-      if (current_batch > n_inactive) call clutch_reset_batch()
-    end if
+
+    end select
 
   end subroutine sensitivity_initialize_batch
 
@@ -61,30 +53,35 @@ contains
 
   subroutine sensitivity_finalize_batch()
 
-    if (adjointmethod == 1) then
+    select case (adjointmethod)
+    case (IFP)
       if (asymptotic) call sensitivity_calc()
-    end if
-    if (adjointmethod == 2) then
+
+    case (CLUTCH_IFP)
       if (asymptotic) call importance_calc()
       if (clutch_second) call sensitivity_calc_clutch()
-    end if
-    if (adjointmethod == 3) then
+
+    case (CLUTCH_FM)
       if (current_batch == n_inactive) call importance_calc_fm()
       if (clutch_second) call sensitivity_calc_clutch()
-    end if
-    if (adjointmethod == 4) then
+
+    case (GPT_IFP)
       if (current_batch == n_inactive) call reaction_rates()
       if (asymptotic) call sensitivity_gpt_calc()
-    end if
-    if (adjointmethod == 5) then
+
+    case (GPT_CLUTCH_IFP)
       if (asymptotic) call importance_gpt_calc()
       if (clutch_second) call sensitivity_calc_gclutch()
-    end if
-    if (adjointmethod == 6) then
-      if (current_batch == n_inactive) call reaction_rates()
-      if (current_batch == n_inactive) call importance_gpt_fm()
+
+    case (GPT_CLUTCH_FM)
+      if (current_batch == n_inactive) then
+        call reaction_rates()
+        call importance_gpt_fm()
+      end if
       if (clutch_second) call sensitivity_calc_gclutch()
-    end if
+
+    end select
+
     if (current_batch == n_max_batches) call sen_statistics()
 
   end subroutine sensitivity_finalize_batch
@@ -95,12 +92,12 @@ contains
 
   subroutine sensitivity_initialize_history()
 
-    if (adjointmethod == 1 .and. original) call tally_reset_history()
-    if (adjointmethod == 2 .and. clutch_first) call tally_reset_history()
-    if (adjointmethod == 3 .and. clutch_first) call tally_reset_history()
-    if (adjointmethod == 4 .and. original) call tally_reset_history()
-    if (adjointmethod == 5 .and. clutch_first) call tally_reset_history()
-    if (adjointmethod == 6 .and. clutch_first) call tally_reset_history()
+    select case (adjointmethod)
+    case (IFP, GPT_IFP)
+      if (original) call tally_reset_history()
+    case default
+      if (clutch_first) call tally_reset_history()
+    end select
 
   end subroutine sensitivity_initialize_history
 
@@ -563,7 +560,7 @@ contains
     progenitornum = progenitornum + 1 ! number of progenitor has been added
 
     ! A loop over all sensitivities is necessary
-    if (adjointmethod == 1) then
+    if (adjointmethod == IFP) then
       SENSITIVITY_LOOP: do i = 1, n_sens
         associate (t => sensitivities(i))
           t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
@@ -622,9 +619,12 @@ contains
     original = .false.
     asymptotic = .false.
 
-    if (adjointmethod == 1 .or. adjointmethod ==4) n_discard = n_inactive
-    if (adjointmethod == 2) n_discard = 0
-    if (adjointmethod == 5) n_discard = 0!100
+    select case (adjointmethod)
+    case (IFP, GPT_IFP)
+      n_discard = n_inactive
+    case (CLUTCH_IFP, GPT_CLUTCH_IFP)
+      n_discard = 0
+    end select
 
     if (mod(current_batch - n_discard, ifp_block) == 1) then
       original = .true.          !  original generation
@@ -635,11 +635,11 @@ contains
         associate (t => sensitivities(i))
           t % neutrontally   = 0
           t % neutronvalue   = 0
-          if (adjointmethod /= 4) then
+          if (adjointmethod /= GPT_IFP) then
             t % neutronfission = 0
           end if
           t % results(RESULT_VALUE,:,:,:,:) = 0 ! used as direct term in gpt ifp
-          if (adjointmethod == 5) then ! calculate importance
+          if (adjointmethod == GPT_CLUTCH_IFP) then ! calculate importance
             t % gptvaluenumer  = 0
             t % gptvaluedenom  = 0
           end if
@@ -719,12 +719,12 @@ contains
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
       associate (t => sensitivities(i))
-        if (adjointmethod == 1) then
+        if (adjointmethod == IFP) then
           n1 = 3 * n_particles * t % n_nuclide_bins * t % n_score_bins * &
                t % n_mesh_bins * t % n_energy_bins
           n2 = 3 * n_particles
           n3 = 3 * n_particles
-        elseif (adjointmethod == 2) then
+        elseif (adjointmethod == CLUTCH_IFP) then
           n1 = 3 * n_particles * t % imp_mesh_bins
           n2 = t % imp_mesh_bins
           n3 = 3 * n_particles
@@ -1627,7 +1627,7 @@ contains
              MPI_SUM, 0, mpi_intracomm, mpi_err)
         call MPI_REDUCE(MPI_IN_PLACE, s % respdenom, 1, MPI_REAL8, &
              MPI_SUM, 0, mpi_intracomm, mpi_err)
-        if (adjointmethod == 6) then
+        if (adjointmethod == GPT_CLUTCH_FM) then
           n = s % imp_mesh_bins
           call MPI_REDUCE(MPI_IN_PLACE, s % tallynumer, n, MPI_REAL8, &
                MPI_SUM, 0, mpi_intracomm, mpi_err)
@@ -1640,7 +1640,7 @@ contains
              mpi_intracomm, mpi_err)
         call MPI_REDUCE(s % respdenom, dummy, 1, MPI_REAL8, MPI_SUM, 0, &
              mpi_intracomm, mpi_err)
-        if (adjointmethod == 6) then
+        if (adjointmethod == GPT_CLUTCH_FM) then
           n = s % imp_mesh_bins
           call MPI_REDUCE(s % tallynumer, dummy, n, MPI_REAL8, MPI_SUM, 0, &
                mpi_intracomm, mpi_err)
@@ -1653,7 +1653,7 @@ contains
       if (master) then
         s % respnumer = s % respnumer / n_inactive
         s % respdenom = s % respdenom / n_inactive
-        if (adjointmethod == 6) then
+        if (adjointmethod == GPT_CLUTCH_FM) then
           ! mesh_born_fm is not correct in first generation, so discard it
           s % tallynumer = s % tallynumer / (n_inactive-1)
           s % tallydenom = s % tallydenom / (n_inactive-1)
@@ -1663,7 +1663,7 @@ contains
 #ifdef MPI
       call MPI_BCAST(s % respnumer, 1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
       call MPI_BCAST(s % respdenom, 1, MPI_REAL8, 0, mpi_intracomm, mpi_err)
-      if (adjointmethod == 6) then
+      if (adjointmethod == GPT_CLUTCH_FM) then
         n = s % imp_mesh_bins
         call MPI_BCAST(s % tallynumer, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
         call MPI_BCAST(s % tallydenom, n, MPI_REAL8, 0, mpi_intracomm, mpi_err)
@@ -1700,13 +1700,13 @@ contains
         i_tally = resptally_dict % get_key(r % numerid)
         s % respnumer = s % respnumer + resptalresult(i_tally)
         ! mesh_born_fm is not correct in first generation, so discard it
-        if (adjointmethod == 6 .and. current_batch > 1) then
+        if (adjointmethod == GPT_CLUTCH_FM .and. current_batch > 1) then
           s % tallynumer(p % mesh_born_fm) = s % tallynumer(p % mesh_born_fm)+&
                resptalresult(i_tally)
         end if
         i_tally = resptally_dict % get_key(r % denomid)
         s % respdenom = s % respdenom + resptalresult(i_tally)
-        if (adjointmethod == 6 .and. current_batch > 1) then
+        if (adjointmethod == GPT_CLUTCH_FM .and. current_batch > 1) then
           s % tallydenom(p % mesh_born_fm) = s % tallydenom(p % mesh_born_fm)+&
                resptalresult(i_tally)
         end if
@@ -1825,13 +1825,13 @@ contains
 
       ! ======================================================================
       ! calculate the intergenerational importance
-      if (adjointmethod == 4) then
+      if (adjointmethod == GPT_IFP) then
         i_tally = resptally_dict % get_key(r % numerid)
         gptimportance = resptalresult(i_tally) / s % respnumer
         i_tally = resptally_dict % get_key(r % denomid)
         gptimportance = gptimportance - resptalresult(i_tally) / s % respdenom
         s % neutronvalue(p % ifp_id) = s % neutronvalue(p % ifp_id) + gptimportance
-      else if (adjointmethod == 5) then
+      else if (adjointmethod == GPT_CLUTCH_IFP) then
         ! need this gptvaluenumer to calculate s % respdenom in inactive batches
         i_tally = resptally_dict % get_key(r % numerid)
         s % gptvaluenumer(p % ifp_id) = s % gptvaluenumer(p % ifp_id) + &
@@ -1863,7 +1863,7 @@ contains
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
       associate (s => sensitivities(i))
-        if (adjointmethod == 4) then
+        if (adjointmethod == GPT_IFP) then
           n1 = 3 * n_particles * s % n_nuclide_bins * s % n_score_bins * &
                s % n_mesh_bins * s % n_energy_bins
           n2 = 3 * n_particles
@@ -1886,7 +1886,7 @@ contains
             call MPI_REDUCE(s % results(RESULT_VALUE,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
                  mpi_intracomm, mpi_err)
           end if
-        elseif (adjointmethod == 5) then
+        elseif (adjointmethod == GPT_CLUTCH_IFP) then
           n1 = 3 * n_particles * s % imp_mesh_bins
           n2 = 3 * n_particles
           n3 = s % imp_mesh_bins

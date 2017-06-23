@@ -141,24 +141,12 @@ contains
 
       ! Score track-length tallies related to sensitivity calculations
       if (sensitivity_on) then
-        if (adjointmethod == 1 .AND. original) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
-        if (adjointmethod == 2 .AND. clutch_first) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
-        if (adjointmethod == 3 .AND. clutch_first) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
-        if (adjointmethod == 4 .AND. original) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
-        if (adjointmethod == 5 .AND. clutch_first) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
-        if (adjointmethod == 6 .AND. clutch_first) then
-          call score_tracklength_sensitivity(p,distance)
-        end if
+        select case (adjointmethod)
+        case (IFP, GPT_IFP)
+          if (original) call score_tracklength_sensitivity(p, distance)
+        case default
+          if (clutch_first) call score_tracklength_sensitivity(p, distance)
+        end select
       end if
 
       ! Score track-length estimate of k-eff
@@ -212,29 +200,37 @@ contains
 
         ! Score sensitivities in CLUTCH calculations
         if (sensitivity_on) then
-          if (adjointmethod == 2 .OR. adjointmethod == 3) call sensitivity_clutch(p)
-          if (adjointmethod == 4) then
+          select case (adjointmethod)
+          case (CLUTCH_IFP, CLUTCH_FM)
+            call sensitivity_clutch(p)
+
+          case (GPT_IFP)
             ! calculate reaction rate tally first
-            if (current_batch <= n_inactive) call score_inactive(p)
-            if (current_batch > n_inactive) then
-              if (original) call score_directandintra(p)
-              if (.NOT. original) call score_gpt_value(p)
-            end if
-          end if
-          if (adjointmethod == 5) then
             if (current_batch <= n_inactive) then
-              if (.NOT. original) call score_gpt_value(p)
+              call score_inactive(p)
+            else
+              if (original) then
+                call score_directandintra(p)
+              else
+                call score_gpt_value(p)
+              end if
             end if
-            if (current_batch > n_inactive) then
+
+          case (GPT_CLUTCH_IFP)
+            if (current_batch <= n_inactive) then
+              if (.not. original) call score_gpt_value(p)
+            else
               call sensitivity_gptclutch(p)
             end if
-          end if
-          if (adjointmethod == 6) then
-            if (current_batch <= n_inactive) call score_inactive(p)
-            if (current_batch > n_inactive) then
+
+          case (GPT_CLUTCH_FM)
+            if (current_batch <= n_inactive) then
+              call score_inactive(p)
+            else
               call sensitivity_gptclutch(p)
             end if
-          end if
+
+          end select
         end if
 
         if (run_CE) then
@@ -299,12 +295,12 @@ contains
                                           run_CE, energy_bin_avg)
           ! extract the cumulative tally information from secondary array
           if (sensitivity_on) then
-            if (adjointmethod == 1 .AND. original) call tally_secondarytocum(p)
-            if (adjointmethod == 2 .AND. clutch_first) call tally_secondarytocum(p)
-            if (adjointmethod == 3 .AND. clutch_first) call tally_secondarytocum(p)
-            if (adjointmethod == 4 .AND. original) call tally_secondarytocum(p)
-            if (adjointmethod == 5 .AND. clutch_first) call tally_secondarytocum(p)
-            if (adjointmethod == 6 .AND. clutch_first) call tally_secondarytocum(p)
+            select case (adjointmethod)
+            case (IFP, GPT_IFP)
+              if (original) call tally_secondarytocum(p)
+            case default
+              if (clutch_first) call tally_secondarytocum(p)
+            end select
           end if
           p % n_secondary = p % n_secondary - 1
           n_event = 0
