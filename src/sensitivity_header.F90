@@ -2,7 +2,7 @@ module sensitivity_header
 
   use, intrinsic :: ISO_C_BINDING
 
-  use hdf5, only: HID_T
+  use hdf5
 
   use constants
   use endf,                only: reaction_name
@@ -138,8 +138,42 @@ contains
     deallocate(str_array)
 
     call write_dataset(sgroup, "n_realizations", this % n_realizations)
-    call write_dataset(sgroup, "results", this % results)
+    call write_results(this, sgroup)
     call close_group(sgroup)
   end subroutine sensitivity_to_hdf5
+
+  subroutine write_results(this, group_id)
+    type(SensitivityObject), intent(in) :: this
+    integer(HID_T),     intent(in) :: group_id
+
+    integer :: hdf5_err
+    integer(HID_T) :: dset, dspace
+    integer(HID_T) :: memspace
+    integer(HSIZE_T) :: dims(5)
+    integer(HSIZE_T) :: dims_slab(5)
+    integer(HSIZE_T) :: offset(5) = [1,0,0,0,0]
+
+    ! Create file dataspace
+    dims_slab(:) = shape(this % results)
+    dims_slab(1) = 2
+    call h5screate_simple_f(5, dims_slab, dspace, hdf5_err)
+
+    ! Create memory dataspace that contains only SUM and SUM_SQ values
+    dims(:) = shape(this % results)
+    call h5screate_simple_f(5, dims, memspace, hdf5_err)
+    call h5sselect_hyperslab_f(memspace, H5S_SELECT_SET_F, offset, dims_slab, &
+         hdf5_err)
+
+    ! Create and write to dataset
+    call h5dcreate_f(group_id, "results", H5T_NATIVE_DOUBLE, dspace, dset, &
+         hdf5_err)
+    call h5dwrite_f(dset, H5T_NATIVE_DOUBLE, this % results, dims_slab, &
+         hdf5_err, mem_space_id=memspace)
+
+    ! Close identifiers
+    call h5dclose_f(dset, hdf5_err)
+    call h5sclose_f(memspace, hdf5_err)
+    call h5sclose_f(dspace, hdf5_err)
+  end subroutine write_results
 
 end module sensitivity_header

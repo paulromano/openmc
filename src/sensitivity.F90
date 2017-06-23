@@ -638,7 +638,7 @@ contains
           if (adjointmethod /= 4) then
             t % neutronfission = 0
           end if
-          t % results(3,:,:,:,:) = 0 ! used as direct term in gpt ifp
+          t % results(RESULT_VALUE,:,:,:,:) = 0 ! used as direct term in gpt ifp
           if (adjointmethod == 5) then ! calculate importance
             t % gptvaluenumer  = 0
             t % gptvaluedenom  = 0
@@ -784,8 +784,10 @@ contains
                 do k = 1, t % n_nuclide_bins
                   val = sum(t % neutrontally(:,k,l,m,n) * t % neutronvalue(:)) / &
                        t % denom
-                  t % results(1,k,l,m,n) = t % results(1,k,l,m,n) + val
-                  t % results(2,k,l,m,n) = t % results(2,k,l,m,n) + val * val
+                  associate (r => t % results(:,k,l,m,n))
+                    r(RESULT_SUM) = r(RESULT_SUM) + val
+                    r(RESULT_SUM_SQ) = r(RESULT_SUM_SQ) + val*val
+                  end associate
                 end do
               end do
             end do
@@ -1233,8 +1235,10 @@ contains
               do l = 1, t % n_score_bins
                 do k = 1, t % n_nuclide_bins
                   val = t%clutchsen(k,l,m,n)/t % denom
-                  t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + val
-                  t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + val * val
+                  associate (r => t % results(:,k,l,m,n))
+                    r(RESULT_SUM) = r(RESULT_SUM) + val
+                    r(RESULT_SUM_SQ) = r(RESULT_SUM_SQ) + val*val
+                  end associate
                 end do
               end do
             end do
@@ -1259,18 +1263,22 @@ contains
     integer :: l
     integer :: m
     integer :: n
+    integer :: nr
 
     ! Calculate statistics for user-defined tallies
     if (master) then
       do i = 1, n_sens
         associate (t => sensitivities(i))
+          nr = t % n_realizations
           do n = 1, t % n_energy_bins
             do m = 1, t % n_mesh_bins
               do l = 1, t % n_score_bins
                 do k = 1, t % n_nuclide_bins
-                  t%results(1,k,l,m,n) = t%results(1,k,l,m,n)/t%n_realizations
-                  t%results(2,k,l,m,n) = sqrt((t%results(2,k,l,m,n)/t%n_realizations - &
-                       t%results(1,k,l,m,n)*t%results(1,k,l,m,n))/(t%n_realizations-1))
+                  associate (r => t % results(:,k,l,m,n))
+                    r(RESULT_SUM) = r(RESULT_SUM) / nr
+                    r(RESULT_SUM_SQ) = sqrt((r(RESULT_SUM_SQ)/nr - &
+                         r(RESULT_SUM)*r(RESULT_SUM)) / (nr - 1))
+                  end associate
                 end do
               end do
             end do
@@ -1746,7 +1754,7 @@ contains
       gptimportance = resptalresult(i_tally) / s % respnumer
       i_tally = resptally_dict % get_key(r % denomid)
       gptimportance = gptimportance - resptalresult(i_tally) / s % respdenom
-      s % results(3,:,:,:,:) = s % results(3,:,:,:,:) + &
+      s % results(RESULT_VALUE,:,:,:,:) = s % results(RESULT_VALUE,:,:,:,:) + &
            s % cumtally(:,:,:,:) * gptimportance
 
       ! ======================================================================
@@ -1770,8 +1778,8 @@ contains
 
       if (bin_nuclide_numer /=0 .and. bin_score_numer /=0 .and. &
            bin_mesh /=0 .and. bin_energy /=0) then
-        s % results(3,bin_nuclide_numer,bin_score_numer,bin_mesh, bin_energy) = &
-             s % results(3,bin_nuclide_numer,bin_score_numer,bin_mesh, bin_energy) + &
+        s % results(RESULT_VALUE,bin_nuclide_numer,bin_score_numer,bin_mesh, bin_energy) = &
+             s % results(RESULT_VALUE,bin_nuclide_numer,bin_score_numer,bin_mesh, bin_energy) + &
              resptalresult(i_tally) / s % respnumer
       end if
 
@@ -1782,8 +1790,8 @@ contains
 
       if (bin_nuclide_denom /=0 .and. bin_score_denom /=0 .and. &
            bin_mesh /=0 .and. bin_energy /=0) then
-        s % results(3,bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) = &
-             s % results(3,bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) - &
+        s % results(RESULT_VALUE,bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) = &
+             s % results(RESULT_VALUE,bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) - &
              resptalresult(i_tally) / s % respdenom
       end if
 
@@ -1867,7 +1875,7 @@ contains
                  MPI_SUM, 0, mpi_intracomm, mpi_err)
             call MPI_REDUCE(MPI_IN_PLACE, s % neutronvalue, n2, MPI_REAL8, &
                  MPI_SUM, 0, mpi_intracomm, mpi_err)
-            call MPI_REDUCE(MPI_IN_PLACE, s % results(3,:,:,:,:), n3, MPI_REAL8, &
+            call MPI_REDUCE(MPI_IN_PLACE, s % results(RESULT_VALUE,:,:,:,:), n3, MPI_REAL8, &
                  MPI_SUM, 0, mpi_intracomm, mpi_err)
           else
             ! Receive buffer not significant at other processors
@@ -1875,7 +1883,7 @@ contains
                  mpi_intracomm, mpi_err)
             call MPI_REDUCE(s % neutronvalue, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
                  mpi_intracomm, mpi_err)
-            call MPI_REDUCE(s % results(3,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
+            call MPI_REDUCE(s % results(RESULT_VALUE,:,:,:,:), dummy, n3, MPI_REAL8, MPI_SUM, 0, &
                  mpi_intracomm, mpi_err)
           end if
         elseif (adjointmethod == 5) then
@@ -1918,13 +1926,12 @@ contains
 
   subroutine sensitivity_gpt_calc()
 
-    type(SensitivityObject), pointer :: s
     integer :: i
     integer :: k
     integer :: l
     integer :: m
     integer :: n
-    real(8) :: value
+    real(8) :: val
 
 #ifdef MPI
     call collect_gptifpcal()
@@ -1934,22 +1941,25 @@ contains
       ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
-        s => sensitivities(i)
-        s % n_realizations = s % n_realizations + 1
+        associate (s => sensitivities(i))
+          s % n_realizations = s % n_realizations + 1
 
-        do k = 1, s % n_nuclide_bins
-          do l = 1, s % n_score_bins
+          do n = 1, s % n_energy_bins
             do m = 1, s % n_mesh_bins
-              do n = 1, s % n_energy_bins
-                value = sum(s%neutrontally(:,k,l,m,n)*s%neutronvalue(:))
-                value = value + s%results(3,k,l,m,n) ! add direct and intra
-                !value = s%results(3,k,l,m,n)
-                s%results(1,k,l,m,n) = s%results(1,k,l,m,n) + value
-                s%results(2,k,l,m,n) = s%results(2,k,l,m,n) + value * value
+              do l = 1, s % n_score_bins
+                do k = 1, s % n_nuclide_bins
+                  associate(r => s % results(:,k,l,m,n))
+                    ! add direct and intra
+                    val = sum(s % neutrontally(:,k,l,m,n)*s % neutronvalue(:)) &
+                         + r(RESULT_VALUE)
+                    r(RESULT_SUM) = r(RESULT_SUM) + val
+                    r(RESULT_SUM_SQ) = r(RESULT_SUM_SQ) + val*val
+                  end associate
+                end do
               end do
             end do
           end do
-        end do
+        end associate
       end do SENSITIVITY_LOOP
     end if
 
@@ -2409,13 +2419,12 @@ contains
 
   subroutine sensitivity_calc_gclutch()
 
-    type(SensitivityObject), pointer :: t
     integer :: i
     integer :: k
     integer :: l
     integer :: m
     integer :: n
-    real(8) :: value
+    real(8) :: val
 
 #ifdef MPI
     call collect_gptclutchcal()
@@ -2424,22 +2433,23 @@ contains
     if (master) then
       ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
-        ! Get index of tally and pointer to tally
-        t => sensitivities(i)
-        t % n_realizations = t % n_realizations + 1
+        associate (t => sensitivities(i))
+          t % n_realizations = t % n_realizations + 1
 
-        do k = 1, t % n_nuclide_bins
-          do l = 1, t % n_score_bins
+          do n = 1, t % n_energy_bins
             do m = 1, t % n_mesh_bins
-              do n = 1, t % n_energy_bins
-                value = t%clutchsen(k,l,m,n)
-                t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
-                t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value *value
+              do l = 1, t % n_score_bins
+                do k = 1, t % n_nuclide_bins
+                  val = t % clutchsen(k,l,m,n)
+                  associate (r => t % results(:,k,l,m,n))
+                    r(RESULT_SUM) = r(RESULT_SUM) + val
+                    r(RESULT_SUM_SQ) = r(RESULT_SUM_SQ) + val*val
+                  end associate
+                end do
               end do
             end do
           end do
-        end do
-
+        end associate
       end do SENSITIVITY_LOOP
     end if
 
