@@ -4,6 +4,7 @@ from xml.etree import ElementTree as ET
 
 from six import string_types
 import numpy as np
+import pandas as pd
 
 import openmc
 import openmc.checkvalue as cv
@@ -73,6 +74,38 @@ class Sensitivity(object):
     def scores(self, scores):
         cv.check_type('sensitivity scores', scores, Iterable, string_types)
         self._scores = scores
+
+    @classmethod
+    def from_hdf5(cls, group):
+        sid = int(group.name.split('/')[-1].lstrip('sensitivity '))
+        data = cls(sid)
+        data.energies = group['energies'].value
+        data.nuclides = [i.decode() for i in group['nuclides'].value]
+        data.scores = [i.decode() for i in group['scores'].value]
+        data.n_realizations = group['n_realizations'].value
+        mesh_id = group['mesh_id'].value
+        data.mesh = openmc.Mesh.from_hdf5(group.parent['mesh {}'.format(mesh_id)])
+        data._results = group['results'].value
+        return data
+
+    def get_pandas_dataframe(self):
+        columns = ['Energy low [eV]', 'Energy high [eV]', 'Mesh', 'Score', 'Nuclide',
+                   'mean', 'std. dev.']
+
+        n = self.n_realizations
+        mean = self._results[..., 0] / n
+        stdev = np.sqrt((self._results[..., 1]/n - mean*mean)/(n - 1))
+
+        n_mesh = self._results.shape[1]
+        records = []
+        for i, (e_lo, e_hi) in enumerate(zip(self.energies[:-1], self.energies[1:])):
+            for j in range(n_mesh):
+                for k, score in enumerate(self.scores):
+                    for m, nuclide in enumerate(self.nuclides):
+                        records.append((e_lo, e_hi, j + 1, score, nuclide,
+                                        mean[i, j, k, m], stdev[i, j, k, m]))
+
+        return pd.DataFrame.from_records(records, columns=columns)
 
     def to_xml_element(self):
         element = ET.Element("sensitivity")

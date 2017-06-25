@@ -112,6 +112,7 @@ class StatePoint(object):
         self._f = h5py.File(filename, 'r')
         self._meshes = {}
         self._tallies = {}
+        self._sensitivities = {}
         self._derivs = {}
 
         # Check filetype and version
@@ -120,6 +121,7 @@ class StatePoint(object):
         # Set flags for what data has been read
         self._meshes_read = False
         self._tallies_read = False
+        self._sensitivities_read = False
         self._summary = None
         self._global_tallies = None
         self._sparse = False
@@ -310,6 +312,20 @@ class StatePoint(object):
     @property
     def seed(self):
         return self._f['seed'].value
+
+    @property
+    def sensitivities(self):
+        if self._sensitivities_read:
+            return self._sensitivities
+        else:
+            if 'sensitivities' in self._f:
+                sens_group = self._f['sensitivities']
+                for label, group in sens_group.items():
+                    if label.startswith('sensitivity '):
+                        sens = openmc.Sensitivity.from_hdf5(group)
+                        self._sensitivities[sens.id] = sens
+            self._sensitivities_read = True
+            return self._sensitivities
 
     @property
     def source(self):
