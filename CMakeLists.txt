@@ -25,7 +25,7 @@ endif()
 # Command line options
 #===============================================================================
 
-option(openmp   "Enable shared-memory parallelism with OpenMP"   ON)
+option(openmp   "Enable shared-memory parallelism with OpenMP"   OFF)
 option(profile  "Compile with profiling flags"                   OFF)
 option(debug    "Compile with debug flags"                       OFF)
 option(optimize "Turn on all compiler optimization flags"        OFF)
@@ -97,6 +97,10 @@ endif()
 #    endif()
 #  endif()
 #endif()
+
+if(openmp)
+  message(FATAL_ERROR "Calculating sensitivities currently does not work with OpenMP threading.")
+endif()
 
 if(CMAKE_Fortran_COMPILER_ID STREQUAL GNU)
   # Make sure version is sufficient
