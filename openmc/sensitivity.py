@@ -113,8 +113,9 @@ class Sensitivity(object):
 
         subelement = ET.SubElement(element, "mesh")
         subelement.text = str(self.mesh.id)
-        subelement = ET.SubElement(element, "impmesh")
-        subelement.text = str(self.importance_mesh.id)
+        if self.importance_mesh is not None:
+            subelement = ET.SubElement(element, "impmesh")
+            subelement.text = str(self.importance_mesh.id)
         subelement = ET.SubElement(element, "energies")
         subelement.text = ' '.join(str(E) for E in self.energies)
         subelement = ET.SubElement(element, "nuclides")
