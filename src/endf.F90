@@ -67,6 +67,13 @@ contains
     case (SCORE_FISS_Q_RECOV)
       string = "fission-q-recoverable"
 
+    case (FISSION_NUBAR)
+      string = 'nu total'
+    case (FISSION_CHI)
+      string = 'chi total'
+    case (SCORE_CAPTURE)
+      string = '(n,capture)'
+
     ! Normal ENDF-based reactions
     case (TOTAL_XS)
       string = '(n,total)'

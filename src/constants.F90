@@ -219,7 +219,7 @@ module constants
 
   ! fission related parameters, chi and nubar, and capture cross section
   integer, parameter :: &
-       FISSION_NUBAR = -100, FISSION_CHI = -200, SCORE_CAPTURE = -300
+       FISSION_NUBAR = 452, FISSION_CHI = -1018, SCORE_CAPTURE = -300
 
   ! ACE table types
   integer, parameter :: &
