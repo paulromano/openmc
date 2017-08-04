@@ -5767,13 +5767,13 @@ contains
                 s % score_bins(j) = MT
               else
                 call fatal_error("Invalid MT on <scores>: " &
-                     // trim(sarray(l)))
+                     // trim(score_name))
               end if
 
             else
               ! Specified score was not an integer
               call fatal_error("Unknown scoring function: " &
-                   // trim(sarray(l)))
+                   // trim(score_name))
             end if
 
           end select
