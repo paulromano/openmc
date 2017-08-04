@@ -309,15 +309,21 @@
 </settings>
 <?xml version='1.0' encoding='utf-8'?>
 <sensitivities>
-    <adjoint_method>ifp</adjoint_method>
+    <adjoint_method>clutch-ifp</adjoint_method>
     <ifp_block_length>10</ifp_block_length>
     <mesh id="1" type="regular">
         <dimension>2 2 1</dimension>
         <lower_left>-249.0 -249.0 -229.0</lower_left>
         <upper_right>249.0 249.0 223.0</upper_right>
     </mesh>
+    <mesh id="10" type="regular">
+        <dimension>5 5 5</dimension>
+        <lower_left>-249.0 -249.0 -229.0</lower_left>
+        <upper_right>249.0 249.0 223.0</upper_right>
+    </mesh>
     <sensitivity id="1">
         <mesh>1</mesh>
+        <impmesh>10</impmesh>
         <energies>0.0 4.0 100000.0 1000000.0 20000000.0</energies>
         <nuclides>U235 Zr90 H1</nuclides>
         <scores>total scatter (n,2n) fission nubar chi capture</scores>

@@ -8,7 +8,7 @@ from testing_harness import PyAPITestHarness
 import openmc
 
 
-class SensitivityIFPTest(PyAPITestHarness):
+class SensitivityClutchIFPTest(PyAPITestHarness):
     def __init__(self, statepoint_name):
         super().__init__(statepoint_name)
 
@@ -22,15 +22,21 @@ class SensitivityIFPTest(PyAPITestHarness):
         mesh.upper_right = ur
         mesh.dimension = (2, 2, 1)
 
+        impmesh = openmc.Mesh(10)
+        impmesh.lower_left = ll
+        impmesh.upper_right = ur
+        impmesh.dimension = (5, 5, 5)
+
         s = openmc.Sensitivity(1)
         s.mesh = mesh
+        s.importance_mesh = impmesh
         s.energies = [0.0, 4.0, 100.0e3, 1.0e6, 20.0e6]
         s.nuclides = ['U235', 'Zr90', 'H1']
         s.scores = ['total', 'scatter', '(n,2n)', 'fission', 'nubar',
                     'chi', 'capture']
 
         self._model.sensitivities = openmc.Sensitivities([s])
-        self._model.sensitivities.adjoint_method = 'ifp'
+        self._model.sensitivities.adjoint_method = 'clutch-ifp'
         self._model.sensitivities.ifp_block_length = 10
 
     def _build_inputs(self):
@@ -39,5 +45,5 @@ class SensitivityIFPTest(PyAPITestHarness):
 
 
 if __name__ == '__main__':
-    harness = SensitivityIFPTest('statepoint.100.h5')
+    harness = SensitivityClutchIFPTest('statepoint.100.h5')
     harness.main()
