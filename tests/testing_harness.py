@@ -103,6 +103,10 @@ class TestHarness(object):
                 outstr += 'tally {}:\n'.format(i + 1)
                 outstr += '\n'.join(results) + '\n'
 
+            for sid, sens in sorted(sp.sensitivities.items()):
+                outstr += 'sensitivity {}:\n'.format(sid)
+                outstr += sens.get_pandas_dataframe().to_string()
+
         # Hash the results if necessary.
         if hash_output:
             sha512 = hashlib.sha512()
@@ -294,7 +298,7 @@ class PyAPITestHarness(TestHarness):
     def _get_inputs(self):
         """Return a hash digest of the input XML files."""
         xmls = ['geometry.xml', 'materials.xml', 'settings.xml',
-                'tallies.xml', 'plots.xml']
+                'tallies.xml', 'plots.xml', 'sensitivities.xml']
         return ''.join([open(fname).read() for fname in xmls
                         if os.path.exists(fname)])
 
@@ -322,7 +326,8 @@ class PyAPITestHarness(TestHarness):
         """Delete XMLs, statepoints, tally, and test files."""
         super(PyAPITestHarness, self)._cleanup()
         output = ['materials.xml', 'geometry.xml', 'settings.xml',
-                  'tallies.xml', 'plots.xml', 'inputs_test.dat']
+                  'tallies.xml', 'plots.xml', 'sensitivities.xml',
+                  'inputs_test.dat']
         for f in output:
             if os.path.exists(f):
                 os.remove(f)
