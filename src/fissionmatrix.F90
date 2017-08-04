@@ -77,8 +77,10 @@ contains
 
     call get_mesh_bin(fismatrix % fm_mesh, p % coord(1) % xyz, i)
 
-    fismatrix % greenterm(i,p % mesh_born_fm) = fismatrix % greenterm(i,p % mesh_born_fm) + &
-         material_xs % nu_fission * flux  ! FIJ (J->I)
+    if (i /= NO_BIN_FOUND) then
+      fismatrix % greenterm(i,p % mesh_born_fm) = fismatrix % greenterm(i,p % mesh_born_fm) + &
+           material_xs % nu_fission * flux  ! FIJ (J->I)
+    end if
 
 
   end subroutine count_greenterm_collision
