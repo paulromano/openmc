@@ -1,9 +1,9 @@
-from openmc import Surface
+import openmc
 
 
-class RightCircularCylinder(Surface):
+class RightCircularCylinder(openmc.Surface):
     def __init__(self, center_base, height, radius, axis='z',
-                 boundary_type='transmisison'):
+                 boundary_type='transmission'):
         kwargs = {'boundary_type': boundary_type}
         cx, cy, cz = center_base
         if axis == 'x':

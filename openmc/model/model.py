@@ -1,8 +1,11 @@
 from collections.abc import Iterable
 from pathlib import Path
 
+import numpy as np
+
 import openmc
 from openmc.checkvalue import check_type, check_value
+from . import mcnp
 
 
 class Model(object):
@@ -214,3 +217,32 @@ class Model(object):
 
         with openmc.StatePoint('statepoint.{}.h5'.format(n)) as sp:
             return sp.k_combined
+
+    @classmethod
+    def from_mcnp(cls, filename):
+        cells, surfaces, data = mcnp.parse(filename)
+
+        openmc_materials = mcnp.get_openmc_materials(data['materials'])
+        openmc_surfaces = mcnp.get_openmc_surfaces(surfaces)
+        openmc_universes = mcnp.get_openmc_universes(cells, openmc_surfaces,
+                                                     openmc_materials)
+
+        geometry = openmc.Geometry(openmc_universes[0])
+        materials = openmc.Materials(geometry.get_all_materials().values())
+
+        settings = openmc.Settings()
+        settings.batches = 40
+        settings.inactive = 20
+        settings.particles = 100
+        settings.output = {'summary': True}
+
+        # Determine bounding box for geometry
+        all_volume = openmc.Union([cell.region for cell in
+                                   geometry.root_universe.cells.values()])
+        ll, ur = all_volume.bounding_box
+        if np.any(np.isinf(ll)) or np.any(np.isinf(ur)):
+            settings.source = openmc.Source(space=openmc.stats.Point())
+        else:
+            settings.source = openmc.Source(space=openmc.stats.Point((ll + ur)/2))
+
+        return cls(geometry, materials, settings)
