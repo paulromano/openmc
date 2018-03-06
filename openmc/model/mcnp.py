@@ -8,6 +8,7 @@ import numpy as np
 import openmc
 from openmc.data import get_thermal_name
 from openmc.data.neutron import _get_metadata
+from .macrobody import RightCircularCylinder as RCC
 
 
 _CELL1_RE = re.compile(r'\s*(\d+)\s+(\d+)([ \t0-9:#().dDeE\+-]+)((?:\S+\s*=.*)?)')
@@ -18,7 +19,7 @@ _MATERIAL_RE = re.compile(r'\s*[Mm](\d+)((?:\s+\S+)+)')
 _SAB_RE = re.compile(r'\s*[Mm][Tt](\d+)((?:\s+\S+)+)')
 _MODE_RE = re.compile(r'\s*mode(?:\s+\S+)*')
 _COMPLEMENT_RE = re.compile(r'~(\d+)')
-_REPEAT_RE = re.compile(r'(\d+)\s+(\d+)r')
+_REPEAT_RE = re.compile(r'(\d+)\s+(\d+)[rR]')
 _NUM_RE = re.compile(r'(\d)([+-])(\d)')
 
 
@@ -33,8 +34,8 @@ def parse_cell(line):
         m = _CELL2_RE.match(line.lower())
         if m is not None:
             g = m.groups()
-            parameters = dict(kv.split('=') for kv in g[-1].split()) \
-                    if len(g) == 3 else {}
+            parameters = (dict(kv.split('=') for kv in g[-1].split())
+                          if len(g) == 3 else {})
             return {'id': g[0], 'like': g[1], 'parameters': parameters}
 
     else:
@@ -95,7 +96,7 @@ def parse_data(section):
             spec = g[1].split()
             try:
                 nuclides = zip(spec[::2], map(float_, spec[1::2]))
-            except:
+            except Exception:
                 raise ValueError('Invalid material specification?')
             uid = int(g[0])
             data['materials'][uid].update({'id': uid, 'nuclides': nuclides})
@@ -139,7 +140,7 @@ def parse(filename):
         m = _REPEAT_RE.search(sections[i])
         while m is not None:
             sections[i] = _REPEAT_RE.sub(' '.join((int(m.group(2)) + 1)*[m.group(1)]),
-                                        sections[i], 1)
+                                         sections[i], 1)
             m = _REPEAT_RE.search(sections[i])
 
     cells = list(map(parse_cell, sections[0].strip().split('\n')))
@@ -249,6 +250,17 @@ def get_openmc_surfaces(surfaces):
             a, b, c, d, e, f, g, h, j, k = map(float_, s['coefficients'].split())
             surf = openmc.Quadric(surface_id=s['id'], a=a, b=b, c=c, d=d, e=e,
                                   f=f, g=g, h=h, j=j, k=k)
+        elif s['mnemonic'] == 'rcc':
+            vx, vy, vz, hx, hy, hz, r = map(float_, s['coefficients'].split())
+            if hx == 0.0 and hy == 0.0:
+                surf = RCC((vx, vy, vz), hz, r, axis='z')
+            elif hy == 0.0 and hz == 0.0:
+                surf = RCC((vx, vy, vz), hx, r, axis='x')
+            elif hx == 0.0 and hz == 0.0:
+                surf = RCC((vx, vy, vz), hy, r, axis='y')
+            else:
+                raise notImplementedError('RCC macrobody with non-axis-aligned'
+                                          'height vector not supported.')
         else:
             raise NotImplementedError('Surface type "{}" not supported'
                                       .format(s['mnemonic']))
@@ -261,7 +273,7 @@ def get_openmc_surfaces(surfaces):
     return openmc_surfaces
 
 
-def get_openmc_cells(cells, surfaces, materials):
+def get_openmc_universes(cells, surfaces, materials):
     openmc_cells = {}
     universes = {}
     root_universe = openmc.Universe(0)
@@ -303,7 +315,6 @@ def get_openmc_cells(cells, surfaces, materials):
         if isinstance(cell.region, openmc.Union):
             if all([isinstance(n, openmc.Halfspace) for n in cell.region]):
                 if 'imp:n' in c['parameters'] and c['parameters']['imp:n'] == '0':
-                    #print('Assuming cell {} defines the problem boundary'.format(cell.id))
                     for n in cell.region:
                         if n.surface.boundary_type == 'transmission':
                             n.surface.boundary_type = 'vacuum'
@@ -373,10 +384,11 @@ def get_openmc_cells(cells, surfaces, materials):
                     i_colon = c['parameters']['fill'].rfind(':')
                     univ_ids = c['parameters']['fill'][i_colon + 1:].split()[1:]
                     if uid in univ_ids:
-                        raise NotImplementedError('Self-referencing lattice universe not yet supported')
+                        msg = 'Self-referencing lattice universe not yet supported'
+                        raise NotImplementedError(msg)
 
                     if not pairs:
-                        raise Exception('Cant find lattice specification')
+                        raise ValueError('Cant find lattice specification')
 
                     xmin, xmax = map(int, pairs[0].split(':'))
                     ymin, ymax = map(int, pairs[1].split(':'))
@@ -398,7 +410,7 @@ def get_openmc_cells(cells, surfaces, materials):
                     univ_ids = np.asarray(univ_ids, dtype=int)
                     univ_ids.shape = shape[::-1]
                     lat_univ = np.vectorize(get_universe)(univ_ids)
-                    lattice.universes = lat_univ.T[:,::-1,...]
+                    lattice.universes = lat_univ.T[:, ::-1, ...]
                 cell._lattice = True
             else:
                 # Cell filled with universes
@@ -436,7 +448,6 @@ def get_openmc_cells(cells, surfaces, materials):
                     else:
                         cell.fill.set_density('g/cm3', abs(c['density']))
 
-
         if not hasattr(cell, '_lattice'):
             openmc_cells[c['id']] = cell
 
@@ -452,33 +463,3 @@ def get_openmc_cells(cells, surfaces, materials):
     for cell in openmc_cells.values():
         replace_complement(cell.region, openmc_cells)
     return universes
-
-
-def convert_to_openmc(filename):
-    cells, surfaces, data = parse(filename)
-
-    openmc_materials = get_openmc_materials(data['materials'])
-    openmc_surfaces = get_openmc_surfaces(surfaces)
-    openmc_universes = get_openmc_cells(cells, openmc_surfaces, openmc_materials)
-
-    geometry = openmc.Geometry(openmc_universes[0])
-    geometry.export_to_xml()
-
-    materials = openmc.Materials(geometry.get_all_materials().values())
-    materials.export_to_xml()
-
-    settings = openmc.Settings()
-    settings.batches = 40
-    settings.inactive = 20
-    settings.particles = 100
-    settings.output = {'summary': True}
-
-    # Determine bounding box for geometry
-    all_volume = openmc.Union([cell.region for cell in
-                               geometry.root_universe.cells.values()])
-    ll, ur = all_volume.bounding_box
-    if np.any(np.isinf(ll)) or np.any(np.isinf(ur)):
-        settings.source = openmc.Source(space=openmc.stats.Point())
-    else:
-        settings.source = openmc.Source(space=openmc.stats.Point((ll + ur)/2))
-    settings.export_to_xml()
