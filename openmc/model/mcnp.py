@@ -18,7 +18,7 @@ _SURFACE_RE = re.compile(r'\s*(\*?\d+)(\s*[-0-9]+)?\s+(\S+)((?:\s+\S+)+)')
 _MATERIAL_RE = re.compile(r'\s*[Mm](\d+)((?:\s+\S+)+)')
 _SAB_RE = re.compile(r'\s*[Mm][Tt](\d+)((?:\s+\S+)+)')
 _MODE_RE = re.compile(r'\s*mode(?:\s+\S+)*')
-_COMPLEMENT_RE = re.compile(r'~(\d+)')
+_COMPLEMENT_RE = re.compile(r'(#)(\d+)')
 _REPEAT_RE = re.compile(r'(\d+)\s+(\d+)[rR]')
 _NUM_RE = re.compile(r'(\d)([+-])(\d)')
 
@@ -160,9 +160,16 @@ def get_openmc_materials(materials):
             zaid, xs = nuclide.split('.')
             name, element, Z, A, metastable = _get_metadata(int(zaid), 'mcnp')
             if percent < 0:
-                material.add_nuclide(name, abs(percent), 'wo')
+                if A > 0:
+                    material.add_nuclide(name, abs(percent), 'wo')
+                else:
+                    material.add_element(element, abs(percent), 'wo')
             else:
-                material.add_nuclide(name, percent, 'ao')
+                if A > 0:
+                    material.add_nuclide(name, percent, 'ao')
+                else:
+                    material.add_element(element, percent, 'ao')
+
         if 'sab' in m:
             for sab in m['sab']:
                 name, xs = sab.split('.')
@@ -293,16 +300,27 @@ def get_openmc_universes(cells, surfaces, materials):
     if all_univ_ids:
         openmc.Universe.next_id = max(all_univ_ids) + 1
 
+    # Since OpenMC doesn't support MCNP's cell-complement notation, we need
+    # to replace it with a normal surface-based complement
+    cell_by_id = {c['id']: c for c in cells}
+    have_complements = True
+    while have_complements:
+        for c in cells:
+            match = _COMPLEMENT_RE.search(c['region'])
+            if match:
+                other_id = int(match.group(2))
+                region = cell_by_id[other_id]['region']
+                c['region'] = _COMPLEMENT_RE.sub(
+                    r'~({})'.format(region),
+                    c['region']
+                )
+                break
+        else:
+            have_complements = False
+
     for c in cells:
         cell = openmc.Cell(cell_id=c['id'])
-        region = c['region'].replace('#', '~').replace(':', '|')
-
-        # Since OpenMC doesn't support MCNP's cell-complement notation, we need
-        # to check where it occurs
-        for cell_id in _COMPLEMENT_RE.findall(region):
-            cell_id = int(cell_id)
-            if cell_id not in surfaces:
-                surfaces[cell_id] = openmc.Surface(cell_id)
+        region = c['region'].replace(':', '|')
 
         # Assign region to cell based on expression
         try:
