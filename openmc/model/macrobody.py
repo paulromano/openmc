@@ -1,3 +1,5 @@
+from copy import copy
+
 import openmc
 
 
@@ -24,6 +26,16 @@ class RightCircularCylinder(openmc.Surface):
 
     def __pos__(self):
         return +self.cyl | -self.bottom | +self.top
+
+    def evaluate(self, point):
+        raise NotImplementError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        surf.cyl = surf.cyl.translate(vector)
+        surf.bottom = surf.bottom.translate(vector)
+        surf.top = surf.top.translate(vector)
+        return surf
 
 
 class Box(openmc.Surface):
@@ -70,3 +82,16 @@ class Box(openmc.Surface):
         return (-self.xmin | +self.xmax |
                 -self.ymin | +self.ymax |
                 -self.zmin | +self.zmax)
+
+    def evaluate(self, point):
+        raise NotImplementError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        surf.xmin = surf.xmin.translate(vector)
+        surf.xmax = surf.xmax.translate(vector)
+        surf.ymin = surf.ymin.translate(vector)
+        surf.ymax = surf.ymax.translate(vector)
+        surf.zmin = surf.zmin.translate(vector)
+        surf.zmax = surf.zmax.translate(vector)
+        return surf
