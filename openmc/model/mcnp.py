@@ -283,11 +283,16 @@ def get_openmc_surfaces(surfaces):
 
         openmc_surfaces[s['id']] = surf
 
+        # For macrobodies, we also need to add generated surfaces to dictionary
+        if s['mnemonic'] in ('rcc', 'box'):
+            openmc_surfaces.update((-surf).get_surfaces())
+
     return openmc_surfaces
 
 
 def get_openmc_universes(cells, surfaces, materials):
     openmc_cells = {}
+    cell_by_id = {c['id']: c for c in cells}
     universes = {}
     root_universe = openmc.Universe(0)
     universes[0] = root_universe
@@ -301,45 +306,31 @@ def get_openmc_universes(cells, surfaces, materials):
     if all_univ_ids:
         openmc.Universe.next_id = max(all_univ_ids) + 1
 
-    # Since OpenMC doesn't support MCNP's cell-complement notation, we need
-    # to replace it with a normal surface-based complement
-    cell_by_id = {c['id']: c for c in cells}
-    have_complements = True
-    used_in_complement = set()
-    while have_complements:
-        for c in cells:
-            match = _COMPLEMENT_RE.search(c['region'])
-            if match:
-                other_id = int(match.group(2))
-                region = cell_by_id[other_id]['region']
-                c['region'] = _COMPLEMENT_RE.sub(
-                    r'~({})'.format(region),
-                    c['region']
-                )
-                used_in_complement.add(other_id)
-                break
-        else:
-            have_complements = False
-
+    # Cell-complements pose a unique challenge for conversion because the
+    # referenced cell may have a region that was translated, so we can't simply
+    # replace the cell-complement by what appears on the referenced
+    # cell. Insetad, we loop over all the cells and construct regions for all
+    # cells without cell complements. Then, we handle the remaining cells by
+    # replacing the cell-complement with the string representation of the actual
+    # region that was already converted
+    has_cell_complement = []
     translate_memo = {}
     for c in cells:
-        cell = openmc.Cell(cell_id=c['id'])
-        region = c['region'].replace(':', '|')
+        # Skip cells that hvae cell-complements to be handled later
+        match = _COMPLEMENT_RE.search(c['region'])
+        if match:
+            has_cell_complement.append(c)
+            continue
 
         # Assign region to cell based on expression
+        region = c['region'].replace('#', '~').replace(':', '|')
         try:
-            cell.region = openmc.Region.from_expression(region, surfaces)
+            c['_region'] = openmc.Region.from_expression(region, surfaces)
         except Exception:
-            raise ValueError('Could not parse region: {}'.format(region))
+            raise ValueError('Could not parse region for cell (ID={}): {}'
+                             .format(c['id'], region))
 
-        # Check for unsupported keywords
         if 'trcl' in c['parameters']:
-            if cell.id in used_in_complement:
-                raise NotImplementedError(
-                    'Cannot transform cell (ID={}) that was used '
-                    'in a cell complement.'.format(cell.id)
-                )
-
             trcl = c['parameters']['trcl'].strip()
             if not trcl.startswith('('):
                 raise NotImplementedError('TRn card not supported.')
@@ -350,7 +341,49 @@ def get_openmc_universes(cells, surfaces, materials):
                 raise NotImplementedError('Cell rotation not supported.')
             assert len(trcl) == 3
             vector = tuple(float(x) for x in trcl)
-            cell.region = cell.region.translate(vector, translate_memo)
+            c['_region'] = c['_region'].translate(vector, translate_memo)
+
+            # Update surfaces dictionary with new surfaces
+            for surf_id, surf in c['_region'].get_surfaces().items():
+                surfaces[surf_id] = surf
+                if isinstance(surf, (RCC, Box)):
+                    surfaces.update((-surf).get_surfaces())
+
+    # Now that all cells without cell-complements have been handled, we loop
+    # over the remaining ones and convert any cell-complement expressions by
+    # using str(region)
+    for c in has_cell_complement:
+        # Replace cell-complement with regular complement
+        region = c['region']
+        matches = _COMPLEMENT_RE.findall(region)
+        assert matches
+        for _, other_id in matches:
+            other_cell = cell_by_id[int(other_id)]
+            try:
+                r = ~other_cell['_region']
+            except KeyError:
+                raise NotImplementedError('Cannot handle nested cell-complements.')
+            region = _COMPLEMENT_RE.sub(str(r), region, count=1)
+
+        # Assign region to cell based on expression
+        region = region.replace('#', '~').replace(':', '|')
+        try:
+            c['_region'] = openmc.Region.from_expression(region, surfaces)
+        except Exception:
+            raise ValueError('Could not parse region for cell (ID={}): {}'
+                             .format(c['id'], region))
+
+        # assume these cells are not translated themselves
+        assert 'trcl' not in c['parameters']
+
+
+    # Now that all cell regions have been converted, the next loop is to create
+    # actual Cell/Universe/Lattice objects
+    for c in cells:
+        cell = openmc.Cell(cell_id=c['id'])
+
+        # Assign region to cell based on expression
+        cell.region = c['_region']
 
         # Add cell to universes if necessary
         if 'u' in c['parameters']:
