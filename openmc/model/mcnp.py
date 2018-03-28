@@ -13,6 +13,7 @@ from .macrobody import Box, RightCircularCylinder as RCC
 
 _CELL1_RE = re.compile(r'\s*(\d+)\s+(\d+)([ \t0-9:#().dDeE\+-]+)((?:\S+\s*=.*)?)')
 _CELL_KEYWORDS_RE = re.compile(r'[A-Za-z: \t]+=[-0-9:() \t]+')
+_CELL_FILL_RE = re.compile(r'\s*(\d+)\s*(?:\((.*)\))?')
 _CELL2_RE = re.compile(r'\s*(\d+)\s+like\s+(\d+)\s+but\s+(\S+\s*=.*)')
 _SURFACE_RE = re.compile(r'\s*(\*?\d+)(\s*[-0-9]+)?\s+(\S+)((?:\s+\S+)+)')
 _MATERIAL_RE = re.compile(r'\s*[Mm](\d+)((?:\s+\S+)+)')
@@ -474,19 +475,14 @@ def get_openmc_universes(cells, surfaces, materials):
 
                 # Get extent of lattice
                 words = c['parameters']['fill'].split()
-                if len(words) == 1:
-                    # Infinite lattice
-                    lattice.pitch = pitch
-                    lattice.lower_left = np.min(np.vstack((v0, v1)), axis=0)
-                    lattice.dimension = np.ones(pitch.size, dtype=int)
-                    universe = get_universe(int(words[0]))
-                    if pitch.size == 2:
-                        lattice.universes = [[universe]]
-                    else:
-                        lattice.universes = [[[universe]]]
-                    lattice.outer = universe
 
-                    # TODO: Shift center
+                # If there's only a single parameter, the lattice is infinite
+                inf_lattice = (len(words) == 1)
+
+                if inf_lattice:
+                    # Infinite lattice
+                    xmin = xmax = ymin = ymax = zmin = zmax = 0
+                    univ_ids = words
                 else:
                     pairs = re.findall(r'-?\d+\s*:\s*-?\d+', c['parameters']['fill'])
                     i_colon = c['parameters']['fill'].rfind(':')
@@ -502,78 +498,83 @@ def get_openmc_universes(cells, surfaces, materials):
                     assert ymax >= ymin
                     assert zmax >= zmin
 
-                    if pitch.size == 3:
-                        index0 = np.array([xmin, ymin, zmin])
-                        index1 = np.array([xmax, ymax, zmax])
-                    else:
-                        index0 = np.array([xmin, ymin])
-                        index1 = np.array([xmax, ymax])
-                    shape = index1 - index0 + 1
+                if pitch.size == 3:
+                    index0 = np.array([xmin, ymin, zmin])
+                    index1 = np.array([xmax, ymax, zmax])
+                else:
+                    index0 = np.array([xmin, ymin])
+                    index1 = np.array([xmax, ymax])
+                shape = index1 - index0 + 1
 
-                    # Determine lower-left corner of lattice
-                    corner0 = v0 + index0*(v1 - v0)
-                    corner1 = v1 + index1*(v1 - v0)
-                    lower_left = np.min(np.vstack((corner0, corner1)), axis=0)
+                # Determine lower-left corner of lattice
+                corner0 = v0 + index0*(v1 - v0)
+                corner1 = v1 + index1*(v1 - v0)
+                lower_left = np.min(np.vstack((corner0, corner1)), axis=0)
 
-                    lattice.pitch = pitch
-                    lattice.lower_left = lower_left
-                    lattice.dimension = shape
+                lattice.pitch = pitch
+                lattice.lower_left = lower_left
+                lattice.dimension = shape
 
-                    # Universe IDs array as ([z], y, x)
-                    univ_ids = np.asarray(univ_ids, dtype=int)
-                    univ_ids.shape = shape[::-1]
+                # Universe IDs array as ([z], y, x)
+                univ_ids = np.asarray(univ_ids, dtype=int)
+                univ_ids.shape = shape[::-1]
 
-                    # Depending on the order of the surfaces listed, it may be
-                    # necessary to flip some axes
-                    if (v1 - v0)[0] < 0.:
-                        # lattice positions on x-axis are backwards
-                        univ_ids = np.flip(univ_ids, axis=-1)
-                    if (v1 - v0)[1] < 0.:
-                        # lattice positions on y-axis are backwards
-                        univ_ids = np.flip(univ_ids, axis=-2)
-                    if sides['z'] and (v1 - v0)[2] < 0.:
-                        # lattice positions on z-axis are backwards
-                        univ_ids = np.flip(univ_ids, axis=-3)
+                # Depending on the order of the surfaces listed, it may be
+                # necessary to flip some axes
+                if (v1 - v0)[0] < 0.:
+                    # lattice positions on x-axis are backwards
+                    univ_ids = np.flip(univ_ids, axis=-1)
+                if (v1 - v0)[1] < 0.:
+                    # lattice positions on y-axis are backwards
+                    univ_ids = np.flip(univ_ids, axis=-2)
+                if sides['z'] and (v1 - v0)[2] < 0.:
+                    # lattice positions on z-axis are backwards
+                    univ_ids = np.flip(univ_ids, axis=-3)
 
-                    # Check for universe ID same as the ID assigned to the cell
-                    # itself -- since OpenMC can't handle this directly, we need
-                    # to create an extra cell/universe to fill in the lattice
-                    if np.any(univ_ids == uid):
-                        c = openmc.Cell(fill=mat)
+                # Check for universe ID same as the ID assigned to the cell
+                # itself -- since OpenMC can't handle this directly, we need
+                # to create an extra cell/universe to fill in the lattice
+                if np.any(univ_ids == uid):
+                    c = openmc.Cell(fill=mat)
+                    u = openmc.Universe(cells=[c])
+                    univ_ids[univ_ids == uid] = u.id
+
+                    # Put it in universes dictionary so that get_universe
+                    # works correctly
+                    universes[u.id] = u
+
+                # If center of MCNP lattice element is not (0,0,0), we need
+                # to translate the universe
+                center = np.zeros(3)
+                center[:v0.size] = (v0 + v1)/2
+                if not np.all(center == 0.0):
+                    for uid in np.unique(univ_ids):
+                        # Create translated universe
+                        c = openmc.Cell(fill=get_universe(uid))
+                        c.translation = -center
                         u = openmc.Universe(cells=[c])
-                        univ_ids[univ_ids == uid] = u.id
-
-                        # Put it in universes dictionary so that get_universe
-                        # works correctly
                         universes[u.id] = u
 
-                    # If center of MCNP lattice element is not (0,0,0), we need
-                    # to translate the universe
-                    center = np.zeros(3)
-                    center[:v0.size] = (v0 + v1)/2
-                    if not np.all(center == 0.0):
-                        for uid in np.unique(univ_ids):
-                            # Create translated universe
-                            c = openmc.Cell(fill=get_universe(uid))
-                            c.translation = -center
-                            u = openmc.Universe(cells=[c])
-                            universes[u.id] = u
+                        # Replace original universes with translated ones
+                        univ_ids[univ_ids == uid] = u.id
 
-                            # Replace original universes with translated ones
-                            univ_ids[univ_ids == uid] = u.id
+                # Get an array of universes instead of IDs
+                lat_univ = np.vectorize(get_universe)(univ_ids)
 
-                    # Get an array of universes instead of IDs
-                    lat_univ = np.vectorize(get_universe)(univ_ids)
+                # Fill universes in OpenMC lattice, reversing y direction
+                lattice.universes = lat_univ[..., ::-1, :]
 
-                    # Fill universes in OpenMC lattice, reversing y direction
-                    lattice.universes = lat_univ[..., ::-1, :]
+                # For infinite lattices, set the outer universe
+                if inf_lattice:
+                    lattice.outer = lat_univ.ravel()[0]
 
                 cell._lattice = True
             else:
                 # Cell filled with universes
-                if '(' in c['parameters']['fill']:
-                    raise NotImplementedError('fill transformation not supported')
-                uid = int(c['parameters']['fill'])
+                uid, ftrans = _CELL_FILL_RE.search(c['parameters']['fill']).groups()
+
+                # First assign fill based on whether it is a universe/lattice
+                uid = int(uid)
                 if uid not in universes:
                     for ci in cells:
                         if 'u' in ci['parameters']:
@@ -584,6 +585,17 @@ def get_openmc_universes(cells, surfaces, materials):
                                     universes[uid] = openmc.Universe(uid)
                                 break
                 cell.fill = universes[uid]
+
+                # Set fill transformation
+                if ftrans is not None:
+                    ftrans = ftrans.split()
+                    if len(ftrans) > 3:
+                        raise NotImplemented('Fill rotation not supported.')
+                    elif len(ftrans) < 3:
+                        raise NotImplementedError('TRn card (fill trans) not supported.')
+                    else:
+                        cell.translation = tuple(float(x) for x in ftrans)
+
 
         elif c['material'] > 0:
             cell.fill = mat
