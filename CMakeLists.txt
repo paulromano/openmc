@@ -324,6 +324,15 @@ set_target_properties(
     PROPERTIES CXX_STANDARD 14 CXX_EXTENSIONS OFF)
 
 #===============================================================================
+# xenon iteration executable
+#===============================================================================
+
+add_executable(xenon src/xenon.cpp)
+target_compile_options(xenon PRIVATE ${cxxflags})
+target_link_libraries(xenon libopenmc pugixml)
+target_include_directories(xenon PRIVATE src)
+
+#===============================================================================
 # Python package
 #===============================================================================
 
