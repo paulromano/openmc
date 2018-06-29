@@ -1,15 +1,18 @@
 #include <cmath>
 #include <cstring>
 #include <iterator>
+#include <set>
 #include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <iostream>
 
 #include "openmc.h"
 #include "error.h"
+#include "nuclide.h"
 #include "pugixml.hpp"
 
 
@@ -23,6 +26,7 @@ namespace xenon {
 
 std::unordered_map<std::string, double> i135_yield;
 std::unordered_map<std::string, double> xe135_yield;
+std::unordered_map<std::string, double> fission_q;
 std::unordered_map<int, std::string> nucname;
 double i135_decay;
 double xe135_decay;
@@ -45,9 +49,19 @@ void get_chain_data() {
   xml_node root = doc.document_element();
 
   for (xml_node nuclide : root.children("nuclide")) {
+    const char* name = nuclide.attribute("name").value();
+
+    //////////////////////////////////////////////////////////////////////////
+    // Determine fission Q values
+    for (xml_node reaction : nuclide.children("reaction")) {
+      const char* rx_type = reaction.attribute("type").value();
+      if (std::strcmp(rx_type, "fission") == 0) {
+        fission_q[name] = reaction.attribute("Q").as_double();
+      }
+    }
+
     //////////////////////////////////////////////////////////////////////////
     // Determine decay constants for Xe135 and I135
-    const char* name = nuclide.attribute("name").value();
     if (std::strcmp(name, "Xe135") == 0) {
       double half_life = nuclide.attribute("half_life").as_double();
       xe135_decay = std::log(2.0) / half_life;
@@ -79,19 +93,13 @@ void get_chain_data() {
 }
 
 void get_nuclide_names () {
-  char* name;
   for (int i = 1; i <= n_nuclides; ++i) {
-    CHECK(openmc_nuclide_name(i, &name));
-    for (size_t j = 0; j < 20; ++j) {
-      if (name[j] == ' ') {
-        nucname[i] = std::string{name, j};
-        break;
-      }
-    }
+    nucname[i] = openmc::nuclide_name(i);
   }
 }
 
-std::tuple<std::vector<int32_t>, std::vector<int32_t>> fissionable_materials() {
+std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
+  std::set<int> fissionable_nuclides;
   std::vector<int32_t> material_indices;
 
   int* nuclides;
@@ -101,11 +109,25 @@ std::tuple<std::vector<int32_t>, std::vector<int32_t>> fissionable_materials() {
     // Get arrays of nuclide indices and densities
     CHECK(openmc_material_get_densities(i, &nuclides, &densities, &n));
 
-    // If material is fissionable add it to vector
-    char* name;
+    // loop over nuclides
+    bool added = false;
     for (int j = 0; j < n; ++j) {
+      // get name of j-th nuclide
+      std::string name = nucname[nuclides[j]];
+
+      // if nuclide is fissionable, add it to set of fissionable nuclides and
+      // add material to list of fuel materials
+      if (fission_q.find(name) != fission_q.end()) {
+        fissionable_nuclides.insert(nuclides[j]);
+        if (!added) {
+          material_indices.push_back(i);
+          added = true;
+        }
+      }
     }
   }
+
+  return {fissionable_nuclides, material_indices};
 }
 
 } // namespace xenon
@@ -123,11 +145,53 @@ int main(int argc, char* argv[]) {
   for (const auto& kv : xenon::xe135_yield) {
     std::cout << "Xe135 yield for " << kv.first << ": " << kv.second << '\n';
   }
+  for (const auto& kv : xenon::fission_q) {
+    std::cout << "fission Q for " << kv.first << ": " << kv.second << '\n';
+  }
 
   xenon::get_nuclide_names();
   for (const auto& kv : xenon::nucname) {
     std::cout << "Nuclide " << kv.first << ": " << kv.second << '\n';
   }
+
+  std::set<int> nucs;
+  std::vector<int32_t> mats;
+  std::tie(nucs, mats) = xenon::fissionable_materials();
+
+  std::cout << "Fissionable nuclides (in model): \n";
+  for (int i : nucs) {
+    std::cout << "  " << xenon::nucname[i] << '\n';
+  }
+
+  std::cout << "Fissionable materials:\n";
+  for (int32_t idx : mats) {
+    std::cout << idx << '\n';
+  }
+
+  // Create filter
+  int32_t f_idx;
+  CHECK(openmc_extend_filters(1, &f_idx, nullptr));
+  CHECK(openmc_filter_set_type(f_idx, "material"));
+  CHECK(openmc_material_filter_set_bins(f_idx, mats.size(), mats.data()));
+
+  // Create tally for fission
+  int32_t t_idx;
+  CHECK(openmc_extend_tallies(1, &t_idx, nullptr));
+  CHECK(openmc_tally_set_type(t_idx, "generic"));
+  const int32_t indices[] {f_idx};
+  CHECK(openmc_tally_set_filters(t_idx, 1, indices));
+
+  size_t num_nucs = nucs.size();
+  const char* nuclides[num_nucs];
+  int j = 0;
+  for (int i : nucs) {
+    nuclides[j++] = xenon::nucname[i].c_str();
+  }
+  CHECK(openmc_tally_set_nuclides(t_idx, num_nucs, nuclides));
+
+  char score_array[][20]{"fission"};
+  const char *scores[]{score_array[0]}; // OpenMC expects a const char**, ugh
+  CHECK(openmc_tally_set_scores(t_idx, 1, scores));
 
   // Run
   // CHECK(openmc_run());
