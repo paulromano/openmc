@@ -29,12 +29,15 @@ std::unordered_map<std::string, double> i135_yield;
 std::unordered_map<std::string, double> xe135_yield;
 std::unordered_map<std::string, double> fission_q;
 std::unordered_map<int, std::string> nucname;
+std::unordered_map<int32_t, double> volume;
 double i135_decay;
 double xe135_decay;
 int32_t mat_filter_idx;
 int32_t fission_tally_idx;
 int32_t absorb_tally_idx;
 
+
+double actual_power = 20.0;
 int batch_size = 5;
 int restart_batches = 4;
 
@@ -223,12 +226,101 @@ void init() {
   xenon::get_chain_data();
 
   // Determine fissionable materials and nuclides
+  xenon::get_nuclide_names();
   std::set<int> nucs;
   std::vector<int32_t> mats;
   std::tie(nucs, mats) = xenon::fissionable_materials();
 
   // Create tallies needed for Xenon feedback
   xenon::create_tallies(nucs, mats);
+}
+
+void update() {
+  // Get material bins
+  int32_t* mats;
+  int32_t n_mats;
+  CHECK(openmc_material_filter_get_bins(mat_filter_idx, &mats, &n_mats));
+
+  // Get nuclides
+  int* nuclides;
+  int n_nucs;
+  CHECK(openmc_tally_get_nuclides(fission_tally_idx, &nuclides, &n_nucs));
+  double* fission;
+  int shape[3];
+  CHECK(openmc_tally_results(fission_tally_idx, &fission, shape));
+  int32_t m;
+  CHECK(openmc_tally_get_n_realizations(fission_tally_idx, &m));
+
+  double* absorb;
+  CHECK(openmc_tally_results(absorb_tally_idx, &absorb, shape));
+
+  for (int i = 0; i < n_mats; ++i) {
+    double i135_prod = 0.0;
+    double xe135_prod = 0.0;
+    double power = 0.0;
+
+    // Determine I135 and Xe135 production rates. These have to be summed over
+    // individual nuclides because each nuclide has a different fission product
+    // yield.
+    for (int j = 0; j < n_nucs; ++j) {
+      double fission_rate = fission[3*n_nucs*i + 3*j + 1] / m;
+      std::string nuc = nucname[nuclides[j]];
+      i135_prod += i135_yield[nuc] * fission_rate;
+      xe135_prod += xe135_yield[nuc] * fission_rate;
+      power += fission_q[nuc] * fission_rate;
+    }
+
+    // Determine Xe135 absorption rate
+    double xe135_abs = absorb[3*i + 1] / m;
+
+    // Normalize production rates by specified power and volume
+    // TODO: Need volumes!
+    double V = volume[mats[i]];
+    double normalization = actual_power / (power * V);
+    i135_prod *= normalization;
+    xe135_prod *= normalization;
+    xe135_abs *= normalization;
+
+    // Get array of densities in current material
+    int* nucs_in_mat;
+    double* densities;
+    int n_nucs_in_mat;
+    CHECK(openmc_material_get_densities(mats[i], &nucs_in_mat, &densities,
+                                        &n_nucs_in_mat));
+
+    // Divide Xe135 absorption rate by current Xe135 density
+    int idx_i135;
+    int idx_xe135;
+    for (int j = 0; j < n_nucs_in_mat; ++j) {
+      if (nucname[nucs_in_mat[j]] == "Xe135") {
+        xe135_abs /= densities[j];
+        idx_xe135 = j;
+      } else if (nucname[nucs_in_mat[j]] == "I135") {
+        idx_i135 = j;
+      }
+    }
+
+    // solve equation (9) and (10) for equilibrium concentrations
+    double i135_eq = i135_prod / i135_decay;
+    double xe135_eq = (i135_prod + xe135_prod)/(xe135_decay + xe135_abs);
+
+
+    // Create array of pointers to nuclide C-strings
+    const char* new_nucnames[n_nucs_in_mat];
+    for (int j = 0; j < n_nucs_in_mat; ++j) {
+      new_nucnames[j] = nucname[nucs_in_mat[j]].c_str();
+    }
+
+    // Copy existing densities and update I135 and Xe135
+    double new_densities[n_nucs_in_mat];
+    std::copy(densities, densities + n_nucs_in_mat, new_densities);
+    new_densities[idx_i135] = i135_eq;
+    new_densities[idx_xe135] = xe135_eq;
+
+    // Set densities for material
+    CHECK(openmc_material_set_densities(mats[i], n_nucs_in_mat, new_nucnames,
+                                        new_densities));
+  }
 }
 
 int run() {
@@ -244,7 +336,7 @@ int run() {
 
     if (batch_size == generation) {
       std::cout << "Updating Xenon densities\n";
-      // update();
+      xenon::update();
       if (batch <= restart_batches) {
         std::cout << "Resetting Xenon tallies\n";
         CHECK(openmc_tally_reset(fission_tally_idx));
