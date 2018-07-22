@@ -254,32 +254,41 @@ void update() {
   double* absorb;
   CHECK(openmc_tally_results(absorb_tally_idx, &absorb, shape));
 
-  for (int i = 0; i < n_mats; ++i) {
-    double i135_prod = 0.0;
-    double xe135_prod = 0.0;
-    double power = 0.0;
+  // Create vectors for I135/Xe135 production, Xe135 absorption
+  std::vector<double> i135_prod(n_mats);
+  std::vector<double> xe135_prod(n_mats);
+  std::vector<double> xe135_abs(n_mats);
 
+  double power = 0.0;
+
+  for (int i = 0; i < n_mats; ++i) {
     // Determine I135 and Xe135 production rates. These have to be summed over
     // individual nuclides because each nuclide has a different fission product
     // yield.
     for (int j = 0; j < n_nucs; ++j) {
       double fission_rate = fission[3*n_nucs*i + 3*j + 1] / m;
       std::string nuc = nucname[nuclides[j]];
-      i135_prod += i135_yield[nuc] * fission_rate;
-      xe135_prod += xe135_yield[nuc] * fission_rate;
+      i135_prod[i] += i135_yield[nuc] * fission_rate;
+      xe135_prod[i] += xe135_yield[nuc] * fission_rate;
       power += fission_q[nuc] * fission_rate;
     }
 
     // Determine Xe135 absorption rate
-    double xe135_abs = absorb[3*i + 1] / m;
+    xe135_abs[i] = absorb[3*i + 1] / m;
+  }
 
+  // Now that the raw production/absorption rates and total power have been
+  // determined, we need to normalize the values by the total power and update
+  // densities
+
+  for (int i = 0; i < n_mats; ++i) {
     // Normalize production rates by specified power and volume
     // TODO: Need volumes!
     double V = volume[mats[i]];
     double normalization = actual_power / (power * V);
-    i135_prod *= normalization;
-    xe135_prod *= normalization;
-    xe135_abs *= normalization;
+    i135_prod[i] *= normalization;
+    xe135_prod[i] *= normalization;
+    xe135_abs[i] *= normalization;
 
     // Get array of densities in current material
     int* nucs_in_mat;
@@ -293,7 +302,7 @@ void update() {
     int idx_xe135;
     for (int j = 0; j < n_nucs_in_mat; ++j) {
       if (nucname[nucs_in_mat[j]] == "Xe135") {
-        xe135_abs /= densities[j];
+        xe135_abs[i] /= densities[j];
         idx_xe135 = j;
       } else if (nucname[nucs_in_mat[j]] == "I135") {
         idx_i135 = j;
@@ -301,9 +310,8 @@ void update() {
     }
 
     // solve equation (9) and (10) for equilibrium concentrations
-    double i135_eq = i135_prod / i135_decay;
-    double xe135_eq = (i135_prod + xe135_prod)/(xe135_decay + xe135_abs);
-
+    double i135_eq = i135_prod[i] / i135_decay;
+    double xe135_eq = (i135_prod[i] + xe135_prod[i])/(xe135_decay + xe135_abs[i]);
 
     // Create array of pointers to nuclide C-strings
     const char* new_nucnames[n_nucs_in_mat];
