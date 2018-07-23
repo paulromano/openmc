@@ -178,9 +178,6 @@ void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats)
   CHECK(openmc_tally_set_active(absorb_tally_idx, true));
   CHECK(openmc_tally_set_filters(absorb_tally_idx, 1, indices));
 
-  // Load Xe135
-  CHECK(openmc_load_nuclide("Xe135"));
-
   // Set nuclides
   nuclides[0] = "Xe135";
   CHECK(openmc_tally_set_nuclides(absorb_tally_idx, 1, nuclides));
@@ -196,26 +193,41 @@ std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
   int* nuclides;
   double* densities;
   int n;
-  for (int i = 1; i <= n_materials; ++i) {
+  for (int32_t i = 1; i <= n_materials; ++i) {
     // Get arrays of nuclide indices and densities
     CHECK(openmc_material_get_densities(i, &nuclides, &densities, &n));
 
     // loop over nuclides
     bool added = false;
+    bool has_xe135 = false;
+    bool has_i135 = false;
     for (int j = 0; j < n; ++j) {
       // get name of j-th nuclide
-      std::string name = nucname[nuclides[j]];
+      std::string name = openmc::nuclide_name(nuclides[j]);
+
+      // Check if Xe135/I135 is present
+      if (name == "Xe135") has_xe135 = true;
+      if (name == "I135") has_i135 = true;
 
       // if nuclide is fissionable, add it to set of fissionable nuclides and
       // add material to list of fuel materials
       if (fission_q.find(name) != fission_q.end()) {
         fissionable_nuclides.insert(nuclides[j]);
         if (!added) {
+          // Determine volume -- note that material_get_volume will fail if
+          // volume is not set
+          double vol;
+          CHECK(openmc_material_get_volume(i, &vol));
+          volume[i] = vol;
+
           material_indices.push_back(i);
           added = true;
         }
       }
-    }
+    } // nuclides
+
+    if (!has_xe135) CHECK(openmc_material_add_nuclide(i, "Xe135", 1e-14));
+    if (!has_i135) CHECK(openmc_material_add_nuclide(i, "I135", 1e-14));
   }
 
   return {fissionable_nuclides, material_indices};
@@ -226,10 +238,12 @@ void init() {
   xenon::get_chain_data();
 
   // Determine fissionable materials and nuclides
-  xenon::get_nuclide_names();
   std::set<int> nucs;
   std::vector<int32_t> mats;
   std::tie(nucs, mats) = xenon::fissionable_materials();
+
+  // Save nuclide names for quick access
+  xenon::get_nuclide_names();
 
   // Create tallies needed for Xenon feedback
   xenon::create_tallies(nucs, mats);
@@ -283,7 +297,6 @@ void update() {
 
   for (int i = 0; i < n_mats; ++i) {
     // Normalize production rates by specified power and volume
-    // TODO: Need volumes!
     double V = volume[mats[i]];
     double normalization = actual_power / (power * V);
     i135_prod[i] *= normalization;
