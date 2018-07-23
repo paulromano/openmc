@@ -328,7 +328,7 @@ set_target_properties(
 # xenon iteration executable
 #===============================================================================
 
-add_executable(xenon src/xenon.cpp)
+add_executable(xenon src/xenon/xenon.cpp)
 target_compile_options(xenon PRIVATE ${cxxflags})
 target_link_libraries(xenon libopenmc pugixml)
 target_include_directories(xenon PRIVATE src)
