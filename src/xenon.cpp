@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <iterator>
@@ -30,6 +31,10 @@ std::unordered_map<std::string, double> fission_q;
 std::unordered_map<int, std::string> nucname;
 double i135_decay;
 double xe135_decay;
+
+int32_t mat_filter_idx;
+int32_t fission_tally_idx;
+int32_t absorb_tally_idx;
 
 std::vector<std::string> split(const char* s) {
   std::istringstream iss {s};
@@ -90,12 +95,89 @@ void get_chain_data() {
       } // <products>
     } // <neutron_fission_yields>
   } // <nuclide>
+
+  /*
+  std::cout << "I135 decay constant: " << i135_decay << '\n';
+  std::cout << "Xe135 decay constant: " << xe135_decay << '\n';
+  for (const auto& kv : i135_yield) {
+    std::cout << "I135 yield for " << kv.first << ": " << kv.second << '\n';
+  }
+  for (const auto& kv : xe135_yield) {
+    std::cout << "Xe135 yield for " << kv.first << ": " << kv.second << '\n';
+  }
+  for (const auto& kv : fission_q) {
+    std::cout << "fission Q for " << kv.first << ": " << kv.second << '\n';
+  }
+  */
 }
 
 void get_nuclide_names () {
   for (int i = 1; i <= n_nuclides; ++i) {
     nucname[i] = openmc::nuclide_name(i);
   }
+}
+
+void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats) {
+  // Determine maximum tally/filter ID used so far
+  int32_t max_filter_id = 0;
+  int32_t filter_id;
+  for (int i = 1; i <= n_filters; ++i) {
+    CHECK(openmc_filter_get_id(i, &filter_id));
+    max_filter_id = std::max(max_filter_id, filter_id);
+  }
+
+  int32_t max_tally_id = 0;
+  int32_t tally_id;
+  for (int i = 1; i <= n_tallies; ++i) {
+    CHECK(openmc_tally_get_id(i, &tally_id));
+    max_tally_id = std::max(max_tally_id, tally_id);
+  }
+
+  // Create filter for each material with fissionable material
+  CHECK(openmc_extend_filters(1, &mat_filter_idx, nullptr));
+  CHECK(openmc_filter_set_type(mat_filter_idx, "material"));
+  CHECK(openmc_filter_set_id(mat_filter_idx, max_filter_id + 1));
+  CHECK(openmc_material_filter_set_bins(mat_filter_idx, mats.size(), mats.data()));
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Create tally for fission in each fissionable nuclide
+  CHECK(openmc_extend_tallies(1, &fission_tally_idx, nullptr));
+  CHECK(openmc_tally_set_type(fission_tally_idx, "generic"));
+  CHECK(openmc_tally_set_id(fission_tally_idx, max_tally_id + 1));
+  const int32_t indices[] {mat_filter_idx};
+  CHECK(openmc_tally_set_filters(fission_tally_idx, 1, indices));
+
+  // Create array of pointers to nuclide C-strings
+  size_t num_nucs = nucs.size();
+  const char* nuclides[num_nucs];
+  int j = 0;
+  for (int i : nucs) {
+    nuclides[j++] = nucname[i].c_str();
+  }
+  // Set nuclides
+  CHECK(openmc_tally_set_nuclides(fission_tally_idx, num_nucs, nuclides));
+
+  char score_array[][20]{"fission"};
+  const char *scores[]{score_array[0]}; // OpenMC expects a const char**, ugh
+  CHECK(openmc_tally_set_scores(fission_tally_idx, 1, scores));
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Create tally for absorption in Xe135
+
+  CHECK(openmc_extend_tallies(1, &absorb_tally_idx, nullptr));
+  CHECK(openmc_tally_set_type(absorb_tally_idx, "generic"));
+  CHECK(openmc_tally_set_id(absorb_tally_idx, max_tally_id + 2));
+  CHECK(openmc_tally_set_filters(absorb_tally_idx, 1, indices));
+
+  // Load Xe135
+  CHECK(openmc_load_nuclide("Xe135"));
+
+  // Set nuclides
+  nuclides[0] = "Xe135";
+  CHECK(openmc_tally_set_nuclides(absorb_tally_idx, 1, nuclides));
+
+  std::strncpy(score_array[0], "absorption", 20);
+  CHECK(openmc_tally_set_scores(absorb_tally_idx, 1, scores));
 }
 
 std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
@@ -130,71 +212,30 @@ std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
   return {fissionable_nuclides, material_indices};
 }
 
+void init() {
+  // Get yields/decay constants from depletion chain file
+  xenon::get_chain_data();
+
+  // Determine fissionable materials and nuclides
+  std::set<int> nucs;
+  std::vector<int32_t> mats;
+  std::tie(nucs, mats) = xenon::fissionable_materials();
+
+  // Create tallies needed for Xenon feedback
+  xenon::create_tallies(nucs, mats);
+}
+
 } // namespace xenon
 
 int main(int argc, char* argv[]) {
   // Initialize OpenMC
   CHECK(openmc_init(argc, argv, nullptr));
 
-  xenon::get_chain_data();
-  std::cout << "I135 decay constant: " << xenon::i135_decay << '\n';
-  std::cout << "Xe135 decay constant: " << xenon::xe135_decay << '\n';
-  for (const auto& kv : xenon::i135_yield) {
-    std::cout << "I135 yield for " << kv.first << ": " << kv.second << '\n';
-  }
-  for (const auto& kv : xenon::xe135_yield) {
-    std::cout << "Xe135 yield for " << kv.first << ": " << kv.second << '\n';
-  }
-  for (const auto& kv : xenon::fission_q) {
-    std::cout << "fission Q for " << kv.first << ": " << kv.second << '\n';
-  }
-
-  xenon::get_nuclide_names();
-  for (const auto& kv : xenon::nucname) {
-    std::cout << "Nuclide " << kv.first << ": " << kv.second << '\n';
-  }
-
-  std::set<int> nucs;
-  std::vector<int32_t> mats;
-  std::tie(nucs, mats) = xenon::fissionable_materials();
-
-  std::cout << "Fissionable nuclides (in model): \n";
-  for (int i : nucs) {
-    std::cout << "  " << xenon::nucname[i] << '\n';
-  }
-
-  std::cout << "Fissionable materials:\n";
-  for (int32_t idx : mats) {
-    std::cout << idx << '\n';
-  }
-
-  // Create filter
-  int32_t f_idx;
-  CHECK(openmc_extend_filters(1, &f_idx, nullptr));
-  CHECK(openmc_filter_set_type(f_idx, "material"));
-  CHECK(openmc_material_filter_set_bins(f_idx, mats.size(), mats.data()));
-
-  // Create tally for fission
-  int32_t t_idx;
-  CHECK(openmc_extend_tallies(1, &t_idx, nullptr));
-  CHECK(openmc_tally_set_type(t_idx, "generic"));
-  const int32_t indices[] {f_idx};
-  CHECK(openmc_tally_set_filters(t_idx, 1, indices));
-
-  size_t num_nucs = nucs.size();
-  const char* nuclides[num_nucs];
-  int j = 0;
-  for (int i : nucs) {
-    nuclides[j++] = xenon::nucname[i].c_str();
-  }
-  CHECK(openmc_tally_set_nuclides(t_idx, num_nucs, nuclides));
-
-  char score_array[][20]{"fission"};
-  const char *scores[]{score_array[0]}; // OpenMC expects a const char**, ugh
-  CHECK(openmc_tally_set_scores(t_idx, 1, scores));
+  // Xe feedback initialization
+  xenon::init();
 
   // Run
-  // CHECK(openmc_run());
+  CHECK(openmc_run());
 
   // Finalize simulation
   CHECK(openmc_finalize());
