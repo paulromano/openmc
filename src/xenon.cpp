@@ -31,10 +31,14 @@ std::unordered_map<std::string, double> fission_q;
 std::unordered_map<int, std::string> nucname;
 double i135_decay;
 double xe135_decay;
-
 int32_t mat_filter_idx;
 int32_t fission_tally_idx;
 int32_t absorb_tally_idx;
+
+int batch_size = 5;
+int restart_batches = 4;
+
+// Helper function
 
 std::vector<std::string> split(const char* s) {
   std::istringstream iss {s};
@@ -144,6 +148,7 @@ void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats)
   CHECK(openmc_extend_tallies(1, &fission_tally_idx, nullptr));
   CHECK(openmc_tally_set_type(fission_tally_idx, "generic"));
   CHECK(openmc_tally_set_id(fission_tally_idx, max_tally_id + 1));
+  CHECK(openmc_tally_set_active(fission_tally_idx, true));
   const int32_t indices[] {mat_filter_idx};
   CHECK(openmc_tally_set_filters(fission_tally_idx, 1, indices));
 
@@ -167,6 +172,7 @@ void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats)
   CHECK(openmc_extend_tallies(1, &absorb_tally_idx, nullptr));
   CHECK(openmc_tally_set_type(absorb_tally_idx, "generic"));
   CHECK(openmc_tally_set_id(absorb_tally_idx, max_tally_id + 2));
+  CHECK(openmc_tally_set_active(absorb_tally_idx, true));
   CHECK(openmc_tally_set_filters(absorb_tally_idx, 1, indices));
 
   // Load Xe135
@@ -225,6 +231,36 @@ void init() {
   xenon::create_tallies(nucs, mats);
 }
 
+int run() {
+  openmc_simulation_init();
+
+  int err = 0;
+  int status = 0;
+  int generation = 1;
+  int batch = 1;
+  while (true) {
+    err = openmc_next_batch(&status);
+    if (status != 0 || err != 0) break;
+
+    if (batch_size == generation) {
+      std::cout << "Updating Xenon densities\n";
+      // update();
+      if (batch <= restart_batches) {
+        std::cout << "Resetting Xenon tallies\n";
+        CHECK(openmc_tally_reset(fission_tally_idx));
+        CHECK(openmc_tally_reset(absorb_tally_idx));
+      }
+      ++batch;
+      generation = 1;
+    } else {
+      ++generation;
+    }
+  }
+
+  openmc_simulation_finalize();
+  return err;
+}
+
 } // namespace xenon
 
 int main(int argc, char* argv[]) {
@@ -235,7 +271,7 @@ int main(int argc, char* argv[]) {
   xenon::init();
 
   // Run
-  CHECK(openmc_run());
+  CHECK(xenon::run());
 
   // Finalize simulation
   CHECK(openmc_finalize());
