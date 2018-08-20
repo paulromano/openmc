@@ -4,6 +4,7 @@ from copy import deepcopy
 from xml.etree import ElementTree as ET
 
 import numpy as np
+import string
 
 import openmc
 from openmc.clean_xml import clean_xml_indentation
@@ -237,7 +238,8 @@ class Geometry(object):
 
         # Create dictionary to easily look up materials
         if materials is None:
-            materials = openmc.Materials.from_xml()
+            path = path.replace('geometry','materials')
+            materials = openmc.Materials.from_xml(path)
         mats = {str(m.id): m for m in materials}
         mats['void'] = None
 
