@@ -85,6 +85,50 @@ void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
 }
 
 void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
+		 double &c3, double &c4, double &c5, bool strict_count)
+{
+  // Check the given number of coefficients.
+  std::string coeffs = get_node_value(surf_node, "coeffs");
+  int n_words = word_count(coeffs);
+
+  if (n_words != 5 && strict_count ) {
+    std::stringstream err_msg;
+    err_msg << "Surface " << surf_id << " expects 5 coeffs but was given "
+	    << n_words;
+    fatal_error(err_msg);
+  } else if (n_words != 5 && !strict_count ) {
+    // fall back to reading the 4 type
+    read_coeffs(surf_node, surf_id, c1, c2, c3, c4);
+  }
+
+  // Parse the coefficients.
+  int stat = sscanf(coeffs.c_str(), "%lf %lf %lf %lf %lf", &c1, &c2, &c3, &c4, &c5);
+  if (stat != 5 && strict_count ) {
+      fatal_error("Something went wrong reading surface coeffs");
+  }
+}
+
+void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
+                 double &c3, double &c4, double &c5, double &c6)
+{
+  // Check the given number of coefficients.
+  std::string coeffs = get_node_value(surf_node, "coeffs");
+  int n_words = word_count(coeffs);
+  if (n_words != 6) {
+    std::stringstream err_msg;
+    err_msg << "Surface " << surf_id << " expects 6 coeffs but was given "
+            << n_words;
+    fatal_error(err_msg);
+  }
+
+  // Parse the coefficients.
+  int stat = sscanf(coeffs.c_str(), "%lf %lf %lf %lf %lf %lf", &c1, &c2, &c3, &c4, &c5, &c6);
+  if (stat != 6) {
+    fatal_error("Something went wrong reading surface coeffs");
+  }
+}
+
+void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
                  double &c3, double &c4, double &c5, double &c6, double &c7,
                  double &c8, double &c9, double &c10)
 {
@@ -1107,6 +1151,138 @@ void SurfaceQuadric::to_hdf5_inner(hid_t group_id) const
 }
 
 //==============================================================================
+// Generic functions for x-, y-, and z-, tori
+//==============================================================================
+
+SurfaceXTorus::SurfaceXTorus(pugi::xml_node surf_node)
+  : CSGSurface(surf_node)
+{
+  read_coeffs(surf_node, id_, x0_, y0_, z0_, A_, B_, C_);
+}
+
+// todo should do some alebgra first to get rid of the sqrt
+
+double
+SurfaceXTorus::evaluate(Position r) const
+{
+  const double x = r.x;
+  const double y = r.y;
+  const double z = r.z;
+
+  const double x_coeff2 = std::pow(x-x0_,2);
+  const double y_coeff2 = std::pow(y-y0_,2);
+  const double z_coeff2 = std::pow(z-z0_,2);
+
+  const double B2 = B_*B_;
+  const double C2 = C_*C_;
+
+  return x_coeff2/B2 + std::pow(std::sqrt(y_coeff2 + z_coeff2)-A_,2)/C2 - 1.;
+}
+
+double
+SurfaceXTorus::distance(Position r, Direction ang, bool coincident) const
+{
+  return 0;
+}
+
+Direction
+SurfaceXTorus::normal(Position r) const
+{
+  return {0,0,0};
+}
+
+SurfaceYTorus::SurfaceYTorus(pugi::xml_node surf_node)
+  : CSGSurface(surf_node)
+{
+  read_coeffs(surf_node, id_, x0_, y0_, z0_, A_, B_, C_);
+}
+
+void SurfaceXTorus::to_hdf5_inner(hid_t group_id) const
+{
+  write_string(group_id, "type", "torus-x", false);
+  std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
+  write_dataset(group_id, "coefficients", coeffs);
+}
+
+double
+SurfaceYTorus::evaluate(Position r) const
+{
+  const double x = r.x;
+  const double y = r.y;
+  const double z = r.z;
+
+  const double x_coeff2 = std::pow(x-x0_,2);
+  const double y_coeff2 = std::pow(y-y0_,2);
+  const double z_coeff2 = std::pow(z-z0_,2);
+
+  const double B2 = B_*B_;
+  const double C2 = C_*C_;
+
+  return y_coeff2/B2 + std::pow(std::sqrt(x_coeff2 + z_coeff2)-A_,2)/C2 - 1.;
+}
+
+double
+SurfaceYTorus::distance(Position r, Direction ang, bool coincident) const
+{
+  return 0;
+}
+
+Direction
+SurfaceYTorus::normal(Position r) const
+{
+  return {0,0,0};
+}
+
+void SurfaceYTorus::to_hdf5_inner(hid_t group_id) const
+{
+  write_string(group_id, "type", "torus-y", false);
+  std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
+  write_dataset(group_id, "coefficients", coeffs);
+}
+
+SurfaceZTorus::SurfaceZTorus(pugi::xml_node surf_node)
+  : CSGSurface(surf_node)
+{
+  read_coeffs(surf_node, id_, x0_, y0_, z0_, A_, B_, C_);
+}
+
+double
+SurfaceZTorus::evaluate(Position r) const
+{
+  const double x = r.x;
+  const double y = r.y;
+  const double z = r.z;
+
+  const double x_coeff2 = std::pow(x-x0_,2);
+  const double y_coeff2 = std::pow(y-y0_,2);
+  const double z_coeff2 = std::pow(z-z0_,2);
+
+  const double B2 = B_*B_;
+  const double C2 = C_*C_;
+
+  return z_coeff2/B2 + std::pow(std::sqrt(x_coeff2 + y_coeff2)-A_,2)/C2 - 1.;
+}
+
+double
+SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
+{
+  return 0;
+}
+
+Direction
+SurfaceZTorus::normal(Position r) const
+{
+  return {0,0,0};
+}
+
+void SurfaceZTorus::to_hdf5_inner(hid_t group_id) const
+{
+  write_string(group_id, "type", "torus-z", false);
+  std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
+  write_dataset(group_id, "coefficients", coeffs);
+}
+
+//==============================================================================
 
 void read_surfaces(pugi::xml_node node)
 {
@@ -1161,6 +1337,15 @@ void read_surfaces(pugi::xml_node node)
 
       } else if (surf_type == "quadric") {
         model::surfaces.push_back(std::make_unique<SurfaceQuadric>(surf_node));
+
+      } else if (surf_type == "torus-x") {
+        model::surfaces.push_back(new SurfaceXTorus(surf_node));
+
+      } else if (surf_type == "torus-y") {
+        model::surfaces.push_back(new SurfaceYTorus(surf_node));
+
+      } else if (surf_type == "torus-z") {
+        model::surfaces.push_back(new SurfaceZTorus(surf_node));
 
       } else {
         fatal_error(fmt::format("Invalid surface type, \"{}\"", surf_type));
