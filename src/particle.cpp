@@ -27,7 +27,12 @@
 #include "openmc/tallies/tally_scoring.h"
 #include "openmc/track_output.h"
 
+// Explicit template instantiation definition
+template class std::vector<openmc::Particle>;
+
 namespace openmc {
+
+std::vector<Particle> particle_bank;
 
 //==============================================================================
 // LocalCoord implementation
@@ -122,30 +127,11 @@ Particle::from_source(const Bank* src)
 void
 Particle::transport()
 {
-  // Display message if high verbosity or trace is on
-  if (settings::verbosity >= 9 || simulation::trace) {
-     write_message("Simulating Particle " + std::to_string(id_));
-  }
-
-  // Initialize number of events to zero
   int n_event = 0;
 
-  // Add paricle's starting weight to count for normalizing tallies later
-  #pragma omp atomic
-  simulation::total_weight += wgt_;
-
-  // Force calculation of cross-sections by setting last energy to zero
-  if (settings::run_CE) {
-    for (auto& micro : neutron_xs_) micro.last_E = 0.0;
-  }
-
-  // Prepare to write out particle track.
-  if (write_track_) add_particle_track();
-
-  // Every particle starts with no accumulated flux derivative.
-  if (!model::active_tallies.empty()) zero_flux_derivs();
-
   while (true) {
+    // ----------------- ADVANCE PARTICLE ---------------------
+
     // Set the random number stream
     if (type_ == Particle::Type::neutron) {
       prn_set_stream(STREAM_TRACKING);
@@ -245,6 +231,8 @@ Particle::transport()
     if (!model::active_tallies.empty()) {
       score_track_derivative(this, distance);
     }
+
+    // -------------------- dispatch above --------------------------
 
     if (d_collision > boundary.distance) {
       // ====================================================================
