@@ -48,13 +48,15 @@ std::vector<Particle*> advance_particle_queue;
 std::vector<Particle*> surface_crossing_queue;
 std::vector<Particle*> collision_queue;
 
+constexpr size_t MAX_PARTICLES_PER_THREAD {1000};
 
-void initialize_histories(std::vector<Particle>& particles, int& index_source,
-  size_t& remaining_work_per_thread, int& work)
+void initialize_histories(int& index_source,
+  size_t& remaining_work_per_thread)
 {
-  work = std::min(remaining_work_per_thread, particles.size());
+  int work = std::min(remaining_work_per_thread, MAX_PARTICLES_PER_THREAD);
   for (int i = 0; i < work; ++i) {
-    auto& p {particles[i]};
+    particle_bank.emplace_back();
+    auto& p {particle_bank.back()};
 
     initialize_history(&p, index_source);
     ++index_source;
@@ -73,7 +75,7 @@ void revive_particle_from_secondary(Particle* p)
   if (p->write_track_) add_particle_track();
 }
 
-void process_advance_particle_events(std::vector<Particle>& particles)
+void process_advance_particle_events()
 {
   for (auto& p : advance_particle_queue) {
     // Set the random number stream
@@ -149,13 +151,13 @@ void process_advance_particle_events(std::vector<Particle>& particles)
     // -------------- break here? -------------------
 
     // Find the distance to the nearest boundary
-    auto boundary = distance_to_boundary(p);
+    p->boundary_ = distance_to_boundary(p);
 
     // Select smaller of the two distances
     double distance;
-    if (boundary.distance < d_collision) {
+    if (p->boundary_.distance < d_collision) {
       surface_crossing_queue.push_back(p);
-      distance = boundary.distance;
+      distance = p->boundary_.distance;
     } else {
       collision_queue.push_back(p);
       distance = d_collision;
@@ -190,7 +192,7 @@ void process_advance_particle_events(std::vector<Particle>& particles)
   advance_particle_queue.clear();
 }
 
-void process_surface_crossing_events(std::vector<Particle>& particles)
+void process_surface_crossing_events()
 {
   for (auto& p : surface_crossing_queue) {
     // Set surface that particle is on and adjust coordinate levels
@@ -229,7 +231,7 @@ void process_surface_crossing_events(std::vector<Particle>& particles)
   surface_crossing_queue.clear();
 }
 
-void process_collision_events(std::vector<Particle>& particles)
+void process_collision_events()
 {
   for (auto& p : collision_queue) {
     // Score collision estimate of keff
@@ -310,30 +312,30 @@ void process_collision_events(std::vector<Particle>& particles)
     }
   }
 
-  collision_queue.empty();
+  collision_queue.clear();
 }
 
-void transport(std::vector<Particle>& particles)
+void transport()
 {
   int index_source = simulation::thread_work_index;
   size_t remaining_work_per_thread = simulation::work_per_thread;
 
-  int particles_end_index;
   while (remaining_work_per_thread > 0) {
     // Initialize all histories
-    initialize_histories(particles, index_source, remaining_work_per_thread,
-      particles_end_index);
+    initialize_histories(index_source, remaining_work_per_thread);
 
     // Add all particles to advance particle queue
-    for (int i = 0; i < particles_end_index; ++i) {
-      advance_particle_queue.push_back(&particles[i]);
+    for (auto& p : particle_bank) {
+      advance_particle_queue.push_back(&p);
     }
 
     while (!advance_particle_queue.empty()) {
-      process_advance_particle_events(particles);
-      process_surface_crossing_events(particles);
-      process_collision_events(particles);
+      process_advance_particle_events();
+      process_surface_crossing_events();
+      process_collision_events();
     }
+
+    particle_bank.clear();
   }
 }
 
@@ -500,16 +502,11 @@ int openmc_next_batch(int* status)
     // ====================================================================
     // LOOP OVER PARTICLES
 
-    #pragma omp parallel for schedule(runtime)
-    for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
-      simulation::current_work = i_work;
+    simulation::current_work = 1;
 
-      // grab source particle from bank
-      Particle p;
-      initialize_history(&p, simulation::current_work);
-
-      // transport particle
-      p.transport();
+    #pragma omp parallel
+    {
+      transport();
     }
 
     // Accumulate time for transport
@@ -767,7 +764,7 @@ void finalize_generation()
 void initialize_history(Particle* p, int64_t index_source)
 {
   // set defaults
-  p->from_source(&simulation::source_bank[index_source - 1]);
+  p->from_source(&simulation::source_bank[index_source]);
 
   // set identifier for particle
   p->id_ = simulation::work_index[mpi::rank] + index_source;
