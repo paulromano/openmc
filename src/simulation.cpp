@@ -39,12 +39,14 @@
 
 namespace openmc {
 
-extern std::vector<Particle*> advance_particle_queue;
+extern std::vector<Particle*> advance_fuel_particle_queue;
+extern std::vector<Particle*> advance_nonfuel_particle_queue;
 extern std::vector<Particle*> surface_crossing_queue;
 extern std::vector<Particle*> collision_queue;
-#pragma omp threadprivate(advance_particle_queue, surface_crossing_queue, collision_queue)
+#pragma omp threadprivate(advance_fuel_particle_queue, advance_nonfuel_particle_queue, surface_crossing_queue, collision_queue)
 
-std::vector<Particle*> advance_particle_queue;
+std::vector<Particle*> advance_fuel_particle_queue;
+std::vector<Particle*> advance_nonfuel_particle_queue;
 std::vector<Particle*> surface_crossing_queue;
 std::vector<Particle*> collision_queue;
 
@@ -75,9 +77,9 @@ void revive_particle_from_secondary(Particle* p)
   if (p->write_track_) add_particle_track();
 }
 
-void process_advance_particle_events()
+void process_advance_particle_events(std::vector<Particle*>& queue)
 {
-  for (auto& p : advance_particle_queue) {
+  for (auto& p : queue) {
     // Set the random number stream
     if (p->type_ == Particle::Type::neutron) {
       prn_set_stream(STREAM_TRACKING);
@@ -189,7 +191,7 @@ void process_advance_particle_events()
     }
   }
 
-  advance_particle_queue.clear();
+  queue.clear();
 }
 
 void process_surface_crossing_events()
@@ -225,7 +227,17 @@ void process_surface_crossing_events()
       revive_particle_from_secondary(p);
     }
 
-    if (p->alive_) advance_particle_queue.push_back(p);
+    if (p->alive_) {
+      if (p->material_ == MATERIAL_VOID) {
+        advance_nonfuel_particle_queue.push_back(p);
+      } else {
+        if (model::materials[p->material_]->fissionable_) {
+          advance_fuel_particle_queue.push_back(p);
+        } else {
+          advance_nonfuel_particle_queue.push_back(p);
+        }
+      }
+    }
   }
 
   surface_crossing_queue.clear();
@@ -308,7 +320,15 @@ void process_collision_events()
     }
 
     if (p->alive_) {
-      advance_particle_queue.push_back(p);
+      if (p->material_ == MATERIAL_VOID) {
+        advance_nonfuel_particle_queue.push_back(p);
+      } else {
+        if (model::materials[p->material_]->fissionable_) {
+          advance_fuel_particle_queue.push_back(p);
+        } else {
+          advance_nonfuel_particle_queue.push_back(p);
+        }
+      }
     }
   }
 
@@ -325,12 +345,23 @@ void transport()
     initialize_histories(index_source, remaining_work_per_thread);
 
     // Add all particles to advance particle queue
+    auto& fuel {advance_fuel_particle_queue};
+    auto& nonfuel {advance_nonfuel_particle_queue};
     for (auto& p : particle_bank) {
-      advance_particle_queue.push_back(&p);
+      if (p.material_ == MATERIAL_VOID) {
+        nonfuel.push_back(&p);
+      } else {
+        if (model::materials[p.material_]->fissionable_) {
+          fuel.push_back(&p);
+        } else {
+          nonfuel.push_back(&p);
+        }
+      }
     }
 
-    while (!advance_particle_queue.empty()) {
-      process_advance_particle_events();
+    while (!fuel.empty() || !nonfuel.empty()) {
+      process_advance_particle_events(fuel);
+      process_advance_particle_events(nonfuel);
       process_surface_crossing_events();
       process_collision_events();
     }
