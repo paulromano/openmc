@@ -745,64 +745,13 @@ void Material::calculate_xs(Particle& p) const
 
 void Material::calculate_neutron_xs(Particle& p) const
 {
-  // Find energy index on energy grid
-  int neutron = static_cast<int>(Particle::Type::neutron);
-  int i_grid = std::log(p.E_/data::energy_min[neutron])/simulation::log_spacing;
-
-  // Determine if this material has S(a,b) tables
-  bool check_sab = (thermal_tables_.size() > 0);
-
-  // Initialize position in i_sab_nuclides
-  int j = 0;
-
   // Add contribution from each nuclide in material
   for (int i = 0; i < nuclide_.size(); ++i) {
-    // ======================================================================
-    // CHECK FOR S(A,B) TABLE
-
-    int i_sab = C_NONE;
-    double sab_frac = 0.0;
-
-    // Check if this nuclide matches one of the S(a,b) tables specified.
-    // This relies on thermal_tables_ being sorted by .index_nuclide
-    if (check_sab) {
-      const auto& sab {thermal_tables_[j]};
-      if (i == sab.index_nuclide) {
-        // Get index in sab_tables
-        i_sab = sab.index_table;
-        sab_frac = sab.fraction;
-
-        // If particle energy is greater than the highest energy for the
-        // S(a,b) table, then don't use the S(a,b) table
-        if (p.E_ > data::thermal_scatt[i_sab]->threshold()) i_sab = C_NONE;
-
-        // Increment position in thermal_tables_
-        ++j;
-
-        // Don't check for S(a,b) tables if there are no more left
-        if (j == thermal_tables_.size()) check_sab = false;
-      }
-    }
-
-    // ======================================================================
-    // CALCULATE MICROSCOPIC CROSS SECTION
-
-    // Determine microscopic cross sections for this nuclide
+    // Get microscopic cross section cache
     int i_nuclide = nuclide_[i];
-
-    // Calculate microscopic cross section for this nuclide
     const auto& micro {p.neutron_xs_[i_nuclide]};
-    if (p.E_ != micro.last_E
-        || p.sqrtkT_ != micro.last_sqrtkT
-        || i_sab != micro.index_sab
-        || sab_frac != micro.sab_frac) {
-      data::nuclides[i_nuclide]->calculate_xs(i_sab, i_grid, sab_frac, p);
-    }
 
-    // ======================================================================
-    // ADD TO MACROSCOPIC CROSS SECTION
-
-    // Copy atom density of nuclide in material
+    // Get atom density of nuclide in material
     double atom_density = atom_density_(i);
 
     // Add contributions to cross sections

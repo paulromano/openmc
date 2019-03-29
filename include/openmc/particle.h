@@ -124,6 +124,8 @@ struct MacroXS {
   double incoherent;      //!< macroscopic incoherent xs
   double photoelectric;   //!< macroscopic photoelectric xs
   double pair_production; //!< macroscopic pair production xs
+
+  int i_grid;
 };
 
 //==============================================================================

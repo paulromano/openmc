@@ -20,6 +20,7 @@
 #include "openmc/settings.h"
 #include "openmc/source.h"
 #include "openmc/state_point.h"
+#include "openmc/thermal.h"
 #include "openmc/timer.h"
 #include "openmc/tallies/derivative.h"
 #include "openmc/tallies/filter.h"
@@ -39,11 +40,13 @@
 
 namespace openmc {
 
+extern std::vector<Particle*> calculate_xs_queue;
 extern std::vector<Particle*> advance_particle_queue;
 extern std::vector<Particle*> surface_crossing_queue;
 extern std::vector<Particle*> collision_queue;
-#pragma omp threadprivate(advance_particle_queue, surface_crossing_queue, collision_queue)
+#pragma omp threadprivate(calculate_xs_queue, advance_particle_queue, surface_crossing_queue, collision_queue)
 
+std::vector<Particle*> calculate_xs_queue;
 std::vector<Particle*> advance_particle_queue;
 std::vector<Particle*> surface_crossing_queue;
 std::vector<Particle*> collision_queue;
@@ -75,9 +78,10 @@ void revive_particle_from_secondary(Particle* p)
   if (p->write_track_) add_particle_track();
 }
 
-void process_advance_particle_events()
+void process_calculate_xs_events()
 {
-  for (auto& p : advance_particle_queue) {
+  // Save last_ members, find grid index
+  for (auto& p : calculate_xs_queue) {
     // Set the random number stream
     if (p->type_ == Particle::Type::neutron) {
       prn_set_stream(STREAM_TRACKING);
@@ -110,15 +114,68 @@ void process_advance_particle_events()
 
     if (settings::check_overlaps) check_cell_overlap(p);
 
+    if (settings::run_CE) {
+      if (p->material_ == p->material_last_ && p->sqrtkT_ != p->sqrtkT_last_) {
+        // Remove particle from queue
+      }
+    }
+
+    // Find energy index on energy grid
+    // TODO: Calculate this separately?
+    int neutron = static_cast<int>(Particle::Type::neutron);
+    p->macro_xs_.i_grid = std::log(p->E_/data::energy_min[neutron]) / simulation::log_spacing;
+  }
+
+  // Calculate nuclide micros
+  for (int i = 0; i < data::nuclides.size(); ++i) {
+    for (auto& p : calculate_xs_queue) {
+      if (p->material_ == MATERIAL_VOID) continue;
+
+      // If material doesn't have this nuclide, skip it
+      const auto& mat {model::materials[p->material_]};
+      if (mat->mat_nuclide_index_[i] == -1) continue;
+
+      // ======================================================================
+      // CHECK FOR S(A,B) TABLE
+
+      // Check if this nuclide matches one of the S(a,b) tables specified.
+      // This relies on thermal_tables_ being sorted by .index_nuclide
+      int i_sab = C_NONE;
+      double sab_frac = 0.0;
+      for (const auto& sab : mat->thermal_tables_) {
+        if (i == sab.index_nuclide) {
+          // Get index in sab_tables
+          i_sab = sab.index_table;
+          sab_frac = sab.fraction;
+
+          // If particle energy is greater than the highest energy for the
+          // S(a,b) table, then don't use the S(a,b) table
+          if (p->E_ > data::thermal_scatt[i_sab]->threshold()) i_sab = C_NONE;
+        }
+      }
+
+      // ======================================================================
+      // CALCULATE MICROSCOPIC CROSS SECTION
+
+      // Calculate microscopic cross section for this nuclide
+      const auto& micro {p->neutron_xs_[i]};
+      if (p->E_ != micro.last_E
+          || p->sqrtkT_ != micro.last_sqrtkT
+          || i_sab != micro.index_sab
+          || sab_frac != micro.sab_frac) {
+        data::nuclides[i]->calculate_xs(i_sab, p->macro_xs_.i_grid, sab_frac, *p);
+      }
+    }
+  }
+
+  for (auto& p : calculate_xs_queue) {
     // Calculate microscopic and macroscopic cross sections
     if (p->material_ != MATERIAL_VOID) {
       if (settings::run_CE) {
-        if (p->material_ != p->material_last_ || p->sqrtkT_ != p->sqrtkT_last_) {
-          // If the material is the same as the last material and the
-          // temperature hasn't changed, we don't need to lookup cross
-          // sections again.
-          model::materials[p->material_]->calculate_xs(*p);
-        }
+        // If the material is the same as the last material and the
+        // temperature hasn't changed, we don't need to lookup cross
+        // sections again.
+        model::materials[p->material_]->calculate_xs(*p);
       } else {
         // Get the MG data
         calculate_xs_c(p->material_, p->g_, p->sqrtkT_, p->u_local(),
@@ -135,7 +192,16 @@ void process_advance_particle_events()
       p->macro_xs_.nu_fission = 0.0;
     }
 
-    // -------------- break here? -------------------
+    advance_particle_queue.push_back(p);
+  }
+
+  calculate_xs_queue.clear();
+}
+
+void process_advance_particle_events()
+{
+  for (auto& p : advance_particle_queue) {
+    simulation::trace == (p->id_ == 0);
 
     // Sample a distance to collision
     double d_collision;
@@ -225,7 +291,7 @@ void process_surface_crossing_events()
       revive_particle_from_secondary(p);
     }
 
-    if (p->alive_) advance_particle_queue.push_back(p);
+    if (p->alive_) calculate_xs_queue.push_back(p);
   }
 
   surface_crossing_queue.clear();
@@ -307,9 +373,7 @@ void process_collision_events()
       revive_particle_from_secondary(p);
     }
 
-    if (p->alive_) {
-      advance_particle_queue.push_back(p);
-    }
+    if (p->alive_) calculate_xs_queue.push_back(p);
   }
 
   collision_queue.clear();
@@ -326,13 +390,29 @@ void transport()
 
     // Add all particles to advance particle queue
     for (auto& p : particle_bank) {
-      advance_particle_queue.push_back(&p);
+      calculate_xs_queue.push_back(&p);
     }
 
-    while (!advance_particle_queue.empty()) {
-      process_advance_particle_events();
-      process_surface_crossing_events();
-      process_collision_events();
+    while (true) {
+      // Determine size of each queue
+      int n_xs = calculate_xs_queue.size();
+      int n_advance = advance_particle_queue.size();
+      int n_surface = surface_crossing_queue.size();
+      int n_collision = collision_queue.size();
+      //std::cout << n_xs << " " << n_advance << " " << n_surface << " " << n_collision << '\n';
+
+      int max = std::max({n_xs, n_advance, n_surface, n_collision});
+      if (max == 0) {
+        break;
+      } else if (max == n_xs) {
+        process_calculate_xs_events();
+      } else if (max == n_advance) {
+        process_advance_particle_events();
+      } else if (max == n_surface) {
+        process_surface_crossing_events();
+      } else if (max == n_collision) {
+        process_collision_events();
+      }
     }
 
     particle_bank.clear();
