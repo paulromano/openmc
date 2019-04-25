@@ -51,7 +51,7 @@ std::vector<Particle*> advance_particle_queue;
 std::vector<Particle*> surface_crossing_queue;
 std::vector<Particle*> collision_queue;
 
-constexpr size_t MAX_PARTICLES_PER_THREAD {1000};
+constexpr size_t MAX_PARTICLES_PER_THREAD {100};
 
 void initialize_histories(int& index_source,
   size_t& remaining_work_per_thread)
