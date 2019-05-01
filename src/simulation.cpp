@@ -40,13 +40,15 @@
 
 namespace openmc {
 
-extern std::vector<Particle*> calculate_xs_queue;
+extern std::vector<Particle*> calculate_fuel_xs_queue;
+extern std::vector<Particle*> calculate_nonfuel_xs_queue;
 extern std::vector<Particle*> advance_particle_queue;
 extern std::vector<Particle*> surface_crossing_queue;
 extern std::vector<Particle*> collision_queue;
-#pragma omp threadprivate(calculate_xs_queue, advance_particle_queue, surface_crossing_queue, collision_queue)
+#pragma omp threadprivate(calculate_fuel_xs_queue, calculate_nonfuel_xs_queue, advance_particle_queue, surface_crossing_queue, collision_queue)
 
-std::vector<Particle*> calculate_xs_queue;
+std::vector<Particle*> calculate_fuel_xs_queue;
+std::vector<Particle*> calculate_nonfuel_xs_queue;
 std::vector<Particle*> advance_particle_queue;
 std::vector<Particle*> surface_crossing_queue;
 std::vector<Particle*> collision_queue;
@@ -78,10 +80,23 @@ void revive_particle_from_secondary(Particle* p)
   if (p->write_track_) add_particle_track();
 }
 
-void process_calculate_xs_events()
+void dispatch_xs_event(Particle* p)
+{
+  if (p->material_ == MATERIAL_VOID) {
+    calculate_nonfuel_xs_queue.push_back(p);
+  } else {
+    if (model::materials[p->material_]->fissionable_) {
+      calculate_fuel_xs_queue.push_back(p);
+    } else {
+      calculate_nonfuel_xs_queue.push_back(p);
+    }
+  }
+}
+
+void process_calculate_xs_events(std::vector<Particle*>& queue)
 {
   // Save last_ members, find grid index
-  for (auto& p : calculate_xs_queue) {
+  for (auto& p : queue) {
     // Set the random number stream
     if (p->type_ == Particle::Type::neutron) {
       prn_set_stream(STREAM_TRACKING);
@@ -128,7 +143,7 @@ void process_calculate_xs_events()
 
   // Calculate nuclide micros
   for (int i = 0; i < data::nuclides.size(); ++i) {
-    for (auto& p : calculate_xs_queue) {
+    for (auto& p : queue) {
       if (p->material_ == MATERIAL_VOID) continue;
 
       // If material doesn't have this nuclide, skip it
@@ -168,7 +183,7 @@ void process_calculate_xs_events()
     }
   }
 
-  for (auto& p : calculate_xs_queue) {
+  for (auto& p : queue) {
     // Calculate microscopic and macroscopic cross sections
     if (p->material_ != MATERIAL_VOID) {
       if (settings::run_CE) {
@@ -195,7 +210,7 @@ void process_calculate_xs_events()
     advance_particle_queue.push_back(p);
   }
 
-  calculate_xs_queue.clear();
+  queue.clear();
 }
 
 void process_advance_particle_events()
@@ -291,7 +306,7 @@ void process_surface_crossing_events()
       revive_particle_from_secondary(p);
     }
 
-    if (p->alive_) calculate_xs_queue.push_back(p);
+    if (p->alive_) dispatch_xs_event(p);
   }
 
   surface_crossing_queue.clear();
@@ -373,7 +388,7 @@ void process_collision_events()
       revive_particle_from_secondary(p);
     }
 
-    if (p->alive_) calculate_xs_queue.push_back(p);
+    if (p->alive_) dispatch_xs_event(p);
   }
 
   collision_queue.clear();
@@ -390,22 +405,25 @@ void transport()
 
     // Add all particles to advance particle queue
     for (auto& p : particle_bank) {
-      calculate_xs_queue.push_back(&p);
+      dispatch_xs_event(&p);
     }
 
     while (true) {
       // Determine size of each queue
-      int n_xs = calculate_xs_queue.size();
+      int n_fuel_xs = calculate_fuel_xs_queue.size();
+      int n_nonfuel_xs = calculate_nonfuel_xs_queue.size();
       int n_advance = advance_particle_queue.size();
       int n_surface = surface_crossing_queue.size();
       int n_collision = collision_queue.size();
       //std::cout << n_xs << " " << n_advance << " " << n_surface << " " << n_collision << '\n';
 
-      int max = std::max({n_xs, n_advance, n_surface, n_collision});
+      int max = std::max({n_fuel_xs, n_nonfuel_xs, n_advance, n_surface, n_collision});
       if (max == 0) {
         break;
-      } else if (max == n_xs) {
-        process_calculate_xs_events();
+      } else if (max == n_fuel_xs) {
+        process_calculate_xs_events(calculate_fuel_xs_queue);
+      } else if (max == n_nonfuel_xs) {
+        process_calculate_xs_events(calculate_nonfuel_xs_queue);
       } else if (max == n_advance) {
         process_advance_particle_events();
       } else if (max == n_surface) {
