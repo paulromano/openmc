@@ -7,7 +7,7 @@ import numpy as np
 
 import openmc
 from openmc.data import get_thermal_name
-from openmc.data.neutron import _get_metadata
+from openmc.data.ace import get_metadata
 from .macrobody import Box, RightCircularCylinder as RCC
 
 
@@ -159,7 +159,7 @@ def get_openmc_materials(materials):
         material = openmc.Material(m['id'])
         for nuclide, percent in m['nuclides']:
             zaid, xs = nuclide.split('.')
-            name, element, Z, A, metastable = _get_metadata(int(zaid), 'mcnp')
+            name, element, Z, A, metastable = get_metadata(int(zaid), 'mcnp')
             if percent < 0:
                 if A > 0:
                     material.add_nuclide(name, abs(percent), 'wo')
@@ -192,7 +192,7 @@ def get_openmc_surfaces(surfaces):
                 raise NotImplementedError('General plane defined by three points not supported')
             else:
                 A, B, C, D = map(float_, coeffs)
-            surf = openmc.Plane(surface_id=s['id'], A=A, B=B, C=C, D=D)
+            surf = openmc.Plane(surface_id=s['id'], a=A, b=B, c=C, d=D)
         elif s['mnemonic'] == 'px':
             x0 = float_(s['coefficients'])
             surf = openmc.XPlane(surface_id=s['id'], x0=x0)
@@ -204,59 +204,59 @@ def get_openmc_surfaces(surfaces):
             surf = openmc.ZPlane(surface_id=s['id'], z0=z0)
         elif s['mnemonic'] == 'so':
             R = float_(s['coefficients'])
-            surf = openmc.Sphere(surface_id=s['id'], R=R)
+            surf = openmc.Sphere(surface_id=s['id'], r=R)
         elif s['mnemonic'] == 's':
             x0, y0, z0, R = map(float_, s['coefficients'].split())
-            surf = openmc.Sphere(surface_id=s['id'], x0=x0, y0=y0, z0=z0, R=R)
+            surf = openmc.Sphere(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r=R)
         elif s['mnemonic'] == 'sx':
             x0, R = map(float_, s['coefficients'].split())
-            surf = openmc.Sphere(surface_id=s['id'], x0=x0, R=R)
+            surf = openmc.Sphere(surface_id=s['id'], x0=x0, r=R)
         elif s['mnemonic'] == 'sy':
             y0, R = map(float_, s['coefficients'].split())
-            surf = openmc.Sphere(surface_id=s['id'], y0=y0, R=R)
+            surf = openmc.Sphere(surface_id=s['id'], y0=y0, r=R)
         elif s['mnemonic'] == 'sz':
             z0, R = map(float_, s['coefficients'].split())
-            surf = openmc.Sphere(surface_id=s['id'], z0=z0, R=R)
+            surf = openmc.Sphere(surface_id=s['id'], z0=z0, r=R)
         elif s['mnemonic'] == 'c/x':
             y0, z0, R = map(float_, s['coefficients'].split())
-            surf = openmc.XCylinder(surface_id=s['id'], y0=y0, z0=z0, R=R)
+            surf = openmc.XCylinder(surface_id=s['id'], y0=y0, z0=z0, r=R)
         elif s['mnemonic'] == 'c/y':
             x0, z0, R = map(float_, s['coefficients'].split())
-            surf = openmc.YCylinder(surface_id=s['id'], x0=x0, z0=z0, R=R)
+            surf = openmc.YCylinder(surface_id=s['id'], x0=x0, z0=z0, r=R)
         elif s['mnemonic'] == 'c/z':
             x0, y0, R = map(float_, s['coefficients'].split())
-            surf = openmc.ZCylinder(surface_id=s['id'], x0=x0, y0=y0, R=R)
+            surf = openmc.ZCylinder(surface_id=s['id'], x0=x0, y0=y0, r=R)
         elif s['mnemonic'] == 'cx':
             R = float_(s['coefficients'])
-            surf = openmc.XCylinder(surface_id=s['id'], R=R)
+            surf = openmc.XCylinder(surface_id=s['id'], r=R)
         elif s['mnemonic'] == 'cy':
             R = float_(s['coefficients'])
-            surf = openmc.YCylinder(surface_id=s['id'], R=R)
+            surf = openmc.YCylinder(surface_id=s['id'], r=R)
         elif s['mnemonic'] == 'cz':
             R = float_(s['coefficients'])
-            surf = openmc.ZCylinder(surface_id=s['id'], R=R)
+            surf = openmc.ZCylinder(surface_id=s['id'], r=R)
         elif s['mnemonic'] in ('k/x', 'k/y', 'k/z'):
             coeffs = [float_(x) for x in s['coefficients'].split()]
             x0, y0, z0, R2 = coeffs[:4]
             if len(coeffs) > 4:
                 raise NotImplementedError('One-sheet cone not supported')
             if s['mnemonic'] == 'k/x':
-                surf = openmc.XCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, R2=R2)
+                surf = openmc.XCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
             elif s['mnemonic'] == 'k/y':
-                surf = openmc.YCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, R2=R2)
+                surf = openmc.YCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
             elif s['mnemonic'] == 'k/z':
-                surf = openmc.ZCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, R2=R2)
+                surf = openmc.ZCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
         elif s['mnemonic'] in ('kx', 'ky', 'kz'):
             coeffs = [float_(x) for x in s['coefficients'].split()]
             x, R2 = coeffs[:2]
             if len(coeffs) > 2:
                 raise NotImplementedError('One-sheet cone not supported')
             if s['mnemonic'] == 'kx':
-                surf = openmc.XCone(surface_id=s['id'], x0=x, R2=R2)
+                surf = openmc.XCone(surface_id=s['id'], x0=x, r2=R2)
             elif s['mnemonic'] == 'ky':
-                surf = openmc.YCone(surface_id=s['id'], y0=x, R2=R2)
+                surf = openmc.YCone(surface_id=s['id'], y0=x, r2=R2)
             elif s['mnemonic'] == 'kz':
-                surf = openmc.ZCone(surface_id=s['id'], z0=x, R2=R2)
+                surf = openmc.ZCone(surface_id=s['id'], z0=x, r2=R2)
         elif s['mnemonic'] == 'gq':
             a, b, c, d, e, f, g, h, j, k = map(float_, s['coefficients'].split())
             surf = openmc.Quadric(surface_id=s['id'], a=a, b=b, c=c, d=d, e=e,
@@ -270,7 +270,7 @@ def get_openmc_surfaces(surfaces):
             elif hx == 0.0 and hz == 0.0:
                 surf = RCC((vx, vy, vz), hy, r, axis='y')
             else:
-                raise notImplementedError('RCC macrobody with non-axis-aligned'
+                raise NotImplementedError('RCC macrobody with non-axis-aligned'
                                           'height vector not supported.')
         elif s['mnemonic'] == 'box':
             coeffs = list(map(float_, s['coefficients'].split()))
