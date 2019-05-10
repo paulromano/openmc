@@ -189,10 +189,13 @@ def get_openmc_surfaces(surfaces):
         if s['mnemonic'] == 'p':
             coeffs = s['coefficients'].split()
             if len(coeffs) == 9:
-                raise NotImplementedError('General plane defined by three points not supported')
+                p1 = coeffs[:3]
+                p2 = coeffs[3:6]
+                p3 = coeffs[6:]
+                surf = openmc.Plane.from_points(p1, p2, p3)
             else:
                 A, B, C, D = map(float_, coeffs)
-            surf = openmc.Plane(surface_id=s['id'], a=A, b=B, c=C, d=D)
+                surf = openmc.Plane(surface_id=s['id'], a=A, b=B, c=C, d=D)
         elif s['mnemonic'] == 'px':
             x0 = float_(s['coefficients'])
             surf = openmc.XPlane(surface_id=s['id'], x0=x0)
