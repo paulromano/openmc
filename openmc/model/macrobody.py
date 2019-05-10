@@ -9,15 +9,15 @@ class RightCircularCylinder(openmc.Surface):
         kwargs = {'boundary_type': boundary_type}
         cx, cy, cz = center_base
         if axis == 'x':
-            self.cyl = openmc.XCylinder(y0=cy, z0=cz, R=radius, **kwargs)
+            self.cyl = openmc.XCylinder(y0=cy, z0=cz, r=radius, **kwargs)
             self.bottom = openmc.XPlane(x0=cx, **kwargs)
             self.top = openmc.XPlane(x0=cx + height, **kwargs)
         elif axis == 'y':
-            self.cyl = openmc.YCylinder(x0=cx, z0=cz, R=radius, **kwargs)
+            self.cyl = openmc.YCylinder(x0=cx, z0=cz, r=radius, **kwargs)
             self.bottom = openmc.YPlane(y0=cy, **kwargs)
             self.top = openmc.YPlane(y0=cy + height, **kwargs)
         elif axis == 'z':
-            self.cyl = openmc.ZCylinder(x0=cx, y0=cy, R=radius, **kwargs)
+            self.cyl = openmc.ZCylinder(x0=cx, y0=cy, r=radius, **kwargs)
             self.bottom = openmc.ZPlane(z0=cz, **kwargs)
             self.top = openmc.ZPlane(z0=cz + height, **kwargs)
 
@@ -28,7 +28,7 @@ class RightCircularCylinder(openmc.Surface):
         return +self.cyl | -self.bottom | +self.top
 
     def evaluate(self, point):
-        raise NotImplementError('Macrobodies do not have a surface equation.')
+        raise NotImplementedError('Macrobodies do not have a surface equation.')
 
     def translate(self, vector):
         surf = copy(self)
