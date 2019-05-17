@@ -2111,6 +2111,150 @@ class Quadric(QuadricMixin, Surface):
         return tuple(getattr(self, c) for c in self._coeff_keys)
 
 
+class XTorus(Surface):
+    """description.
+
+    Parameters
+    ----------
+    surface_id : int, optional
+        Unique identifier for the surface. If not specified, an identifier will
+        automatically be assigned.
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}, optional
+        Boundary condition that defines the behavior for particles hitting the
+        surface. Defaults to transmissive boundary condition where particles
+        freely pass through the surface.
+    x0, y0 ,z0, A, B, C,  : float, optional
+        coefficients for the surface. All default to 0.
+    name : str, optional
+        Name of the surface. If not specified, the name will be the empty string.
+
+    Attributes
+    ----------
+    a, b, c, d, e, f, g, h, j, k : float
+        coefficients for the surface
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}
+        Boundary condition that defines the behavior for particles hitting the
+        surface.
+    coefficients : dict
+        Dictionary of surface coefficients
+    id : int
+        Unique identifier for the surface
+    name : str
+        Name of the surface
+    type : str
+        Type of the surface
+
+    """
+
+    _type = 'x-torus'
+    _coeff_keys = ('x0', 'y0', 'z0', 'A', 'B', 'C')
+
+    def __init__(self, surface_id=None, boundary_type='transmission',
+                 x0=0., y0=0., z0=0., A=0., B=0., C=0., name=''):
+        super().__init__(surface_id, boundary_type, name=name)
+        self.x0 = x0
+        self.y0 = y0
+        self.z0 = z0
+        self.a = a
+        self.b = b
+        self.c = c
+
+class YTorus(Surface):
+    """description.
+
+    Parameters
+    ----------
+    surface_id : int, optional
+        Unique identifier for the surface. If not specified, an identifier will
+        automatically be assigned.
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}, optional
+        Boundary condition that defines the behavior for particles hitting the
+        surface. Defaults to transmissive boundary condition where particles
+        freely pass through the surface.
+    x0, y0 ,z0, A, B, C,  : float, optional
+        coefficients for the surface. All default to 0.
+    name : str, optional
+        Name of the surface. If not specified, the name will be the empty string.
+
+    Attributes
+    ----------
+    a, b, c, d, e, f, g, h, j, k : float
+        coefficients for the surface
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}
+        Boundary condition that defines the behavior for particles hitting the
+        surface.
+    coefficients : dict
+        Dictionary of surface coefficients
+    id : int
+        Unique identifier for the surface
+    name : str
+        Name of the surface
+    type : str
+        Type of the surface
+
+    """
+
+    _type = 'y-torus'
+    _coeff_keys = ('x0', 'y0', 'z0', 'A', 'B', 'C')
+
+    def __init__(self, surface_id=None, boundary_type='transmission',
+                 x0=0., y0=0., z0=0., A=0., B=0., C=0., name=''):
+        super().__init__(surface_id, boundary_type, name=name)
+        self.x0 = x0
+        self.y0 = y0
+        self.z0 = z0
+        self.a = a
+        self.b = b
+        self.c = c
+
+class ZTorus(Surface):
+    """description.
+
+    Parameters
+    ----------
+    surface_id : int, optional
+        Unique identifier for the surface. If not specified, an identifier will
+        automatically be assigned.
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}, optional
+        Boundary condition that defines the behavior for particles hitting the
+        surface. Defaults to transmissive boundary condition where particles
+        freely pass through the surface.
+    x0, y0 ,z0, A, B, C,  : float, optional
+        coefficients for the surface. All default to 0.
+    name : str, optional
+        Name of the surface. If not specified, the name will be the empty string.
+
+    Attributes
+    ----------
+    a, b, c, d, e, f, g, h, j, k : float
+        coefficients for the surface
+    boundary_type : {'transmission, 'vacuum', 'reflective', 'periodic'}
+        Boundary condition that defines the behavior for particles hitting the
+        surface.
+    coefficients : dict
+        Dictionary of surface coefficients
+    id : int
+        Unique identifier for the surface
+    name : str
+        Name of the surface
+    type : str
+        Type of the surface
+
+    """
+
+    _type = 'z-torus'
+    _coeff_keys = ('x0', 'y0', 'z0', 'A', 'B', 'C')
+
+    def __init__(self, surface_id=None, boundary_type='transmission',
+                 x0=0., y0=0., z0=0., A=0., B=0., C=0., name=''):
+        super().__init__(surface_id, boundary_type, name=name)
+        self.x0 = x0
+        self.y0 = y0
+        self.z0 = z0
+        self.a = a
+        self.b = b
+        self.c = c
+
 class Halfspace(Region):
     """A positive or negative half-space region.
 

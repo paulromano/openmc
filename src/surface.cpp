@@ -1199,7 +1199,7 @@ SurfaceYTorus::SurfaceYTorus(pugi::xml_node surf_node)
 
 void SurfaceXTorus::to_hdf5_inner(hid_t group_id) const
 {
-  write_string(group_id, "type", "torus-x", false);
+  write_string(group_id, "type", "x-torus", false);
   std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
   write_dataset(group_id, "coefficients", coeffs);
 }
@@ -1235,7 +1235,7 @@ SurfaceYTorus::normal(Position r) const
 
 void SurfaceYTorus::to_hdf5_inner(hid_t group_id) const
 {
-  write_string(group_id, "type", "torus-y", false);
+  write_string(group_id, "type", "y-torus", false);
   std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
   write_dataset(group_id, "coefficients", coeffs);
 }
@@ -1277,7 +1277,7 @@ SurfaceZTorus::normal(Position r) const
 
 void SurfaceZTorus::to_hdf5_inner(hid_t group_id) const
 {
-  write_string(group_id, "type", "torus-z", false);
+  write_string(group_id, "type", "z-torus", false);
   std::array<double, 6> coeffs {{x0_, y0_, z0_, A_, B_, C_ }};
   write_dataset(group_id, "coefficients", coeffs);
 }
@@ -1338,14 +1338,14 @@ void read_surfaces(pugi::xml_node node)
       } else if (surf_type == "quadric") {
         model::surfaces.push_back(std::make_unique<SurfaceQuadric>(surf_node));
 
-      } else if (surf_type == "torus-x") {
-        model::surfaces.push_back(new SurfaceXTorus(surf_node));
+      } else if (surf_type == "x-torus") {
+        model::surfaces.push_back(std::make_unique<SurfaceXTorus>(surf_node));
 
-      } else if (surf_type == "torus-y") {
-        model::surfaces.push_back(new SurfaceYTorus(surf_node));
+      } else if (surf_type == "y-torus") {
+        model::surfaces.push_back(std::make_unique<SurfaceYTorus>(surf_node));
 
-      } else if (surf_type == "torus-z") {
-        model::surfaces.push_back(new SurfaceZTorus(surf_node));
+      } else if (surf_type == "z-torus") {
+        model::surfaces.push_back(std::make_unique<SurfaceZTorus>(surf_node));
 
       } else {
         fatal_error(fmt::format("Invalid surface type, \"{}\"", surf_type));
