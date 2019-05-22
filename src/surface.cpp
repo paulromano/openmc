@@ -1152,6 +1152,11 @@ void SurfaceQuadric::to_hdf5_inner(hid_t group_id) const
 }
 
 //==============================================================================
+// Generic functions for cubic & quartic solver
+//==============================================================================
+
+
+//==============================================================================
 // Generic functions for x-, y-, and z-, tori
 //==============================================================================
 
@@ -1271,154 +1276,31 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   double v = ang.y;
   double w = ang.z;
 
+  double xr = r.x;
+  double yr = r.y;
+  double zr = r.z;
+
+  double A = A_;
+  double B = B_;
+  double C = C_;
+
+  double x0 = x0_;
+  double y0 = y0_;
+  double z0 = z0_;
+
   double a,b,c,d,e; // coefficients of quartic
 
   // 4th order coefficient
-  a = std::pow(u,4) + 2*std::pow(u,2)*std::pow(v,2) + std::pow(v,4);
-  a += 2.*std::pow(C_,2)*std::pow(u,2)*std::pow(w,2)/std::pow(B_,2);
-  a += 2.*std::pow(C_,2)*std::pow(v,2)*std::pow(w,2)/std::pow(B_,2);
-  a += std::pow(C_,4)*std::pow(w,4)/std::pow(B_,4);
+  a = std::pow(u,4) + 2*std::pow(u,2)*std::pow(v,2) + std::pow(v,4) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(w,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(w,2)/std::pow(B,2) + std::pow(C,4)*std::pow(w,4)/std::pow(B,4);
 
   // 3rd order coefficient
-  b =  -4*std::pow(u,3)*x0_ + 4.*std::pow(u,3)*r.x - 4.*std::pow(u,2)*v*y0_;
-  b +=  4*std::pow(u,2)*v*r.y - 4*u*std::pow(v,2)*x0_ + 4*u*std::pow(v,2)*r.x;
-  b += -4*std::pow(v,3)*y0_ + 4*std::pow(v,3)*r.y;
-  b += -4*std::pow(C_,2)*std::pow(u,2)*w*z0_/std::pow(B_,2);
-  b +=  4*std::pow(C_,2)*std::pow(u,2)*w*r.z/std::pow(B_,2);
-  b += -4*std::pow(C_,2)*u*std::pow(w,2)*x0_/std::pow(B_,2);
-  b +=  4*std::pow(C_,2)*u*std::pow(w,2)*r.x/std::pow(B_,2);
-  b += -4*std::pow(C_,2)*std::pow(v,2)*w*z0_/std::pow(B_,2);
-  b +=  4*std::pow(C_,2)*std::pow(v,2)*w*r.z/std::pow(B_,2);
-  b += -4*std::pow(C_,2)*v*std::pow(w,2)*y0_/std::pow(B_,2);
-  b +=  4*std::pow(C_,2)*v*std::pow(w,2)*r.y/std::pow(B_,2);
-  b += -4*std::pow(C_,4)*std::pow(w,3)*z0_/std::pow(B_,4);
-  b +=  4*std::pow(C_,4)*std::pow(w,3)*r.z/std::pow(B_,4);
+  b = -4*std::pow(u,3)*x0 + 4*std::pow(u,3)*xr - 4*std::pow(u,2)*v*y0 + 4*std::pow(u,2)*v*yr - 4*u*std::pow(v,2)*x0 + 4*u*std::pow(v,2)*xr - 4*std::pow(v,3)*y0 + 4*std::pow(v,3)*yr - 4*std::pow(C,2)*std::pow(u,2)*w*z0/std::pow(B,2) + 4*std::pow(C,2)*std::pow(u,2)*w*zr/std::pow(B,2) - 4*std::pow(C,2)*u*std::pow(w,2)*x0/std::pow(B,2) + 4*std::pow(C,2)*u*std::pow(w,2)*xr/std::pow(B,2) - 4*std::pow(C,2)*std::pow(v,2)*w*z0/std::pow(B,2) + 4*std::pow(C,2)*std::pow(v,2)*w*zr/std::pow(B,2) - 4*std::pow(C,2)*v*std::pow(w,2)*y0/std::pow(B,2) + 4*std::pow(C,2)*v*std::pow(w,2)*yr/std::pow(B,2) - 4*std::pow(C,4)*std::pow(w,3)*z0/std::pow(B,4) + 4*std::pow(C,4)*std::pow(w,3)*zr/std::pow(B,4);
   // 2nd order coefficient
-  c =  -2*std::pow(A_,4)*std::pow(u,2) - 2*std::pow(A_,4)*std::pow(v,2);
-  c +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(w,2)/std::pow(B_,2);
-  c += -2*std::pow(C_,2)*std::pow(u,2) - 2*std::pow(C_,2)*std::pow(v,2);
-  c +=  6*std::pow(u,2)*std::pow(x0_,2) - 12*std::pow(u,2)*x0_*r.x;
-  c +=  6*std::pow(u,2)*std::pow(r.x,2) + 2*std::pow(u,2)*std::pow(y0_,2);
-  c += -4*std::pow(u,2)*y0_*r.y + 2*std::pow(u,2)*std::pow(r.y,2);
-  c +=  8*u*v*x0_*y0_ - 8*u*v*x0_*r.y - 8*u*v*r.x*y0_ + 8*u*v*r.x*r.y;
-  c +=  2*std::pow(v,2)*std::pow(x0_,2) - 4*std::pow(v,2)*x0_*r.x;
-  c +=  2*std::pow(v,2)*std::pow(r.x,2) + 6*std::pow(v,2)*std::pow(y0_,2);
-  c += -12*std::pow(v,2)*y0_*r.y + 6*std::pow(v,2)*std::pow(r.y,2);
-  c += -2*std::pow(C_,4)*std::pow(w,2)/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(u,2)*std::pow(z0_,2)/std::pow(B_,2);
-  c += -4*std::pow(C_,2)*std::pow(u,2)*z0_*r.z/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(u,2)*std::pow(r.z,2)/std::pow(B_,2);
-  c +=  8*std::pow(C_,2)*u*w*x0_*z0_/std::pow(B_,2);
-  c += -8*std::pow(C_,2)*u*w*x0_*r.z/std::pow(B_,2);
-  c += -8*std::pow(C_,2)*u*w*r.x*z0_/std::pow(B_,2);
-  c +=  8*std::pow(C_,2)*u*w*r.x*r.z/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(v,2)*std::pow(z0_,2)/std::pow(B_,2);
-  c += -4*std::pow(C_,2)*std::pow(v,2)*z0_*r.z/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(v,2)*std::pow(r.z,2)/std::pow(B_,2);
-  c +=  8*std::pow(C_,2)*v*w*y0_*z0_/std::pow(B_,2);
-  c += -8*std::pow(C_,2)*v*w*y0_*r.z/std::pow(B_,2);
-  c += -8*std::pow(C_,2)*v*w*r.y*z0_/std::pow(B_,2);
-  c +=  8*std::pow(C_,2)*v*w*r.y*r.z/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(x0_,2)/std::pow(B_,2);
-  c += -4*std::pow(C_,2)*std::pow(w,2)*x0_*r.x/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(r.x,2)/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(y0_,2)/std::pow(B_,2);
-  c += -4*std::pow(C_,2)*std::pow(w,2)*y0_*r.y/std::pow(B_,2);
-  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(r.y,2)/std::pow(B_,2);
-  c +=  6*std::pow(C_,4)*std::pow(w,2)*std::pow(z0_,2)/std::pow(B_,4);
-  c +=  12*std::pow(C_,4)*std::pow(w,2)*z0_*r.z/std::pow(B_,4);
-  c +=  6*std::pow(C_,4)*std::pow(w,2)*std::pow(r.z,2)/std::pow(B_,4);
+  c= -2*std::pow(A,2)*std::pow(u,2) - 2*std::pow(A,2)*std::pow(v,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(w,2)/std::pow(B,2) - 2*std::pow(C,2)*std::pow(u,2) - 2*std::pow(C,2)*std::pow(v,2) + 6*std::pow(u,2)*std::pow(x0,2) - 12*std::pow(u,2)*x0*xr + 6*std::pow(u,2)*std::pow(xr,2) + 2*std::pow(u,2)*std::pow(y0,2) - 4*std::pow(u,2)*y0*yr + 2*std::pow(u,2)*std::pow(yr,2) + 8*u*v*x0*y0 - 8*u*v*x0*yr - 8*u*v*xr*y0 + 8*u*v*xr*yr + 2*std::pow(v,2)*std::pow(x0,2) - 4*std::pow(v,2)*x0*xr + 2*std::pow(v,2)*std::pow(xr,2) + 6*std::pow(v,2)*std::pow(y0,2) - 12*std::pow(v,2)*y0*yr + 6*std::pow(v,2)*std::pow(yr,2) - 2*std::pow(C,4)*std::pow(w,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(u,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(zr,2)/std::pow(B,2) + 8*std::pow(C,2)*u*w*x0*z0/std::pow(B,2) - 8*std::pow(C,2)*u*w*x0*zr/std::pow(B,2) - 8*std::pow(C,2)*u*w*xr*z0/std::pow(B,2) + 8*std::pow(C,2)*u*w*xr*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(v,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(zr,2)/std::pow(B,2) + 8*std::pow(C,2)*v*w*y0*z0/std::pow(B,2) - 8*std::pow(C,2)*v*w*y0*zr/std::pow(B,2) - 8*std::pow(C,2)*v*w*yr*z0/std::pow(B,2) + 8*std::pow(C,2)*v*w*yr*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(x0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(w,2)*x0*xr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(xr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(y0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(w,2)*y0*yr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(yr,2)/std::pow(B,2) + 6*std::pow(C,4)*std::pow(w,2)*std::pow(z0,2)/std::pow(B,4) - 12*std::pow(C,4)*std::pow(w,2)*z0*zr/std::pow(B,4) + 6*std::pow(C,4)*std::pow(w,2)*std::pow(zr,2)/std::pow(B,4);
   // the 1st order terms
-  d =   4*std::pow(A_,4)*u*x0_ - 4*std::pow(A_,4)*u*r.x;
-  d +=  4*std::pow(A_,4)*v*y0_ - 4*std::pow(A_,4)*v*r.y;
-  d += -4*std::pow(A_,4)*std::pow(C_,2)*w*z0_/std::pow(B_,2);
-  d +=  4*std::pow(A_,4)*std::pow(C_,2)*w*r.z/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*u*x0_ - 4*std::pow(C_,2)*u*r.x;
-  d +=  4*std::pow(C_,2)*v*y0_ - 4*std::pow(C_,2)*v*r.y;
-  d += -4*u*std::pow(x0_,3) + 12*u*std::pow(x0_,2)*r.x;
-  d += -12*u*x0_*std::pow(r.x,2) - 4*u*x0_*std::pow(y0_,2);;
-  d +=  8*u*x0_*y0_*r.y - 4*u*x0_*std::pow(r.y,2);
-  d +=  4*u*std::pow(r.x,3) + 4*u*r.x*std::pow(y0_,2);
-  d += -8*u*r.x*y0_*r.y + 4*u*r.x*std::pow(r.y,2);
-  d += -4*v*std::pow(x0_,2)*y0_ + 4*v*std::pow(x0_,2)*r.y;
-  d +=  8*v*x0_*r.x*y0_ -8*v*x0_*r.x*r.y -4*v*std::pow(r.x,2)*y0_;
-  d +=  4*v*std::pow(r.x,2)*r.y - 4*v*std::pow(y0_,3);
-  d +=  12*v*std::pow(y0_,2)*r.y - 12*v*y0_*std::pow(r.y,2);
-  d +=  4*v*std::pow(r.y,3) + 4*std::pow(C_,4)*w*z0_/std::pow(B_,2);
-  d += -4*std::pow(C_,4)*w*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*u*x0_*std::pow(z0_,2)/std::pow(B_,2);
-  d +=  8*std::pow(C_,2)*u*x0_*z0_*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*u*x0_*std::pow(r.z,2)/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*u*r.x*std::pow(z0_,2)/std::pow(B_,2);
-  d += -8*std::pow(C_,2)*u*r.x*z0_*r.z/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*u*r.x*std::pow(r.z,2)/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*v*y0_*std::pow(z0_,2)/std::pow(B_,2);
-  d +=  8*std::pow(C_,2)*v*y0_*z0_*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*v*y0_*std::pow(r.z,2)/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*v*r.y*std::pow(z0_,2)/std::pow(B_,2);
-  d += -8*std::pow(C_,2)*v*r.y*z0_*r.z/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*v*r.y*std::pow(r.z,2)/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*w*std::pow(x0_,2)*z0_/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*w*std::pow(x0_,2)*r.z/std::pow(B_,2);
-  d +=  8*std::pow(C_,2)*w*x0_*r.x*z0_/std::pow(B_,2);
-  d += -8*std::pow(C_,2)*w*x0_*r.x*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*w*std::pow(r.x,2)*z0_/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*w*std::pow(r.x,2)*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*w*std::pow(y0_,2)*z0_/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*w*std::pow(y0_,2)*r.z/std::pow(B_,2);
-  d +=  8*std::pow(C_,2)*w*y0_*r.y*z0_/std::pow(B_,2);
-  d +=  8*std::pow(C_,2)*w*y0_*r.y*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,2)*w*std::pow(r.y,2)*z0_/std::pow(B_,2);
-  d +=  4*std::pow(C_,2)*w*std::pow(r.y,2)*r.z/std::pow(B_,2);
-  d += -4*std::pow(C_,4)*w*std::pow(z0_,3)/std::pow(B_,4);
-  d +=  12*std::pow(C_,4)*w*std::pow(z0_,2)*r.z/std::pow(B_,4);
-  d += -12*std::pow(C_,4)*w*z0_*std::pow(r.z,2)/std::pow(B_,4);
-  d += 4*std::pow(C_,4)*w*std::pow(r.z,3)/std::pow(B_,4);
+  d = 4*std::pow(A,2)*u*x0 - 4*std::pow(A,2)*u*xr + 4*std::pow(A,2)*v*y0 - 4*std::pow(A,2)*v*yr - 4*std::pow(A,2)*std::pow(C,2)*w*z0/std::pow(B,2) + 4*std::pow(A,2)*std::pow(C,2)*w*zr/std::pow(B,2) + 4*std::pow(C,2)*u*x0 - 4*std::pow(C,2)*u*xr + 4*std::pow(C,2)*v*y0 - 4*std::pow(C,2)*v*yr - 4*u*std::pow(x0,3) + 12*u*std::pow(x0,2)*xr - 12*u*x0*std::pow(xr,2) - 4*u*x0*std::pow(y0,2) + 8*u*x0*y0*yr - 4*u*x0*std::pow(yr,2) + 4*u*std::pow(xr,3) + 4*u*xr*std::pow(y0,2) - 8*u*xr*y0*yr + 4*u*xr*std::pow(yr,2) - 4*v*std::pow(x0,2)*y0 + 4*v*std::pow(x0,2)*yr + 8*v*x0*xr*y0 - 8*v*x0*xr*yr - 4*v*std::pow(xr,2)*y0 + 4*v*std::pow(xr,2)*yr - 4*v*std::pow(y0,3) + 12*v*std::pow(y0,2)*yr - 12*v*y0*std::pow(yr,2) + 4*v*std::pow(yr,3) + 4*std::pow(C,4)*w*z0/std::pow(B,2) - 4*std::pow(C,4)*w*zr/std::pow(B,2) - 4*std::pow(C,2)*u*x0*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*u*x0*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*u*x0*std::pow(zr,2)/std::pow(B,2) + 4*std::pow(C,2)*u*xr*std::pow(z0,2)/std::pow(B,2) - 8*std::pow(C,2)*u*xr*z0*zr/std::pow(B,2) + 4*std::pow(C,2)*u*xr*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*v*y0*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*v*y0*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*v*y0*std::pow(zr,2)/std::pow(B,2) + 4*std::pow(C,2)*v*yr*std::pow(z0,2)/std::pow(B,2) - 8*std::pow(C,2)*v*yr*z0*zr/std::pow(B,2) + 4*std::pow(C,2)*v*yr*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*w*std::pow(x0,2)*z0/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(x0,2)*zr/std::pow(B,2) + 8*std::pow(C,2)*w*x0*xr*z0/std::pow(B,2) - 8*std::pow(C,2)*w*x0*xr*zr/std::pow(B,2) - 4*std::pow(C,2)*w*std::pow(xr,2)*z0/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(xr,2)*zr/std::pow(B,2) - 4*std::pow(C,2)*w*std::pow(y0,2)*z0/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(y0,2)*zr/std::pow(B,2) + 8*std::pow(C,2)*w*y0*yr*z0/std::pow(B,2) - 8*std::pow(C,2)*w*y0*yr*zr/std::pow(B,2) - 4*std::pow(C,2)*w*std::pow(yr,2)*z0/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(yr,2)*zr/std::pow(B,2) - 4*std::pow(C,4)*w*std::pow(z0,3)/std::pow(B,4) + 12*std::pow(C,4)*w*std::pow(z0,2)*zr/std::pow(B,4) - 12*std::pow(C,4)*w*z0*std::pow(zr,2)/std::pow(B,4) + 4*std::pow(C,4)*w*std::pow(zr,3)/std::pow(B,4);
   // the 0th order terms
-  e =   std::pow(A_,8) - 2*std::pow(A_,4)*std::pow(C_,2);
-  e += -2*std::pow(A_,4)*std::pow(x0_,2) + 4*std::pow(A_,4)*x0_*r.x;
-  e += -2*std::pow(A_,4)*std::pow(r.x,2) - 2*std::pow(A_,4)*std::pow(y0_,2);
-  e +=  4*std::pow(A_,4)*y0_*r.y - 2*std::pow(A_,4)*std::pow(r.y,2);
-  e +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(z0_,2)/std::pow(B_,2);
-  e += -4*std::pow(A_,4)*std::pow(C_,2)*z0_*r.z/std::pow(B_,2);
-  e +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  std::pow(C_,4) - 2*std::pow(C_,2)*std::pow(x0_,2);
-  e +=  4*std::pow(C_,2)*x0_*r.x - 2*std::pow(C_,2)*std::pow(r.x,2);
-  e +=  -2*std::pow(C_,2)*std::pow(y0_,2) + 4*std::pow(C_,2)*y0_*r.y;
-  e += -2*std::pow(C_,2)*std::pow(r.y,2) + std::pow(x0_,4);
-  e += -4*std::pow(x0_,3)*r.x + 6*std::pow(x0_,2)*std::pow(r.x,2);
-  e +=  2*std::pow(x0_,2)*std::pow(y0_,2) - 4*std::pow(x0_,2)*y0_*r.y;
-  e +=  2*std::pow(x0_,2)*std::pow(r.y,2) - 4*x0_*std::pow(r.x,3);
-  e += -4*x0_*r.x*std::pow(y0_,2) + 8*x0_*r.x*y0_*r.y;
-  e += -4*x0_*r.x*std::pow(r.y,2) + std::pow(r.x,4);
-  e +=  2*std::pow(r.x,2)*std::pow(y0_,2) - 4*std::pow(r.x,2)*y0_*r.y;
-  e +=  2*std::pow(r.x,2)*std::pow(r.y,2) + std::pow(y0_,4) - 4*std::pow(y0_,3)*r.y;
-  e +=  6*std::pow(y0_,2)*std::pow(r.y,2) - 4*y0_*std::pow(r.y,3) + std::pow(r.y,4);
-  e += -2*std::pow(C_,4)*std::pow(z0_,2)/std::pow(B_,2) + 4*std::pow(C_,4)*z0_*r.z/std::pow(B_,2);
-  e += -2*std::pow(C_,4)*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(x0_,2)*std::pow(z0_,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*std::pow(x0_,2)*z0_*r.z/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(x0_,2)*std::pow(r.z,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*x0_*r.x*std::pow(z0_,2)/std::pow(B_,2);
-  e +=  8*std::pow(C_,2)*x0_*r.x*z0_*r.z/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*x0_*r.x*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(r.x,2)*std::pow(z0_,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*std::pow(r.x,2)*z0_*r.z/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(r.x,2)*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(y0_,2)*std::pow(z0_,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*std::pow(y0_,2)*z0_*r.z/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(y0_,2)*std::pow(r.z,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*y0_*r.y*std::pow(z0_,2)/std::pow(B_,2);
-  e +=  8*std::pow(C_,2)*y0_*r.y*z0_*r.z/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*y0_*r.y*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(r.y,2)*std::pow(z0_,2)/std::pow(B_,2);
-  e += -4*std::pow(C_,2)*std::pow(r.y,2)*z0_*r.z/std::pow(B_,2);
-  e +=  2*std::pow(C_,2)*std::pow(r.y,2)*std::pow(r.z,2)/std::pow(B_,2);
-  e +=  std::pow(C_,4)*std::pow(z0_,4)/std::pow(B_,4);
-  e += -4*std::pow(C_,4)*std::pow(z0_,3)*r.z/std::pow(B_,4);
-  e +=  6*std::pow(C_,4)*std::pow(z0_,2)*std::pow(r.z,2)/std::pow(B_,4);
-  e += -4*std::pow(C_,4)*z0_*std::pow(r.z,3)/std::pow(B_,4);
-  e +=  std::pow(C_,4)*std::pow(r.z,4)/std::pow(B_,4);
+  e = std::pow(A,4) - 2*std::pow(A,2)*std::pow(C,2) - 2*std::pow(A,2)*std::pow(x0,2) + 4*std::pow(A,2)*x0*xr - 2*std::pow(A,2)*std::pow(xr,2) - 2*std::pow(A,2)*std::pow(y0,2) + 4*std::pow(A,2)*y0*yr - 2*std::pow(A,2)*std::pow(yr,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(A,2)*std::pow(C,2)*z0*zr/std::pow(B,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4) - 2*std::pow(C,2)*std::pow(x0,2) + 4*std::pow(C,2)*x0*xr - 2*std::pow(C,2)*std::pow(xr,2) - 2*std::pow(C,2)*std::pow(y0,2) + 4*std::pow(C,2)*y0*yr - 2*std::pow(C,2)*std::pow(yr,2) + std::pow(x0,4) - 4*std::pow(x0,3)*xr + 6*std::pow(x0,2)*std::pow(xr,2) + 2*std::pow(x0,2)*std::pow(y0,2) - 4*std::pow(x0,2)*y0*yr + 2*std::pow(x0,2)*std::pow(yr,2) - 4*x0*std::pow(xr,3) - 4*x0*xr*std::pow(y0,2) + 8*x0*xr*y0*yr - 4*x0*xr*std::pow(yr,2) + std::pow(xr,4) + 2*std::pow(xr,2)*std::pow(y0,2) - 4*std::pow(xr,2)*y0*yr + 2*std::pow(xr,2)*std::pow(yr,2) + std::pow(y0,4) - 4*std::pow(y0,3)*yr + 6*std::pow(y0,2)*std::pow(yr,2) - 4*y0*std::pow(yr,3) + std::pow(yr,4) - 2*std::pow(C,4)*std::pow(z0,2)/std::pow(B,2) + 4*std::pow(C,4)*z0*zr/std::pow(B,2) - 2*std::pow(C,4)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(x0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*x0*xr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(xr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(y0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*y0*yr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(yr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4)*std::pow(z0,4)/std::pow(B,4) - 4*std::pow(C,4)*std::pow(z0,3)*zr/std::pow(B,4) + 6*std::pow(C,4)*std::pow(z0,2)*std::pow(zr,2)/std::pow(B,4) - 4*std::pow(C,4)*z0*std::pow(zr,3)/std::pow(B,4) + std::pow(C,4)*std::pow(zr,4)/std::pow(B,4);
 
   std::cout << std::scientific;
   std::cout << std::setprecision(9);
