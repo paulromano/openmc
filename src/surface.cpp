@@ -7,6 +7,7 @@
 #include <fmt/core.h>
 #include <gsl/gsl>
 
+#include <iomanip>
 #include "openmc/error.h"
 #include "openmc/dagmc.h"
 #include "openmc/hdf5_interface.h"
@@ -398,7 +399,7 @@ bool SurfaceXPlane::periodic_translate(const PeriodicSurface* other,
     return false;
   } else {
     // Assume the partner is an YPlane (the only supported partner).  Use the
-    // evaluate function to find y0, then adjust position/Direction for
+    // evaluate function to find y0_, then adjust position/Direction for
     // rotational symmetry.
     double y0_ = -other->evaluate({0., 0., 0.});
     r.y = r.x - x0_ + y0_;
@@ -464,7 +465,7 @@ bool SurfaceYPlane::periodic_translate(const PeriodicSurface* other,
     return false;
   } else {
     // Assume the partner is an XPlane (the only supported partner).  Use the
-    // evaluate function to find x0, then adjust position/Direction for rotational
+    // evaluate function to find x0_, then adjust position/Direction for rotational
     // symmetry.
     double x0_ = -other->evaluate({0., 0., 0.});
     r.x = r.y - y0_ + x0_;
@@ -1266,6 +1267,165 @@ SurfaceZTorus::evaluate(Position r) const
 double
 SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
 {
+  double u = ang.x;
+  double v = ang.y;
+  double w = ang.z;
+
+  double a,b,c,d,e; // coefficients of quartic
+
+  // 4th order coefficient
+  a = std::pow(u,4) + 2*std::pow(u,2)*std::pow(v,2) + std::pow(v,4);
+  a += 2.*std::pow(C_,2)*std::pow(u,2)*std::pow(w,2)/std::pow(B_,2);
+  a += 2.*std::pow(C_,2)*std::pow(v,2)*std::pow(w,2)/std::pow(B_,2);
+  a += std::pow(C_,4)*std::pow(w,4)/std::pow(B_,4);
+
+  // 3rd order coefficient
+  b =  -4*std::pow(u,3)*x0_ + 4.*std::pow(u,3)*r.x - 4.*std::pow(u,2)*v*y0_;
+  b +=  4*std::pow(u,2)*v*r.y - 4*u*std::pow(v,2)*x0_ + 4*u*std::pow(v,2)*r.x;
+  b += -4*std::pow(v,3)*y0_ + 4*std::pow(v,3)*r.y;
+  b += -4*std::pow(C_,2)*std::pow(u,2)*w*z0_/std::pow(B_,2);
+  b +=  4*std::pow(C_,2)*std::pow(u,2)*w*r.z/std::pow(B_,2);
+  b += -4*std::pow(C_,2)*u*std::pow(w,2)*x0_/std::pow(B_,2);
+  b +=  4*std::pow(C_,2)*u*std::pow(w,2)*r.x/std::pow(B_,2);
+  b += -4*std::pow(C_,2)*std::pow(v,2)*w*z0_/std::pow(B_,2);
+  b +=  4*std::pow(C_,2)*std::pow(v,2)*w*r.z/std::pow(B_,2);
+  b += -4*std::pow(C_,2)*v*std::pow(w,2)*y0_/std::pow(B_,2);
+  b +=  4*std::pow(C_,2)*v*std::pow(w,2)*r.y/std::pow(B_,2);
+  b += -4*std::pow(C_,4)*std::pow(w,3)*z0_/std::pow(B_,4);
+  b +=  4*std::pow(C_,4)*std::pow(w,3)*r.z/std::pow(B_,4);
+  // 2nd order coefficient
+  c =  -2*std::pow(A_,4)*std::pow(u,2) - 2*std::pow(A_,4)*std::pow(v,2);
+  c +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(w,2)/std::pow(B_,2);
+  c += -2*std::pow(C_,2)*std::pow(u,2) - 2*std::pow(C_,2)*std::pow(v,2);
+  c +=  6*std::pow(u,2)*std::pow(x0_,2) - 12*std::pow(u,2)*x0_*r.x;
+  c +=  6*std::pow(u,2)*std::pow(r.x,2) + 2*std::pow(u,2)*std::pow(y0_,2);
+  c += -4*std::pow(u,2)*y0_*r.y + 2*std::pow(u,2)*std::pow(r.y,2);
+  c +=  8*u*v*x0_*y0_ - 8*u*v*x0_*r.y - 8*u*v*r.x*y0_ + 8*u*v*r.x*r.y;
+  c +=  2*std::pow(v,2)*std::pow(x0_,2) - 4*std::pow(v,2)*x0_*r.x;
+  c +=  2*std::pow(v,2)*std::pow(r.x,2) + 6*std::pow(v,2)*std::pow(y0_,2);
+  c += -12*std::pow(v,2)*y0_*r.y + 6*std::pow(v,2)*std::pow(r.y,2);
+  c += -2*std::pow(C_,4)*std::pow(w,2)/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(u,2)*std::pow(z0_,2)/std::pow(B_,2);
+  c += -4*std::pow(C_,2)*std::pow(u,2)*z0_*r.z/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(u,2)*std::pow(r.z,2)/std::pow(B_,2);
+  c +=  8*std::pow(C_,2)*u*w*x0_*z0_/std::pow(B_,2);
+  c += -8*std::pow(C_,2)*u*w*x0_*r.z/std::pow(B_,2);
+  c += -8*std::pow(C_,2)*u*w*r.x*z0_/std::pow(B_,2);
+  c +=  8*std::pow(C_,2)*u*w*r.x*r.z/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(v,2)*std::pow(z0_,2)/std::pow(B_,2);
+  c += -4*std::pow(C_,2)*std::pow(v,2)*z0_*r.z/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(v,2)*std::pow(r.z,2)/std::pow(B_,2);
+  c +=  8*std::pow(C_,2)*v*w*y0_*z0_/std::pow(B_,2);
+  c += -8*std::pow(C_,2)*v*w*y0_*r.z/std::pow(B_,2);
+  c += -8*std::pow(C_,2)*v*w*r.y*z0_/std::pow(B_,2);
+  c +=  8*std::pow(C_,2)*v*w*r.y*r.z/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(x0_,2)/std::pow(B_,2);
+  c += -4*std::pow(C_,2)*std::pow(w,2)*x0_*r.x/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(r.x,2)/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(y0_,2)/std::pow(B_,2);
+  c += -4*std::pow(C_,2)*std::pow(w,2)*y0_*r.y/std::pow(B_,2);
+  c +=  2*std::pow(C_,2)*std::pow(w,2)*std::pow(r.y,2)/std::pow(B_,2);
+  c +=  6*std::pow(C_,4)*std::pow(w,2)*std::pow(z0_,2)/std::pow(B_,4);
+  c +=  12*std::pow(C_,4)*std::pow(w,2)*z0_*r.z/std::pow(B_,4);
+  c +=  6*std::pow(C_,4)*std::pow(w,2)*std::pow(r.z,2)/std::pow(B_,4);
+  // the 1st order terms
+  d =   4*std::pow(A_,4)*u*x0_ - 4*std::pow(A_,4)*u*r.x;
+  d +=  4*std::pow(A_,4)*v*y0_ - 4*std::pow(A_,4)*v*r.y;
+  d += -4*std::pow(A_,4)*std::pow(C_,2)*w*z0_/std::pow(B_,2);
+  d +=  4*std::pow(A_,4)*std::pow(C_,2)*w*r.z/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*u*x0_ - 4*std::pow(C_,2)*u*r.x;
+  d +=  4*std::pow(C_,2)*v*y0_ - 4*std::pow(C_,2)*v*r.y;
+  d += -4*u*std::pow(x0_,3) + 12*u*std::pow(x0_,2)*r.x;
+  d += -12*u*x0_*std::pow(r.x,2) - 4*u*x0_*std::pow(y0_,2);;
+  d +=  8*u*x0_*y0_*r.y - 4*u*x0_*std::pow(r.y,2);
+  d +=  4*u*std::pow(r.x,3) + 4*u*r.x*std::pow(y0_,2);
+  d += -8*u*r.x*y0_*r.y + 4*u*r.x*std::pow(r.y,2);
+  d += -4*v*std::pow(x0_,2)*y0_ + 4*v*std::pow(x0_,2)*r.y;
+  d +=  8*v*x0_*r.x*y0_ -8*v*x0_*r.x*r.y -4*v*std::pow(r.x,2)*y0_;
+  d +=  4*v*std::pow(r.x,2)*r.y - 4*v*std::pow(y0_,3);
+  d +=  12*v*std::pow(y0_,2)*r.y - 12*v*y0_*std::pow(r.y,2);
+  d +=  4*v*std::pow(r.y,3) + 4*std::pow(C_,4)*w*z0_/std::pow(B_,2);
+  d += -4*std::pow(C_,4)*w*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*u*x0_*std::pow(z0_,2)/std::pow(B_,2);
+  d +=  8*std::pow(C_,2)*u*x0_*z0_*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*u*x0_*std::pow(r.z,2)/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*u*r.x*std::pow(z0_,2)/std::pow(B_,2);
+  d += -8*std::pow(C_,2)*u*r.x*z0_*r.z/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*u*r.x*std::pow(r.z,2)/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*v*y0_*std::pow(z0_,2)/std::pow(B_,2);
+  d +=  8*std::pow(C_,2)*v*y0_*z0_*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*v*y0_*std::pow(r.z,2)/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*v*r.y*std::pow(z0_,2)/std::pow(B_,2);
+  d += -8*std::pow(C_,2)*v*r.y*z0_*r.z/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*v*r.y*std::pow(r.z,2)/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*w*std::pow(x0_,2)*z0_/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*w*std::pow(x0_,2)*r.z/std::pow(B_,2);
+  d +=  8*std::pow(C_,2)*w*x0_*r.x*z0_/std::pow(B_,2);
+  d += -8*std::pow(C_,2)*w*x0_*r.x*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*w*std::pow(r.x,2)*z0_/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*w*std::pow(r.x,2)*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*w*std::pow(y0_,2)*z0_/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*w*std::pow(y0_,2)*r.z/std::pow(B_,2);
+  d +=  8*std::pow(C_,2)*w*y0_*r.y*z0_/std::pow(B_,2);
+  d +=  8*std::pow(C_,2)*w*y0_*r.y*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,2)*w*std::pow(r.y,2)*z0_/std::pow(B_,2);
+  d +=  4*std::pow(C_,2)*w*std::pow(r.y,2)*r.z/std::pow(B_,2);
+  d += -4*std::pow(C_,4)*w*std::pow(z0_,3)/std::pow(B_,4);
+  d +=  12*std::pow(C_,4)*w*std::pow(z0_,2)*r.z/std::pow(B_,4);
+  d += -12*std::pow(C_,4)*w*z0_*std::pow(r.z,2)/std::pow(B_,4);
+  d += 4*std::pow(C_,4)*w*std::pow(r.z,3)/std::pow(B_,4);
+  // the 0th order terms
+  e =   std::pow(A_,8) - 2*std::pow(A_,4)*std::pow(C_,2);
+  e += -2*std::pow(A_,4)*std::pow(x0_,2) + 4*std::pow(A_,4)*x0_*r.x;
+  e += -2*std::pow(A_,4)*std::pow(r.x,2) - 2*std::pow(A_,4)*std::pow(y0_,2);
+  e +=  4*std::pow(A_,4)*y0_*r.y - 2*std::pow(A_,4)*std::pow(r.y,2);
+  e +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(z0_,2)/std::pow(B_,2);
+  e += -4*std::pow(A_,4)*std::pow(C_,2)*z0_*r.z/std::pow(B_,2);
+  e +=  2*std::pow(A_,4)*std::pow(C_,2)*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  std::pow(C_,4) - 2*std::pow(C_,2)*std::pow(x0_,2);
+  e +=  4*std::pow(C_,2)*x0_*r.x - 2*std::pow(C_,2)*std::pow(r.x,2);
+  e +=  -2*std::pow(C_,2)*std::pow(y0_,2) + 4*std::pow(C_,2)*y0_*r.y;
+  e += -2*std::pow(C_,2)*std::pow(r.y,2) + std::pow(x0_,4);
+  e += -4*std::pow(x0_,3)*r.x + 6*std::pow(x0_,2)*std::pow(r.x,2);
+  e +=  2*std::pow(x0_,2)*std::pow(y0_,2) - 4*std::pow(x0_,2)*y0_*r.y;
+  e +=  2*std::pow(x0_,2)*std::pow(r.y,2) - 4*x0_*std::pow(r.x,3);
+  e += -4*x0_*r.x*std::pow(y0_,2) + 8*x0_*r.x*y0_*r.y;
+  e += -4*x0_*r.x*std::pow(r.y,2) + std::pow(r.x,4);
+  e +=  2*std::pow(r.x,2)*std::pow(y0_,2) - 4*std::pow(r.x,2)*y0_*r.y;
+  e +=  2*std::pow(r.x,2)*std::pow(r.y,2) + std::pow(y0_,4) - 4*std::pow(y0_,3)*r.y;
+  e +=  6*std::pow(y0_,2)*std::pow(r.y,2) - 4*y0_*std::pow(r.y,3) + std::pow(r.y,4);
+  e += -2*std::pow(C_,4)*std::pow(z0_,2)/std::pow(B_,2) + 4*std::pow(C_,4)*z0_*r.z/std::pow(B_,2);
+  e += -2*std::pow(C_,4)*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(x0_,2)*std::pow(z0_,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*std::pow(x0_,2)*z0_*r.z/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(x0_,2)*std::pow(r.z,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*x0_*r.x*std::pow(z0_,2)/std::pow(B_,2);
+  e +=  8*std::pow(C_,2)*x0_*r.x*z0_*r.z/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*x0_*r.x*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(r.x,2)*std::pow(z0_,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*std::pow(r.x,2)*z0_*r.z/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(r.x,2)*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(y0_,2)*std::pow(z0_,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*std::pow(y0_,2)*z0_*r.z/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(y0_,2)*std::pow(r.z,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*y0_*r.y*std::pow(z0_,2)/std::pow(B_,2);
+  e +=  8*std::pow(C_,2)*y0_*r.y*z0_*r.z/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*y0_*r.y*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(r.y,2)*std::pow(z0_,2)/std::pow(B_,2);
+  e += -4*std::pow(C_,2)*std::pow(r.y,2)*z0_*r.z/std::pow(B_,2);
+  e +=  2*std::pow(C_,2)*std::pow(r.y,2)*std::pow(r.z,2)/std::pow(B_,2);
+  e +=  std::pow(C_,4)*std::pow(z0_,4)/std::pow(B_,4);
+  e += -4*std::pow(C_,4)*std::pow(z0_,3)*r.z/std::pow(B_,4);
+  e +=  6*std::pow(C_,4)*std::pow(z0_,2)*std::pow(r.z,2)/std::pow(B_,4);
+  e += -4*std::pow(C_,4)*z0_*std::pow(r.z,3)/std::pow(B_,4);
+  e +=  std::pow(C_,4)*std::pow(r.z,4)/std::pow(B_,4);
+
+  std::cout << std::scientific;
+  std::cout << std::setprecision(9);
+  std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
+  // solve it
+  //quart_solve(a,b,c,d,e,roots);
+
   return 0;
 }
 
