@@ -1190,6 +1190,33 @@ int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x)
 
 
 void quartic_solve(double a, double b, double c, double d, double e, std::array<double,4> &roots) {
+  
+  double descrim = 256*std::pow(a,3)*std::pow(e,3) - 192*std::pow(a,2)*b*d*std::pow(e,2) - 128*std::pow(a,2)*std::pow(c,2)*std::pow(e,2) + 144*std::pow(a,2)*c*std::pow(d,2)*e -27*std::pow(a,2)*std::pow(d,4) + 144*a*std::pow(b,2)*c*std::pow(e,2) - 6*a*std::pow(b,2)*std::pow(d,2)*e - 80*a*b*std::pow(c,2)*d*e + 18*a*b*c*std::pow(d,3) + 16*a*std::pow(c,4)*e - 4*a*std::pow(c,3)*std::pow(d,2) - 27*std::pow(b,4)*std::pow(e,2) + 18*std::pow(b,3)*c*d*e - 4*std::pow(b,3)*std::pow(d,3) - 4*std::pow(b,2)*std::pow(c,3)*e + std::pow(b,2)*std::pow(c,2)*std::pow(d,2);
+  double P = 8*a*c - 3*std::pow(b,2);
+  double R = std::pow(b,3) + 8*d*std::pow(a,2) - 4*a*b*c;
+  double d_0 = std::pow(c,2) - 3*b*d + 12*a*e;
+  double D = 64*std::pow(a,3)*e - 16*std::pow(a,2)*std::pow(c,2) + 16*a*std::pow(b,2)*c - 16*std::pow(a,2)*b*d - 3*std::pow(b,4);
+  std::cout << "desc " << descrim << std::endl;
+  if(descrim > 0 ) { // 4 real roots
+    double p = P/(8*std::pow(a,2));
+    double q = R/(8*std::pow(a,3));
+    std::cout << p << " " << q << std::endl;
+
+    double delta0 = std::pow(c,2) - 3*b*d + 12*a*e;
+    double delta1 = 2*std::pow(c,3) - 9*b*c*d + 27*std::pow(b,2)*e + 27*a*std::pow(d,2) - 72*a*c*e;
+    std::cout << delta0 << " " << delta1 << std::endl;
+
+    double phi = std::acos(delta1/(2.*std::sqrt(std::pow(delta0,3))));
+    double S = 0.5*sqrt(-2./3.*p + 2./(3.*a)*std::sqrt(delta0)*std::cos(phi/3.));
+    double coeff = std::sqrt( -4*std::pow(S,2) - 2*p + q/S);
+    double x0 = -b/(4*a) - S + 0.5*coeff;
+    double x1 = -b/(4*a) - S - 0.5*coeff;
+    double x2 = -b/(4*a) + S + 0.5*coeff;
+    double x3 = -b/(4*a) + S - 0.5*coeff;
+    std::cout << x0 << " " << x1 << " " << x2 << " " << x3 << std::endl;
+  }
+
+  
   // depressed quartic coefficients 
   double f = c - (3*std::pow(b,2)/8);
   double g = d + std::pow(b,3)/8 - (b*c/2);
