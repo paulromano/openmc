@@ -1,5 +1,5 @@
 #include "openmc/surface.h"
-
+#include <chrono>
 #include <array>
 #include <cmath>
 #include <utility>
@@ -1155,6 +1155,86 @@ void SurfaceQuadric::to_hdf5_inner(hid_t group_id) const
 // Generic functions for cubic & quartic solver
 //==============================================================================
 
+int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x) {
+
+  double a2 = a*a;
+  double q  = (a2 - 3*b)/9;
+	double r  = (a*(2*a2-9*b) + 27*c)/54;
+  double r2 = r*r;
+	double q3 = q*q*q;
+	double A,B;
+  if(r2<q3) {
+    double t=r/sqrt(q3);
+    if( t<-1) t=-1;
+    if( t> 1) t= 1;
+    t=acos(t);
+    a/=3; q=-2*sqrt(q);
+    x[0]=q*std::cos(t/3)-a;
+    x[1]=q*std::cos((t+2*PI)/3)-a;
+    x[2]=q*std::cos((t-2*PI)/3)-a;
+    return 3;
+  } else {
+    A =-std::pow(std::fabs(r)+std::sqrt(r2-q3),1./3);
+    if( r<0 ) A=-A;
+    B = (0==A ? 0 : q/A);
+          
+		a/=3;
+		x[0] =(A+B)-a;
+		x[1] =-0.5*(A+B)-a;
+		x[2] = 0.5*sqrt(3.)*(A-B);
+		if(std::fabs(x[2])<1e-32) { x[2]=x[1]; return 2; }
+		
+		return 1;
+  }
+}
+
+
+void quartic_solve(double a, double b, double c, double d, double e, std::array<double,4> &roots) {
+  // depressed quartic coefficients 
+  double f = c - (3*std::pow(b,2)/8);
+  double g = d + std::pow(b,3)/8 - (b*c/2);
+  double h = e - (3*std::pow(b,4)/256) + (std::pow(b,2)*c/16) - (b*d/4);
+
+
+  double x1 = f/2;
+  double x2 = std::pow(f,2)-4*h/16;
+  double x3 = std::pow(g,2)/64;
+
+  std::array<double,3> cubic_roots;
+  int n_roots = cubic_solve(1,x1,x2,x3,cubic_roots);
+  std::cout << cubic_roots[0] << " ";
+  std::cout << cubic_roots[1] << " ";
+  std::cout << cubic_roots[2] << std::endl;  
+
+  double r1,r2;
+
+  if ( n_roots == 3 ) 
+
+  if(cubic_roots[0] > 0 && cubic_roots[1] > 0 ) {
+    r1 = cubic_roots[0];
+    r2 = cubic_roots[1];
+  } else if (cubic_roots[1] > 0 && cubic_roots[2] > 0  ) {
+    r1 = cubic_roots[1];
+    r2 = cubic_roots[2];
+  } else if (cubic_roots[0] > 0 && cubic_roots[2] > 0  ) {
+    r1 = cubic_roots[0];
+    r2 = cubic_roots[2];
+  } 
+    
+  double p = std::sqrt(r1);
+  double q = std::sqrt(r2);
+  double r = -g/(8*p*q);
+  double s = b/(4*a);
+
+  std::cout << p << " " << q << " " << r << " " << s << std::endl;
+
+    roots[0] =  p + q + r - s;
+    roots[1] =  p - q - r - s;
+    roots[2] = -p + q - r - s; 
+    roots[3] = -p - q + r - s;
+  
+  return;
+}
 
 //==============================================================================
 // Generic functions for x-, y-, and z-, tori
@@ -1306,8 +1386,12 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   std::cout << std::setprecision(9);
   std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
   // solve it
-  //quart_solve(a,b,c,d,e,roots);
-
+  std::array<double,4> roots;
+  auto start = std::chrono::high_resolution_clock::now();
+  quartic_solve(a,b,c,d,e,roots);
+  auto finish = std::chrono::high_resolution_clock::now();
+  std::cout << std::chrono::duration <double, std::micro>(finish-start).count() << " us" << std::endl;
+  std::cout << roots[0] << " " << roots[1] << " " << roots[2] << " " << roots[3] << std::endl;
   return 0;
 }
 
