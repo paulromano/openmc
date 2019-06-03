@@ -436,7 +436,7 @@ class Surface(IDManagerMixin, ABC):
         kwargs.update(dict(zip(cls._coeff_keys, coeffs)))
 
         return cls(**kwargs)
-
+f
     @staticmethod
     def from_hdf5(group):
         """Create surface from HDF5 group
