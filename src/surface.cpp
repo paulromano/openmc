@@ -1152,8 +1152,22 @@ void SurfaceQuadric::to_hdf5_inner(hid_t group_id) const
 }
 
 //==============================================================================
-// Generic functions for cubic & quartic solver
+// Generic functions for quadratic, cubic & quartic solver
 //==============================================================================
+
+int quadratic_solve(double a, double b, double c, std::array<double,2> &x) {
+
+  double func = std::pow(b,2) - 4*a*c;
+  
+  if ( func < 0 ) {
+    // this would be imaginary
+  } else {
+    x[0] = -b/(2.*a) - std::sqrt(func)/(2.*a);
+    x[1] = -b/(2.*a) + std::sqrt(func)/(2.*a);
+  }
+
+  return 0;
+}
 
 int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x) {
 
@@ -1210,54 +1224,33 @@ void quartic_solve(double a, double b, double c, double d, double e, std::array<
     roots[1] = -b/(4*a) - S - 0.5*coeff;
     roots[2] = -b/(4*a) + S + 0.5*coeff;
     roots[3] = -b/(4*a) + S - 0.5*coeff;
-    std::sort(roots.begin(),roots.end());
+  } else if ( descrim < 0 ) { // 2 real roots 2 complex 
+    // biquadratic
+    if ( b == 0. && d == 0. ) {
+      std::array<double,2> quad_roots = {0,0};
+      quadratic_solve(a,c,e,quad_roots);
+      // if a quad root is -ve then its imaginary
+      // and we dont need it
+
+      if (quad_roots[0] < 0 ) { 
+        roots[0]=0.;
+        roots[1]=0.;
+      } else { 
+        roots[0] = std::sqrt(quad_roots[0]);
+        roots[1] =-std::sqrt(quad_roots[0]);
+      }
+      if (quad_roots[1] < 0) {
+         roots[2]=0.;
+         roots[3]=0.;
+      } else { 
+        roots[2] = std::sqrt(quad_roots[1]);
+        roots[3] =-std::sqrt(quad_roots[1]);
+      }
+    }
   }
-
-  
-  // depressed quartic coefficients 
-  double f = c - (3*std::pow(b,2)/8);
-  double g = d + std::pow(b,3)/8 - (b*c/2);
-  double h = e - (3*std::pow(b,4)/256) + (std::pow(b,2)*c/16) - (b*d/4);
-
-
-  double x1 = f/2;
-  double x2 = std::pow(f,2)-4*h/16;
-  double x3 = std::pow(g,2)/64;
-
-  std::array<double,3> cubic_roots;
-  int n_roots = cubic_solve(1,x1,x2,x3,cubic_roots);
-  std::cout << cubic_roots[0] << " ";
-  std::cout << cubic_roots[1] << " ";
-  std::cout << cubic_roots[2] << std::endl;  
-
-  double r1,r2;
-
-  if ( n_roots == 3 ) 
-
-  if(cubic_roots[0] > 0 && cubic_roots[1] > 0 ) {
-    r1 = cubic_roots[0];
-    r2 = cubic_roots[1];
-  } else if (cubic_roots[1] > 0 && cubic_roots[2] > 0  ) {
-    r1 = cubic_roots[1];
-    r2 = cubic_roots[2];
-  } else if (cubic_roots[0] > 0 && cubic_roots[2] > 0  ) {
-    r1 = cubic_roots[0];
-    r2 = cubic_roots[2];
-  } 
-    
-  double p = std::sqrt(r1);
-  double q = std::sqrt(r2);
-  double r = -g/(8*p*q);
-  double s = b/(4*a);
-
-  std::cout << p << " " << q << " " << r << " " << s << std::endl;
-
-    roots[0] =  p + q + r - s;
-    roots[1] =  p - q - r - s;
-    roots[2] = -p + q - r - s; 
-    roots[3] = -p - q + r - s;
-  
+  std::sort(roots.begin(),roots.end());
   return;
+
 }
 
 //==============================================================================
@@ -1406,17 +1399,21 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   // the 0th order terms
   e = std::pow(A,4) - 2*std::pow(A,2)*std::pow(C,2) - 2*std::pow(A,2)*std::pow(x0,2) + 4*std::pow(A,2)*x0*xr - 2*std::pow(A,2)*std::pow(xr,2) - 2*std::pow(A,2)*std::pow(y0,2) + 4*std::pow(A,2)*y0*yr - 2*std::pow(A,2)*std::pow(yr,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(A,2)*std::pow(C,2)*z0*zr/std::pow(B,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4) - 2*std::pow(C,2)*std::pow(x0,2) + 4*std::pow(C,2)*x0*xr - 2*std::pow(C,2)*std::pow(xr,2) - 2*std::pow(C,2)*std::pow(y0,2) + 4*std::pow(C,2)*y0*yr - 2*std::pow(C,2)*std::pow(yr,2) + std::pow(x0,4) - 4*std::pow(x0,3)*xr + 6*std::pow(x0,2)*std::pow(xr,2) + 2*std::pow(x0,2)*std::pow(y0,2) - 4*std::pow(x0,2)*y0*yr + 2*std::pow(x0,2)*std::pow(yr,2) - 4*x0*std::pow(xr,3) - 4*x0*xr*std::pow(y0,2) + 8*x0*xr*y0*yr - 4*x0*xr*std::pow(yr,2) + std::pow(xr,4) + 2*std::pow(xr,2)*std::pow(y0,2) - 4*std::pow(xr,2)*y0*yr + 2*std::pow(xr,2)*std::pow(yr,2) + std::pow(y0,4) - 4*std::pow(y0,3)*yr + 6*std::pow(y0,2)*std::pow(yr,2) - 4*y0*std::pow(yr,3) + std::pow(yr,4) - 2*std::pow(C,4)*std::pow(z0,2)/std::pow(B,2) + 4*std::pow(C,4)*z0*zr/std::pow(B,2) - 2*std::pow(C,4)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(x0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*x0*xr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(xr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(y0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*y0*yr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(yr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4)*std::pow(z0,4)/std::pow(B,4) - 4*std::pow(C,4)*std::pow(z0,3)*zr/std::pow(B,4) + 6*std::pow(C,4)*std::pow(z0,2)*std::pow(zr,2)/std::pow(B,4) - 4*std::pow(C,4)*z0*std::pow(zr,3)/std::pow(B,4) + std::pow(C,4)*std::pow(zr,4)/std::pow(B,4);
 
+  /*
   std::cout << std::scientific;
   std::cout << std::setprecision(9);
   std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
+  */
   // solve it
   std::array<double,4> roots;
-  auto start = std::chrono::high_resolution_clock::now();
   quartic_solve(a,b,c,d,e,roots);
-  auto finish = std::chrono::high_resolution_clock::now();
-  std::cout << std::chrono::duration <double, std::micro>(finish-start).count() << " us" << std::endl;
-  std::cout << roots[0] << " " << roots[1] << " " << roots[2] << " " << roots[3] << std::endl;
-  return 0;
+  // roots is a sorted list, return the first that is larger than
+  // 0
+  for ( int i = 0 ; i < 4 ; i++ ) {
+    if ( roots[i] > 0. ) return roots[i];
+  }
+
+  return INFTY;
 }
 
 Direction
