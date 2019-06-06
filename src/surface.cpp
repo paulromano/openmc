@@ -1210,6 +1210,10 @@ void quartic_solve(double a, double b, double c, double d, double e, std::array<
   double R = std::pow(b,3) + 8*d*std::pow(a,2) - 4*a*b*c;
   double d_0 = std::pow(c,2) - 3*b*d + 12*a*e;
   double D = 64*std::pow(a,3)*e - 16*std::pow(a,2)*std::pow(c,2) + 16*a*std::pow(b,2)*c - 16*std::pow(a,2)*b*d - 3*std::pow(b,4);
+
+  std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
+  std::cout << descrim << " " << P << " " << R << " " << d_0 << " " << D << std::endl;
+
   if(descrim > 0 ) { // 4 real roots
     double p = P/(8*std::pow(a,2));
     double q = R/(8*std::pow(a,3));
@@ -1231,7 +1235,7 @@ void quartic_solve(double a, double b, double c, double d, double e, std::array<
       quadratic_solve(a,c,e,quad_roots);
       // if a quad root is -ve then its imaginary
       // and we dont need it
-
+      std::cout << quad_roots[0] << " " << quad_roots[1] << std::endl;
       if (quad_roots[0] < 0 ) { 
         roots[0]=0.;
         roots[1]=0.;
@@ -1246,8 +1250,13 @@ void quartic_solve(double a, double b, double c, double d, double e, std::array<
         roots[2] = std::sqrt(quad_roots[1]);
         roots[3] =-std::sqrt(quad_roots[1]);
       }
+    } else if ( b == 0. && c == 0. && d == 0. ) {
+
+      
+    } else if (D == 0. ) {
+      std::cout << " zero " << std::endl;
     }
-  }
+  } 
   std::sort(roots.begin(),roots.end());
   return;
 
@@ -1409,6 +1418,14 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   quartic_solve(a,b,c,d,e,roots);
   // roots is a sorted list, return the first that is larger than
   // 0
+  std::cout << "roots: ";
+  std::cout << std::scientific;
+  std::cout << std::setprecision(8);
+  for ( int i = 0 ; i < 4 ; i++ ) {
+    std::cout << roots[i] << " ";
+  }
+  std::cout << std::endl;
+
   for ( int i = 0 ; i < 4 ; i++ ) {
     if ( roots[i] > 0. ) return roots[i];
   }
