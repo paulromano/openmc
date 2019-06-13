@@ -1,3 +1,12 @@
+#include "openmc/capi.h"
+#include "openmc/error.h"
+#include "openmc/tallies/filter.h"
+#include "openmc/tallies/tally.h"
+#include "openmc/material.h"
+#include "openmc/nuclide.h"
+
+#include "pugixml.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -10,11 +19,6 @@
 #include <utility>
 #include <vector>
 #include <iostream>
-
-#include "openmc.h"
-#include "error.h"
-#include "nuclide.h"
-#include "pugixml.hpp"
 
 
 void CHECK(int err) {
@@ -119,37 +123,31 @@ void get_chain_data() {
 }
 
 void get_nuclide_names () {
-  for (int i = 1; i <= n_nuclides; ++i) {
-    nucname[i] = openmc::nuclide_name(i);
+  for (int i = 0; i < openmc::data::nuclides.size(); ++i) {
+    nucname[i] = openmc::data::nuclides[i]->name_;
   }
 }
 
 void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats) {
   // Determine maximum tally/filter ID used so far
   int32_t max_filter_id = 0;
-  int32_t filter_id;
-  for (int i = 1; i <= n_filters; ++i) {
-    CHECK(openmc_filter_get_id(i, &filter_id));
-    max_filter_id = std::max(max_filter_id, filter_id);
+  for (const auto& f : openmc::model::tally_filters) {
+    max_filter_id = std::max(max_filter_id, f->id_);
   }
 
   int32_t max_tally_id = 0;
-  int32_t tally_id;
-  for (int i = 1; i <= n_tallies; ++i) {
-    CHECK(openmc_tally_get_id(i, &tally_id));
-    max_tally_id = std::max(max_tally_id, tally_id);
+  for (const auto& t : openmc::model::tallies) {
+    max_tally_id = std::max(max_tally_id, t->id_);
   }
 
   // Create filter for each material with fissionable material
-  CHECK(openmc_extend_filters(1, &mat_filter_idx, nullptr));
-  CHECK(openmc_filter_set_type(mat_filter_idx, "material"));
+  CHECK(openmc_new_filter("material", &mat_filter_idx));
   CHECK(openmc_filter_set_id(mat_filter_idx, max_filter_id + 1));
   CHECK(openmc_material_filter_set_bins(mat_filter_idx, mats.size(), mats.data()));
 
   //////////////////////////////////////////////////////////////////////////////
   // Create tally for fission in each fissionable nuclide
   CHECK(openmc_extend_tallies(1, &fission_tally_idx, nullptr));
-  CHECK(openmc_tally_set_type(fission_tally_idx, "generic"));
   CHECK(openmc_tally_set_id(fission_tally_idx, max_tally_id + 1));
   CHECK(openmc_tally_set_active(fission_tally_idx, true));
   const int32_t indices[] {mat_filter_idx};
@@ -165,15 +163,14 @@ void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats)
   // Set nuclides
   CHECK(openmc_tally_set_nuclides(fission_tally_idx, num_nucs, nuclides));
 
-  char score_array[][20]{"fission"};
-  const char *scores[]{score_array[0]}; // OpenMC expects a const char**, ugh
-  CHECK(openmc_tally_set_scores(fission_tally_idx, 1, scores));
+  // Set scores
+  auto t {openmc::model::tallies[fission_tally_idx].get()};
+  t->set_scores({"fission"});
 
   //////////////////////////////////////////////////////////////////////////////
   // Create tally for absorption in Xe135
 
   CHECK(openmc_extend_tallies(1, &absorb_tally_idx, nullptr));
-  CHECK(openmc_tally_set_type(absorb_tally_idx, "generic"));
   CHECK(openmc_tally_set_id(absorb_tally_idx, max_tally_id + 2));
   CHECK(openmc_tally_set_active(absorb_tally_idx, true));
   CHECK(openmc_tally_set_filters(absorb_tally_idx, 1, indices));
@@ -182,28 +179,30 @@ void create_tallies(const std::set<int>& nucs, const std::vector<int32_t>& mats)
   nuclides[0] = "Xe135";
   CHECK(openmc_tally_set_nuclides(absorb_tally_idx, 1, nuclides));
 
-  std::strncpy(score_array[0], "absorption", 20);
-  CHECK(openmc_tally_set_scores(absorb_tally_idx, 1, scores));
+  t = openmc::model::tallies[absorb_tally_idx].get();
+  t->set_scores({"absorption"});
 }
 
-std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
+std::pair<std::set<int>, std::vector<int32_t>>
+fissionable_materials()
+{
   std::set<int> fissionable_nuclides;
   std::vector<int32_t> material_indices;
 
   int* nuclides;
   double* densities;
   int n;
-  for (int32_t i = 1; i <= n_materials; ++i) {
-    // Get arrays of nuclide indices and densities
-    CHECK(openmc_material_get_densities(i, &nuclides, &densities, &n));
+  for (int32_t i = 0; i < openmc::model::materials.size(); ++i) {
+    const auto& mat {openmc::model::materials[i]};
 
     // loop over nuclides
     bool added = false;
     bool has_xe135 = false;
     bool has_i135 = false;
-    for (int j = 0; j < n; ++j) {
+    for (int j = 0; j < mat->nuclide_.size(); ++j) {
       // get name of j-th nuclide
-      std::string name = openmc::nuclide_name(nuclides[j]);
+      int i_nuc = mat->nuclide_[j];
+      auto name = openmc::data::nuclides[i_nuc]->name_;
 
       // Check if Xe135/I135 is present
       if (name == "Xe135") has_xe135 = true;
@@ -212,13 +211,14 @@ std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
       // if nuclide is fissionable, add it to set of fissionable nuclides and
       // add material to list of fuel materials
       if (fission_q.find(name) != fission_q.end()) {
-        fissionable_nuclides.insert(nuclides[j]);
+        fissionable_nuclides.insert(i_nuc);
         if (!added) {
           // Determine volume -- note that material_get_volume will fail if
           // volume is not set
-          double vol;
-          CHECK(openmc_material_get_volume(i, &vol));
-          volume[i] = vol;
+          if (mat->volume_ < 0.0) {
+            throw std::runtime_error{"Volume for fissionable material must be set"};
+          }
+          volume[i] = mat->volume_;
 
           material_indices.push_back(i);
           added = true;
@@ -226,8 +226,8 @@ std::pair<std::set<int>, std::vector<int32_t>> fissionable_materials() {
       }
     } // nuclides
 
-    if (!has_xe135) CHECK(openmc_material_add_nuclide(i, "Xe135", 1e-14));
-    if (!has_i135) CHECK(openmc_material_add_nuclide(i, "I135", 1e-14));
+    if (added && !has_xe135) CHECK(openmc_material_add_nuclide(i, "Xe135", 1e-14));
+    if (added && !has_i135) CHECK(openmc_material_add_nuclide(i, "I135", 1e-14));
   }
 
   return {fissionable_nuclides, material_indices};
@@ -256,17 +256,8 @@ void update() {
   CHECK(openmc_material_filter_get_bins(mat_filter_idx, &mats, &n_mats));
 
   // Get nuclides
-  int* nuclides;
-  int n_nucs;
-  CHECK(openmc_tally_get_nuclides(fission_tally_idx, &nuclides, &n_nucs));
-  double* fission;
-  int shape[3];
-  CHECK(openmc_tally_results(fission_tally_idx, &fission, shape));
-  int32_t m;
-  CHECK(openmc_tally_get_n_realizations(fission_tally_idx, &m));
-
-  double* absorb;
-  CHECK(openmc_tally_results(absorb_tally_idx, &absorb, shape));
+  auto fission {openmc::model::tallies[fission_tally_idx].get()};
+  auto absorb {openmc::model::tallies[absorb_tally_idx].get()};
 
   // Create vectors for I135/Xe135 production, Xe135 absorption
   std::vector<double> i135_prod(n_mats);
@@ -279,16 +270,16 @@ void update() {
     // Determine I135 and Xe135 production rates. These have to be summed over
     // individual nuclides because each nuclide has a different fission product
     // yield.
-    for (int j = 0; j < n_nucs; ++j) {
-      double fission_rate = fission[3*n_nucs*i + 3*j + 1] / m;
-      std::string nuc = nucname[nuclides[j]];
+    for (int j = 0; j < fission->nuclides_.size(); ++j) {
+      double fission_rate = fission->results_(i, j, 1) / fission->n_realizations_;
+      std::string nuc = nucname[fission->nuclides_[j]];
       i135_prod[i] += i135_yield[nuc] * fission_rate;
       xe135_prod[i] += xe135_yield[nuc] * fission_rate;
       power += fission_q[nuc] * fission_rate;
     }
 
     // Determine Xe135 absorption rate
-    xe135_abs[i] = absorb[3*i + 1] / m;
+    xe135_abs[i] = absorb->results_(i, 0, 1) / absorb->n_realizations_;
   }
 
   // Now that the raw production/absorption rates and total power have been
