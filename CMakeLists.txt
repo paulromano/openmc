@@ -47,6 +47,8 @@ if (NOT (CMAKE_VERSION VERSION_LESS 3.12))
   cmake_policy(SET CMP0074 NEW)
 endif()
 
+cmake_policy(SET CMP0079 OLD)
+
 # Unfortunately FindHDF5.cmake will always prefer a serial HDF5 installation
 # over a parallel installation if both appear on the user's PATH. To get around
 # this, we check for the environment variable HDF5_ROOT and if it exists, use it
@@ -318,12 +320,6 @@ add_executable(openmc src/main.cpp)
 target_compile_options(openmc PRIVATE ${cxxflags})
 target_link_libraries(openmc libopenmc)
 
-# Ensure C++14 standard is used. Starting with CMake 3.8, another way this could
-# be done is using the cxx_std_14 compiler feature.
-set_target_properties(
-    openmc libopenmc faddeeva pugixml
-    PROPERTIES CXX_STANDARD 14 CXX_EXTENSIONS OFF)
-
 #===============================================================================
 # xenon iteration executable
 #===============================================================================
@@ -332,6 +328,12 @@ add_executable(xenon src/xenon/xenon.cpp)
 target_compile_options(xenon PRIVATE ${cxxflags})
 target_link_libraries(xenon libopenmc pugixml)
 target_include_directories(xenon PRIVATE src)
+
+# Ensure C++14 standard is used. Starting with CMake 3.8, another way this could
+# be done is using the cxx_std_14 compiler feature.
+set_target_properties(
+    openmc xenon libopenmc faddeeva pugixml
+    PROPERTIES CXX_STANDARD 14 CXX_EXTENSIONS OFF)
 
 #===============================================================================
 # Python package
