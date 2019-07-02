@@ -1,4 +1,5 @@
 #include "openmc/capi.h"
+#include "openmc/constants.h"
 #include "openmc/error.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
@@ -29,21 +30,29 @@ namespace xenon {
 
 // Global variables
 
+std::unordered_map<std::string, double> te135_yield;
 std::unordered_map<std::string, double> i135_yield;
 std::unordered_map<std::string, double> xe135_yield;
+std::unordered_map<std::string, double> xe135m_yield;
 std::unordered_map<std::string, double> fission_q;
 std::unordered_map<int, std::string> nucname;
 std::unordered_map<int32_t, double> volume;
 double i135_decay;
 double xe135_decay;
+double b_m;
+double b_g;
+double b_it;
 int32_t mat_filter_idx;
 int32_t fission_tally_idx;
 int32_t absorb_tally_idx;
 
 
-double actual_power = 20.0;
+double actual_power = 104.5*openmc::PI*0.4096*0.4096;
 int batch_size = 5;
 int restart_batches = 4;
+
+std::vector<double> xe135_density;
+std::vector<double> i135_density;
 
 // Helper function
 
@@ -77,6 +86,23 @@ void get_chain_data() {
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Determine branching ratios for I135 to Xe135 and Xe135m and Xe135m to
+    // Xe135
+    for (xml_node decay : nuclide.children("decay")) {
+      const char* target = decay.attribute("target").value();
+      if (std::strcmp(name, "I135") == 0) {
+        if (std::strcmp(target, "Xe135") == 0) {
+          b_g = decay.attribute("branching_ratio").as_double();
+        } else if (std::strcmp(target, "Xe135_m1") == 0) {
+          b_m = decay.attribute("branching_ratio").as_double();
+        }
+      } else if (std::strcmp(name, "Xe135_m1") == 0 &&
+                 std::strcmp(target, "Xe135") == 0) {
+        b_it = decay.attribute("branching_ratio").as_double();
+      }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Determine decay constants for Xe135 and I135
     if (std::strcmp(name, "Xe135") == 0) {
       double half_life = nuclide.attribute("half_life").as_double();
@@ -87,7 +113,8 @@ void get_chain_data() {
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Determine Xe135 and I135 yields for each fissionable nuclide
+    // Determine Xe135, Xe135m, Te135, and I135 yields for each fissionable
+    // nuclide
     if (xml_node nfy = nuclide.child("neutron_fission_yields")) {
       // Get the first <fission_yields> node. This usually corresponds to the
       // yields at thermal energies but NOT ALWAYS. So, it is an approximation
@@ -100,8 +127,12 @@ void get_chain_data() {
       for (int i = 0; i < products.size(); ++i) {
         if (products[i] == "I135") {
           i135_yield[name] = std::stod(data[i]);
+        } else if (products[i] == "Te135") {
+          te135_yield[name] = std::stod(data[i]);
         } else if (products[i] == "Xe135") {
           xe135_yield[name] = std::stod(data[i]);
+        } else if (products[i] == "Xe135_m1") {
+          xe135m_yield[name] = std::stod(data[i]);
         }
       } // <products>
     } // <neutron_fission_yields>
@@ -259,22 +290,26 @@ void update() {
   auto fission {openmc::model::tallies[fission_tally_idx].get()};
   auto absorb {openmc::model::tallies[absorb_tally_idx].get()};
 
-  // Create vectors for I135/Xe135 production, Xe135 absorption
+  // Create vectors for Te135/I135/Xe135/Xe135m production, Xe135 absorption
+  std::vector<double> te135_prod(n_mats);
   std::vector<double> i135_prod(n_mats);
   std::vector<double> xe135_prod(n_mats);
+  std::vector<double> xe135m_prod(n_mats);
   std::vector<double> xe135_abs(n_mats);
 
   double power = 0.0;
 
   for (int i = 0; i < n_mats; ++i) {
-    // Determine I135 and Xe135 production rates. These have to be summed over
-    // individual nuclides because each nuclide has a different fission product
-    // yield.
+    // Determine Te135, I135 and Xe135 production rates. These have to be
+    // summed over individual nuclides because each nuclide has a different
+    // fission product yield.
     for (int j = 0; j < fission->nuclides_.size(); ++j) {
       double fission_rate = fission->results_(i, j, 1) / fission->n_realizations_;
       std::string nuc = nucname[fission->nuclides_[j]];
       i135_prod[i] += i135_yield[nuc] * fission_rate;
+      te135_prod[i] += te135_yield[nuc] * fission_rate;
       xe135_prod[i] += xe135_yield[nuc] * fission_rate;
+      xe135m_prod[i] += xe135m_yield[nuc] * fission_rate;
       power += fission_q[nuc] * fission_rate;
     }
 
@@ -288,10 +323,14 @@ void update() {
 
   for (int i = 0; i < n_mats; ++i) {
     // Normalize production rates by specified power and volume
+    constexpr double BARN_PER_CM_SQ {1.0e24};
+    constexpr double JOULE_PER_EV {1.602176634e-19};
     double V = volume[mats[i]];
-    double normalization = actual_power / (power * V);
+    double normalization = actual_power / (JOULE_PER_EV * power * BARN_PER_CM_SQ * V);
     i135_prod[i] *= normalization;
+    te135_prod[i] *= normalization;
     xe135_prod[i] *= normalization;
+    xe135m_prod[i] *= normalization;
     xe135_abs[i] *= normalization;
 
     // Get array of densities in current material
@@ -314,8 +353,12 @@ void update() {
     }
 
     // solve equation (9) and (10) for equilibrium concentrations
-    double i135_eq = i135_prod[i] / i135_decay;
-    double xe135_eq = (i135_prod[i] + xe135_prod[i])/(xe135_decay + xe135_abs[i]);
+    double i135_eq = (i135_prod[i] + te135_prod[i]) / i135_decay;
+    double xe135_eq = (xe135_prod[i] + b_g*(i135_prod[i] + te135_prod[i]) +
+                       b_it*(xe135m_prod[i] + b_m*(i135_prod[i] +
+                       te135_prod[i]))) / (xe135_decay + xe135_abs[i]);
+    std::cout << "I135 concentration: " << i135_eq << std::endl;
+    std::cout << "Xe135 concentration: " << xe135_eq << std::endl;
 
     // Create array of pointers to nuclide C-strings
     const char* new_nucnames[n_nucs_in_mat];
@@ -328,6 +371,9 @@ void update() {
     std::copy(densities, densities + n_nucs_in_mat, new_densities);
     new_densities[idx_i135] = i135_eq;
     new_densities[idx_xe135] = xe135_eq;
+
+    xe135_density.push_back(xe135_eq);
+    i135_density.push_back(i135_eq);
 
     // Set densities for material
     CHECK(openmc_material_set_densities(mats[i], n_nucs_in_mat, new_nucnames,
@@ -360,6 +406,14 @@ int run() {
       ++generation;
     }
   }
+
+  std::cout << "Xe135: ";
+  for (std::vector<double>::const_iterator i = xe135_density.begin(); i != xe135_density.end(); ++i)
+    std::cout << *i << " ";
+  std::cout << "\nI135: ";
+  for (std::vector<double>::const_iterator i = i135_density.begin(); i != i135_density.end(); ++i)
+    std::cout << *i << " ";
+  std::cout << "\n";
 
   openmc_simulation_finalize();
   return err;
