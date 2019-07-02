@@ -38,6 +38,35 @@ class RightCircularCylinder(openmc.Surface):
         return surf
 
 
+class RectangularParallelepiped(openmc.Surface):
+    def __init__(self, xmin, xmax, ymin, ymax, zmin, zmax, boundary_type='transmission'):
+        kwargs = {'boundary_type': boundary_type}
+        self.xmin = openmc.XPlane(x0=xmin, **kwargs)
+        self.xmax = openmc.XPlane(x0=xmax, **kwargs)
+        self.ymin = openmc.YPlane(y0=ymin, **kwargs)
+        self.ymax = openmc.YPlane(y0=ymax, **kwargs)
+        self.zmin = openmc.ZPlane(z0=zmin, **kwargs)
+        self.zmax = openmc.ZPlane(z0=zmax, **kwargs)
+
+    def __neg__(self):
+        return +self.xmin & -self.xmax & +self.ymin & -self.ymax & +self.zmin & -self.zmax
+
+    def __pos__(self):
+        return -self.xmin | +self.ymax | -self.ymin | +self.ymax | -self.zmin | +self.zmax
+
+    def evaluate(self, point):
+        raise NotImplementedError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        surf.xmin = surf.xmin.translate(vector)
+        surf.xmax = surf.xmax.translate(vector)
+        surf.ymin = surf.ymin.translate(vector)
+        surf.ymax = surf.ymax.translate(vector)
+        surf.zmin = surf.zmin.translate(vector)
+        surf.zmax = surf.zmax.translate(vector)
+
+
 class Box(openmc.Surface):
     def __init__(self, v, a1, a2, a3, boundary_type='transmission'):
         kwargs = {'boundary_type': boundary_type}

@@ -8,7 +8,7 @@ import numpy as np
 import openmc
 from openmc.data import get_thermal_name
 from openmc.data.ace import get_metadata
-from .macrobody import Box, RightCircularCylinder as RCC
+from .macrobody import Box, RightCircularCylinder as RCC, RectangularParallelepiped as RPP
 
 
 _CELL1_RE = re.compile(r'\s*(\d+)\s+(\d+)([ \t0-9:#().dDeE\+-]+)((?:\S+\s*=.*)?)')
@@ -275,6 +275,9 @@ def get_openmc_surfaces(surfaces):
             else:
                 raise NotImplementedError('RCC macrobody with non-axis-aligned'
                                           'height vector not supported.')
+        elif s['mnemonic'] == 'rpp':
+            xmin, xmax, ymin, ymax, zmin, zmax = map(float_, s['coefficients'].split())
+            surf = RPP(xmin, xmax, ymin, ymax, zmin, zmax)
         elif s['mnemonic'] == 'box':
             coeffs = list(map(float_, s['coefficients'].split()))
             surf = Box(coeffs[:3], coeffs[3:6], coeffs[6:9], coeffs[9:])
