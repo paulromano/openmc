@@ -1169,7 +1169,7 @@ int quadratic_solve(double a, double b, double c, std::array<double,2> &x) {
   return 0;
 }
 
-int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x) {
+unsigned int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x) {
 
   double a2 = a*a;
   double q  = (a2 - 3*b)/9;
@@ -1182,7 +1182,7 @@ int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x)
     if( t<-1) t=-1;
     if( t> 1) t= 1;
     t=acos(t);
-    a/=3; q=-2*sqrt(q);
+    a/=3.; q=-2*sqrt(q);
     x[0]=q*std::cos(t/3)-a;
     x[1]=q*std::cos((t+2*PI)/3)-a;
     x[2]=q*std::cos((t-2*PI)/3)-a;
@@ -1210,6 +1210,8 @@ void quartic_solve(double a, double b, double c, double d, double e, std::array<
   double d_0 = std::pow(c,2) - 3*b*d + 12*a*e;
   double D = 64*std::pow(a,3)*e - 16*std::pow(a,2)*std::pow(c,2) + 16*a*std::pow(b,2)*c - 16*std::pow(a,2)*b*d - 3*std::pow(b,4);
 
+  std::cout << std::scientific;
+  std::cout << std::setprecision(9);
   std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
   std::cout << descrim << " " << P << " " << R << " " << d_0 << " " << D << std::endl;
   if(descrim > 0 ) { // 4 real roots
