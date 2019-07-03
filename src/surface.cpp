@@ -1169,134 +1169,147 @@ int quadratic_solve(double a, double b, double c, std::array<double,2> &x) {
   return 0;
 }
 
-unsigned int cubic_solve(double a, double b, double c, double d, std::array<double,3> &x) {
+const double M_2PI = 2*PI;
+const double eps=1e-18;
 
+//typedef std::complex<double> DComplex;
+
+//---------------------------------------------------------------------------
+// solve cubic equation x^3 + a*x^2 + b*x + c
+// x - array of size 3
+// In case 3 real roots: => x[0], x[1], x[2], return 3
+//         2 real roots: x[0], x[1],          return 2
+//         1 real root : x[0], x[1] ± i*x[2], return 1
+unsigned int solve_cubic(const double a, const double b, const double c, std::array<double,3> &x) 
+{
   double a2 = a*a;
   double q  = (a2 - 3*b)/9;
-	double r  = (a*(2*a2-9*b) + 27*c)/54;
+  double r  = (a*(2*a2-9*b) + 27*c)/54;
   double r2 = r*r;
-	double q3 = q*q*q;
-	double A,B;
-  if(r2<q3) {
-    double t=r/sqrt(q3);
-    if( t<-1) t=-1;
-    if( t> 1) t= 1;
-    t=acos(t);
-    a/=3.; q=-2*sqrt(q);
-    x[0]=q*std::cos(t/3)-a;
-    x[1]=q*std::cos((t+2*PI)/3)-a;
-    x[2]=q*std::cos((t-2*PI)/3)-a;
-    return 3;
-  } else {
-    A =-std::pow(std::fabs(r)+std::sqrt(r2-q3),1./3);
-    if( r<0 ) A=-A;
-    B = (0==A ? 0 : q/A);
-          
-		a/=3;
-		x[0] =(A+B)-a;
-		x[1] =-0.5*(A+B)-a;
-		x[2] = 0.5*sqrt(3.)*(A-B);
-		if(std::fabs(x[2])<1e-32) { x[2]=x[1]; return 2; }
-		
-		return 1;
+  double q3 = std::pow(q,3);
+  double A,B;
+  double a_prime = 0.;
+  if( r2 < q3 ) // 3 roots
+  {
+  	double t=r/sqrt(q3);
+  	if( t<-1) t=-1;
+  	if( t> 1) t= 1;
+  	t=std::acos(t);
+  	a_prime = a/3.; 
+	q=-2*std::sqrt(q);
+  	x[0]=q*std::cos(t/3)-a_prime;
+  	x[1]=q*std::cos((t+M_2PI)/3)-a_prime;
+  	x[2]=q*std::cos((t-M_2PI)/3)-a_prime;
+  	return 3;
+  } 
+  else 
+  {
+   	A =-std::pow(std::fabs(r)+std::sqrt(r2-q3),1./3);
+  	if( r<0 ) A=-A;
+  	B = (0 == A ? 0 : q/A);
+    
+	a_prime = a/3;
+	x[0] =(A+B)-a_prime;
+	x[1] =-0.5*(A+B)-a_prime;
+	x[2] = 0.5*std::sqrt(3.)*(A-B);
+    // 2 real roots
+	if(std::fabs(x[2])<eps) { x[2]=x[1]; return 2; }
+	// one real root
+	return 1;
   }
 }
 
-void quartic_solve(double a, double b, double c, double d, double e, std::array<double,4> &roots) {
+//---------------------------------------------------------------------------
+// solve quartic equation x^4 + a*x^3 + b*x^2 + c*x + d
+// Attention - this function returns dynamically allocated array. It has to be released afterwards.
+void quartic_solve(double a, double b, double c, double d, std::array<double,4> &real_roots) {
+  double a3 = -b;  
+  double b3 =  a*c -4.*d;
+  double c3 = -a*a*d - c*c + 4.*b*d;
+
+  // cubic resolvent
+  // y^3 − b*y^2 + (ac−4d)*y − a^2*d−c^2+4*b*d = 0
+
+  std::array<double,3> cube_roots;
+  unsigned int num_roots = solve_cubic(a3, b3, c3, cube_roots);
   
-  double descrim = 256*std::pow(a,3)*std::pow(e,3) - 192*std::pow(a,2)*b*d*std::pow(e,2) - 128*std::pow(a,2)*std::pow(c,2)*std::pow(e,2) + 144*std::pow(a,2)*c*std::pow(d,2)*e -27*std::pow(a,2)*std::pow(d,4) + 144*a*std::pow(b,2)*c*std::pow(e,2) - 6*a*std::pow(b,2)*std::pow(d,2)*e - 80*a*b*std::pow(c,2)*d*e + 18*a*b*c*std::pow(d,3) + 16*a*std::pow(c,4)*e - 4*a*std::pow(c,3)*std::pow(d,2) - 27*std::pow(b,4)*std::pow(e,2) + 18*std::pow(b,3)*c*d*e - 4*std::pow(b,3)*std::pow(d,3) - 4*std::pow(b,2)*std::pow(c,3)*e + std::pow(b,2)*std::pow(c,2)*std::pow(d,2);
-  double P = 8*a*c - 3*std::pow(b,2);
-  double R = std::pow(b,3) + 8*d*std::pow(a,2) - 4*a*b*c;
-  double d_0 = std::pow(c,2) - 3*b*d + 12*a*e;
-  double D = 64*std::pow(a,3)*e - 16*std::pow(a,2)*std::pow(c,2) + 16*a*std::pow(b,2)*c - 16*std::pow(a,2)*b*d - 3*std::pow(b,4);
-
-  std::cout << std::scientific;
-  std::cout << std::setprecision(9);
-  std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
-  std::cout << descrim << " " << P << " " << R << " " << d_0 << " " << D << std::endl;
-  if(descrim > 0 ) { // 4 real roots
-    double p = P/(8*std::pow(a,2));
-    double q = R/(8*std::pow(a,3));
-
-    double delta0 = std::pow(c,2) - 3*b*d + 12*a*e;
-    double delta1 = 2*std::pow(c,3) - 9*b*c*d + 27*std::pow(b,2)*e + 27*a*std::pow(d,2) - 72*a*c*e;
-
-    double phi = std::acos(delta1/(2.*std::sqrt(std::pow(delta0,3))));
-    double S = 0.5*sqrt(-2./3.*p + 2./(3.*a)*std::sqrt(delta0)*std::cos(phi/3.));
-    double coeff = std::sqrt( -4*std::pow(S,2) - 2*p + q/S);
-    roots[0] = -b/(4*a) - S + 0.5*coeff;
-    roots[1] = -b/(4*a) - S - 0.5*coeff;
-    roots[2] = -b/(4*a) + S + 0.5*coeff;
-    roots[3] = -b/(4*a) + S - 0.5*coeff;
-  } else if ( descrim < 0 ) { // 2 real roots 2 complex 
-    // degenerate biquadratic
-    if ( b == 0. && d == 0. ) {
-      std::array<double,2> quad_roots = {0,0};
-      quadratic_solve(a,c,e,quad_roots);
-      // if a quad root is -ve then its imaginary
-      // and we dont need it
-
-      if (quad_roots[0] < 0 ) { 
-        roots[0]=0.;
-        roots[1]=0.;
-      } else { 
-        roots[0] = std::sqrt(quad_roots[0]);
-        roots[1] =-std::sqrt(quad_roots[0]);
-      }
-      if (quad_roots[1] < 0) {
-         roots[2]=0.;
-         roots[3]=0.;
-      } else { 
-        roots[2] = std::sqrt(quad_roots[1]);
-        roots[3] =-std::sqrt(quad_roots[1]);
-      }
-    // 2 real roots 2 equal imaginary roots
-    } else {
-
-    }
-  } else if (descrim == 0. ) {
-      // all 4 roots the same 
-      if ( D == 0. && d_0 == 0. ) {
-        roots[0] = -b/(4*a);
-        roots[1] = roots[0];        
-        roots[2] = roots[0];
-        roots[3] = roots[0];
-     } else if ( D == 0. && P < 0 ) {
-        // then equation has reduced to x^2(ax^2 + bx + c)
-        // roots are 0 and quad roots
-        std::array<double,2> quad_roots = {0,0};
-        quadratic_solve(a,b,c,quad_roots);
-        // if a quad root is -ve then its imaginary
-        // and we dont need it
-
-        // note not sqrt this time
-        if (quad_roots[0] < 0 ) { 
-          roots[0]=0.;
-          roots[1]=0.;
-        } else { 
-          roots[0] = quad_roots[0];
-          roots[1] = quad_roots[0];
-        }
-
-        // note not sqrt this time
-        if (quad_roots[1] < 0) {
-          roots[2]=0.;
-          roots[3]=0.;
-        } else { 
-          roots[2] = quad_roots[1];
-          roots[3] = quad_roots[1];
-        }
-     } else if ( P > 0 && R == 0. ) {
-        // then equation has reduced to x^2(ax^2 + c)
-        // roots are -ve or imaginary
-        roots[0] = 0; 
-        roots[1] = 0;
-        roots[2] = 0; 
-        roots[3] = 0;
-     }
+  double q1, q2, p1, p2, D, sqD, y;
+  
+  y = cube_roots[0];
+  // The essence - choosing Y with maximal absolute value.
+  if(num_roots != 1)
+  {
+  	if(std::fabs(cube_roots[1]) > std::fabs(y)) y = cube_roots[1];
+  	if(std::fabs(cube_roots[2]) > std::fabs(y)) y = cube_roots[2];
   }
-   
-  std::sort(roots.begin(),roots.end());
+  
+  // h1+h2 = y && h1*h2 = d  <=>  h^2 -y*h + d = 0    (h === q)
+  
+  D = y*y - 4*d;
+  if(std::fabs(D) < eps) //in other words - D==0
+  {
+  	q1 = q2 = y * 0.5;
+  	// g1+g2 = a && g1+g2 = b-y   <=>   g^2 - a*g + b-y = 0    (p === g)
+  	D = a*a - 4*(b-y);
+  	if(std::fabs(D) < eps) {
+	  p1 = p2 = a * 0.5;
+	}
+  	else
+  	{
+  	  sqD = std::sqrt(D);
+  	  p1 = (a + sqD) * 0.5;
+  	  p2 = (a - sqD) * 0.5;
+  	}
+  }
+  else
+  {
+  	sqD = std::sqrt(D);
+  	q1 = (y + sqD) * 0.5;
+  	q2 = (y - sqD) * 0.5;
+  	p1 = (a*q1-c)/(q1-q2);
+  	p2 = (c-a*q2)/(q1-q2);
+  }
+  
+  std::array<std::complex<double>,4> roots; //the roots to return
+  
+  // solving quadratic eq. - x^2 + p1*x + q1 = 0
+  D = p1*p1 - 4*q1;
+  if(D < 0.0)
+  {
+    roots[0].real( -p1 * 0.5 );
+    roots[0].imag( std::sqrt(-D) * 0.5 );
+    roots[1] = std::conj(roots[0]);
+  }
+  else
+  {
+    sqD = std::sqrt(D);
+    roots[0].real( (-p1 + sqD) * 0.5 );
+    roots[1].real( (-p1 - sqD) * 0.5 );
+  }
+  
+  // solving quadratic eq. - x^2 + p2*x + q2 = 0
+  D = p2*p2 - 4*q2;
+  if(D < 0.0)
+  {
+    roots[2].real( -p2 * 0.5 );
+    roots[2].imag( std::sqrt(-D) * 0.5 );
+    roots[3] = std::conj(roots[2]);
+  }
+  else
+  {
+    sqD = std::sqrt(D);
+    roots[2].real( (-p2 + sqD) * 0.5 );
+    roots[3].real( (-p2 - sqD) * 0.5 );
+  }
+  
+  for ( int i = 0 ; i < 4 ; i++ ) {
+    if (roots[i].imag() == 0. )
+      real_roots[i] = roots[i].real();
+    else
+      real_roots[i] = 0.;
+  }
+
+  std::sort(real_roots.begin(),real_roots.end());
 
   return;
 }
@@ -1447,20 +1460,16 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   // the 0th order terms
   e = std::pow(A,4) - 2*std::pow(A,2)*std::pow(C,2) - 2*std::pow(A,2)*std::pow(x0,2) + 4*std::pow(A,2)*x0*xr - 2*std::pow(A,2)*std::pow(xr,2) - 2*std::pow(A,2)*std::pow(y0,2) + 4*std::pow(A,2)*y0*yr - 2*std::pow(A,2)*std::pow(yr,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(A,2)*std::pow(C,2)*z0*zr/std::pow(B,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4) - 2*std::pow(C,2)*std::pow(x0,2) + 4*std::pow(C,2)*x0*xr - 2*std::pow(C,2)*std::pow(xr,2) - 2*std::pow(C,2)*std::pow(y0,2) + 4*std::pow(C,2)*y0*yr - 2*std::pow(C,2)*std::pow(yr,2) + std::pow(x0,4) - 4*std::pow(x0,3)*xr + 6*std::pow(x0,2)*std::pow(xr,2) + 2*std::pow(x0,2)*std::pow(y0,2) - 4*std::pow(x0,2)*y0*yr + 2*std::pow(x0,2)*std::pow(yr,2) - 4*x0*std::pow(xr,3) - 4*x0*xr*std::pow(y0,2) + 8*x0*xr*y0*yr - 4*x0*xr*std::pow(yr,2) + std::pow(xr,4) + 2*std::pow(xr,2)*std::pow(y0,2) - 4*std::pow(xr,2)*y0*yr + 2*std::pow(xr,2)*std::pow(yr,2) + std::pow(y0,4) - 4*std::pow(y0,3)*yr + 6*std::pow(y0,2)*std::pow(yr,2) - 4*y0*std::pow(yr,3) + std::pow(yr,4) - 2*std::pow(C,4)*std::pow(z0,2)/std::pow(B,2) + 4*std::pow(C,4)*z0*zr/std::pow(B,2) - 2*std::pow(C,4)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(x0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*x0*xr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*x0*xr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(xr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(xr,2)*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(y0,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(zr,2)/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*y0*yr*z0*zr/std::pow(B,2) - 4*std::pow(C,2)*y0*yr*std::pow(zr,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(z0,2)/std::pow(B,2) - 4*std::pow(C,2)*std::pow(yr,2)*z0*zr/std::pow(B,2) + 2*std::pow(C,2)*std::pow(yr,2)*std::pow(zr,2)/std::pow(B,2) + std::pow(C,4)*std::pow(z0,4)/std::pow(B,4) - 4*std::pow(C,4)*std::pow(z0,3)*zr/std::pow(B,4) + 6*std::pow(C,4)*std::pow(z0,2)*std::pow(zr,2)/std::pow(B,4) - 4*std::pow(C,4)*z0*std::pow(zr,3)/std::pow(B,4) + std::pow(C,4)*std::pow(zr,4)/std::pow(B,4);
 
-  /*
-  std::cout << std::scientific;
-  std::cout << std::setprecision(9);
-  std::cout << a << " " << b << " " << c << " " << d << " " << e << std::endl;
-  */
-  // solve it
+  //
   std::array<double,4> roots;
-  quartic_solve(a,b,c,d,e,roots);
+  quartic_solve(b,c,d,e,roots);
+ 
   // roots is a sorted list, return the first that is larger than
-  // 0
   for ( int i = 0 ; i < 4 ; i++ ) {
     if ( roots[i] > 0. ) return roots[i];
   }
 
+  // otherwise no hit
   return INFTY;
 }
 
