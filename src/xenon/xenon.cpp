@@ -51,9 +51,6 @@ double actual_power = 104.5*openmc::PI*0.4096*0.4096;
 int batch_size = 5;
 int restart_batches = 4;
 
-std::vector<double> xe135_density;
-std::vector<double> i135_density;
-
 // Helper function
 
 std::vector<std::string> split(const char* s) {
@@ -357,8 +354,6 @@ void update() {
     double xe135_eq = (xe135_prod[i] + b_g*(i135_prod[i] + te135_prod[i]) +
                        b_it*(xe135m_prod[i] + b_m*(i135_prod[i] +
                        te135_prod[i]))) / (xe135_decay + xe135_abs[i]);
-    std::cout << "I135 concentration: " << i135_eq << std::endl;
-    std::cout << "Xe135 concentration: " << xe135_eq << std::endl;
 
     // Create array of pointers to nuclide C-strings
     const char* new_nucnames[n_nucs_in_mat];
@@ -371,9 +366,6 @@ void update() {
     std::copy(densities, densities + n_nucs_in_mat, new_densities);
     new_densities[idx_i135] = i135_eq;
     new_densities[idx_xe135] = xe135_eq;
-
-    xe135_density.push_back(xe135_eq);
-    i135_density.push_back(i135_eq);
 
     // Set densities for material
     CHECK(openmc_material_set_densities(mats[i], n_nucs_in_mat, new_nucnames,
@@ -406,14 +398,6 @@ int run() {
       ++generation;
     }
   }
-
-  std::cout << "Xe135: ";
-  for (std::vector<double>::const_iterator i = xe135_density.begin(); i != xe135_density.end(); ++i)
-    std::cout << *i << " ";
-  std::cout << "\nI135: ";
-  for (std::vector<double>::const_iterator i = i135_density.begin(); i != i135_density.end(); ++i)
-    std::cout << *i << " ";
-  std::cout << "\n";
 
   openmc_simulation_finalize();
   return err;
