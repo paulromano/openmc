@@ -47,8 +47,6 @@ if (NOT (CMAKE_VERSION VERSION_LESS 3.12))
   cmake_policy(SET CMP0074 NEW)
 endif()
 
-cmake_policy(SET CMP0079 OLD)
-
 # Unfortunately FindHDF5.cmake will always prefer a serial HDF5 installation
 # over a parallel installation if both appear on the user's PATH. To get around
 # this, we check for the environment variable HDF5_ROOT and if it exists, use it
