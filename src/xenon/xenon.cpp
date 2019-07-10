@@ -1,6 +1,7 @@
 #include "openmc/capi.h"
 #include "openmc/constants.h"
 #include "openmc/error.h"
+#include "openmc/string_utils.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/filter_material.h"
 #include "openmc/tallies/tally.h"
@@ -27,45 +28,44 @@ void CHECK(int err) {
   if (err) openmc::fatal_error(openmc_err_msg);
 }
 
+namespace openmc{
 namespace xenon {
 
 // Global variables
 
-std::unordered_map<std::string, double> te135_yield;
-std::unordered_map<std::string, double> i135_yield;
-std::unordered_map<std::string, double> xe135_yield;
-std::unordered_map<std::string, double> xe135m_yield;
-std::unordered_map<std::string, double> fission_q;
-std::unordered_map<int, std::string> nucname;
+struct NuclideProperties {
+  double yield_te135;
+  double yield_i135;
+  double yield_xe135;
+  double yield_xe135m;
+  double fission_q;
+};
+
+std::unordered_map<std::string, NuclideProperties> properties;
+std::vector<std::string> nucname;
 std::unordered_map<int32_t, double> volume;
 double i135_decay;
 double xe135_decay;
 double b_m;
 double b_g;
 double b_it;
-openmc::MaterialFilter* mat_filter;
-openmc::Tally* fission_tally;
-openmc::Tally* absorb_tally;
+MaterialFilter* mat_filter;
+Tally* fission_tally;
+Tally* absorb_tally;
 
 
-double actual_power = 104.5*openmc::PI*0.4096*0.4096;
+double actual_power = 104.5*PI*0.4096*0.4096;
 int batch_size = 5;
 int restart_batches = 4;
 
-// Helper function
-
-std::vector<std::string> split(const char* s) {
-  std::istringstream iss {s};
-  return {std::istream_iterator<std::string>{iss},
-          std::istream_iterator<std::string>{}};
-}
 
 void get_chain_data() {
   using namespace pugi;
 
+  // TODO: get chain from cross_sections.xml
   const char* chain_file = std::getenv("OPENMC_DEPLETE_CHAIN");
   if (!chain_file)
-    openmc::fatal_error("Must have a depletion chain file.");
+    throw std::runtime_error{"Must have a depletion chain file."};
 
   xml_document doc;
   xml_parse_result result = doc.load_file(chain_file);
@@ -79,7 +79,7 @@ void get_chain_data() {
     for (xml_node reaction : nuclide.children("reaction")) {
       std::string rx_type = reaction.attribute("type").value();
       if (rx_type == "fission") {
-        fission_q[name] = openmc::JOULE_PER_EV * reaction.attribute("Q").as_double();
+        properties[name].fission_q = openmc::JOULE_PER_EV * reaction.attribute("Q").as_double();
       }
     }
 
@@ -123,13 +123,13 @@ void get_chain_data() {
       // determine number of products
       for (int i = 0; i < products.size(); ++i) {
         if (products[i] == "I135") {
-          i135_yield[name] = std::stod(data[i]);
+          properties[name].yield_i135 = std::stod(data[i]);
         } else if (products[i] == "Te135") {
-          te135_yield[name] = std::stod(data[i]);
+          properties[name].yield_te135 = std::stod(data[i]);
         } else if (products[i] == "Xe135") {
-          xe135_yield[name] = std::stod(data[i]);
+          properties[name].yield_xe135 = std::stod(data[i]);
         } else if (products[i] == "Xe135_m1") {
-          xe135m_yield[name] = std::stod(data[i]);
+          properties[name].yield_xe135m = std::stod(data[i]);
         }
       } // <products>
     } // <neutron_fission_yields>
@@ -151,22 +151,21 @@ void get_chain_data() {
 }
 
 void get_nuclide_names () {
-  for (int i = 0; i < openmc::data::nuclides.size(); ++i) {
-    nucname[i] = openmc::data::nuclides[i]->name_;
+  for (int i = 0; i < data::nuclides.size(); ++i) {
+    nucname[i] = data::nuclides[i]->name_;
   }
 }
 
 void create_tallies(const std::vector<std::string>& nucs, const std::vector<int32_t>& mats) {
   // Create filter for each material with fissionable material
-  mat_filter = dynamic_cast<openmc::MaterialFilter*>(
-    openmc::Filter::create("material"));
+  mat_filter = dynamic_cast<MaterialFilter*>(Filter::create("material"));
   mat_filter->set_materials(mats);
 
   //////////////////////////////////////////////////////////////////////////////
   // Create tally for fission in each fissionable nuclide
-  fission_tally = openmc::Tally::create();
+  fission_tally = Tally::create();
   fission_tally->set_active(true);
-  std::vector<openmc::Filter*> filters = {mat_filter};
+  std::vector<Filter*> filters = {mat_filter};
   fission_tally->set_filters(filters);
   fission_tally->set_nuclides(nucs);
   fission_tally->set_scores({"fission"});
@@ -174,7 +173,7 @@ void create_tallies(const std::vector<std::string>& nucs, const std::vector<int3
   //////////////////////////////////////////////////////////////////////////////
   // Create tally for absorption in Xe135
 
-  absorb_tally = openmc::Tally::create();
+  absorb_tally = Tally::create();
   absorb_tally->set_active(true);
   absorb_tally->set_filters(filters);
   absorb_tally->set_nuclides({"Xe135"});
@@ -190,8 +189,8 @@ fissionable_materials()
   int* nuclides;
   double* densities;
   int n;
-  for (int32_t i = 0; i < openmc::model::materials.size(); ++i) {
-    const auto& mat {openmc::model::materials[i]};
+  for (int32_t i = 0; i < model::materials.size(); ++i) {
+    const auto& mat {model::materials[i]};
 
     // loop over nuclides
     bool added = false;
@@ -200,7 +199,7 @@ fissionable_materials()
     for (int j = 0; j < mat->nuclide_.size(); ++j) {
       // get name of j-th nuclide
       int i_nuc = mat->nuclide_[j];
-      auto name = openmc::data::nuclides[i_nuc]->name_;
+      auto name = data::nuclides[i_nuc]->name_;
 
       // Check if Xe135/I135 is present
       if (name == "Xe135") has_xe135 = true;
@@ -208,7 +207,7 @@ fissionable_materials()
 
       // if nuclide is fissionable, add it to set of fissionable nuclides and
       // add material to list of fuel materials
-      if (fission_q.find(name) != fission_q.end()) {
+      if (properties.find(name) != properties.end()) {
         fissionable_nuclides.push_back(name);
         if (!added) {
           volume[i] = mat->volume();
@@ -262,11 +261,12 @@ void update() {
     for (int j = 0; j < fission_tally->nuclides_.size(); ++j) {
       double fission_rate = fission_tally->results_(i, j, 1) / fission_tally->n_realizations_;
       std::string nuc = nucname[fission_tally->nuclides_[j]];
-      i135_prod[i] += i135_yield[nuc] * fission_rate;
-      te135_prod[i] += te135_yield[nuc] * fission_rate;
-      xe135_prod[i] += xe135_yield[nuc] * fission_rate;
-      xe135m_prod[i] += xe135m_yield[nuc] * fission_rate;
-      power += fission_q[nuc] * fission_rate;
+      const auto& props = properties[nuc];
+      i135_prod[i] += props.yield_i135 * fission_rate;
+      te135_prod[i] += props.yield_te135 * fission_rate;
+      xe135_prod[i] += props.yield_xe135 * fission_rate;
+      xe135m_prod[i] += props.yield_xe135m * fission_rate;
+      power += props.fission_q * fission_rate;
     }
 
     // Determine Xe135 absorption rate
@@ -291,7 +291,7 @@ void update() {
     xe135_abs[i] *= normalization;
 
     // Get array of densities in current material
-    const auto& mat {openmc::model::materials[mats[i]]};
+    const auto& mat {model::materials[mats[i]]};
     const auto& nucs_in_mat {mat->nuclides()};
     const auto& densities {mat->densities()};
 
@@ -362,16 +362,17 @@ int run() {
 }
 
 } // namespace xenon
+} // namespace openmc
 
 int main(int argc, char* argv[]) {
   // Initialize OpenMC
   CHECK(openmc_init(argc, argv, nullptr));
 
   // Xe feedback initialization
-  xenon::init();
+  openmc::xenon::init();
 
   // Run
-  CHECK(xenon::run());
+  CHECK(openmc::xenon::run());
 
   // Finalize simulation
   CHECK(openmc_finalize());
