@@ -89,6 +89,7 @@ constexpr double MASS_NEUTRON     {1.00866491588}; // mass of a neutron in amu
 constexpr double MASS_NEUTRON_EV  {939.5654133e6}; // mass of a neutron in eV/c^2
 constexpr double MASS_PROTON      {1.007276466879}; // mass of a proton in amu
 constexpr double MASS_ELECTRON_EV {0.5109989461e6}; // electron mass energy equivalent in eV/c^2
+constexpr double JOULE_PER_EV     {1.6021766208e-19}; // 1 eV in J
 constexpr double FINE_STRUCTURE   {137.035999139}; // inverse fine structure constant
 constexpr double PLANCK_C         {1.2398419739062977e4}; // Planck's constant times c in eV-Angstroms
 constexpr double AMU              {1.660539040e-27}; // 1 amu in kg

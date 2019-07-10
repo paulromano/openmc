@@ -72,14 +72,14 @@ void get_chain_data() {
   xml_node root = doc.document_element();
 
   for (xml_node nuclide : root.children("nuclide")) {
-    const char* name = nuclide.attribute("name").value();
+    std::string name = nuclide.attribute("name").value();
 
     //////////////////////////////////////////////////////////////////////////
     // Determine fission Q values
     for (xml_node reaction : nuclide.children("reaction")) {
-      const char* rx_type = reaction.attribute("type").value();
-      if (std::strcmp(rx_type, "fission") == 0) {
-        fission_q[name] = reaction.attribute("Q").as_double();
+      std::string rx_type = reaction.attribute("type").value();
+      if (rx_type == "fission") {
+        fission_q[name] = openmc::JOULE_PER_EV * reaction.attribute("Q").as_double();
       }
     }
 
@@ -87,25 +87,24 @@ void get_chain_data() {
     // Determine branching ratios for I135 to Xe135 and Xe135m and Xe135m to
     // Xe135
     for (xml_node decay : nuclide.children("decay")) {
-      const char* target = decay.attribute("target").value();
-      if (std::strcmp(name, "I135") == 0) {
-        if (std::strcmp(target, "Xe135") == 0) {
+      std::string target = decay.attribute("target").value();
+      if (name == "I135") {
+        if (target == "Xe135") {
           b_g = decay.attribute("branching_ratio").as_double();
-        } else if (std::strcmp(target, "Xe135_m1") == 0) {
+        } else if (target == "Xe135_m1") {
           b_m = decay.attribute("branching_ratio").as_double();
         }
-      } else if (std::strcmp(name, "Xe135_m1") == 0 &&
-                 std::strcmp(target, "Xe135") == 0) {
+      } else if (name == "Xe135_m1" && target == "Xe135") {
         b_it = decay.attribute("branching_ratio").as_double();
       }
     }
 
     //////////////////////////////////////////////////////////////////////////
     // Determine decay constants for Xe135 and I135
-    if (std::strcmp(name, "Xe135") == 0) {
+    if (name == "Xe135") {
       double half_life = nuclide.attribute("half_life").as_double();
       xe135_decay = std::log(2.0) / half_life;
-    } else if (std::strcmp(name, "I135") == 0) {
+    } else if (name == "I135") {
       double half_life = nuclide.attribute("half_life").as_double();
       i135_decay = std::log(2.0) / half_life;
     }
@@ -279,11 +278,12 @@ void update() {
   // densities
 
   for (gsl::index i = 0; i < n_mats; ++i) {
-    // Normalize production rates by specified power and volume
+    // Normalize production rates by specified power and volume. Note that
+    // production terms need to be in units of [1/(s-b-cm)] since nuclide
+    // densities are in units of [atom/b-cm].
     constexpr double BARN_PER_CM_SQ {1.0e24};
-    constexpr double JOULE_PER_EV {1.602176634e-19};
     double V = volume[mats[i]];
-    double normalization = actual_power / (JOULE_PER_EV * power * BARN_PER_CM_SQ * V);
+    double normalization = actual_power / (power * BARN_PER_CM_SQ * V);
     i135_prod[i] *= normalization;
     te135_prod[i] *= normalization;
     xe135_prod[i] *= normalization;
@@ -295,7 +295,8 @@ void update() {
     const auto& nucs_in_mat {mat->nuclides()};
     const auto& densities {mat->densities()};
 
-    // Divide Xe135 absorption rate by current Xe135 density
+    // Divide Xe135 absorption rate by current Xe135 density to get absorption
+    // coefficient in units of [1/s]
     int idx_i135;
     int idx_xe135;
     for (gsl::index j = 0; j < nucs_in_mat.size(); ++j) {
@@ -307,7 +308,8 @@ void update() {
       }
     }
 
-    // solve equation (9) and (10) for equilibrium concentrations
+    // solve for equilibrium concentrations. These are analogous to eq (9) and
+    // (10) in Griesheimer, but they explicitly account for Te135 and Xe135_m1.
     double i135_eq = (i135_prod[i] + te135_prod[i]) / i135_decay;
     double xe135_eq = (xe135_prod[i] + b_g*(i135_prod[i] + te135_prod[i]) +
                        b_it*(xe135m_prod[i] + b_m*(i135_prod[i] +
