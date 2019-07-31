@@ -4,6 +4,8 @@
 
 #include <fmt/core.h>
 #include <fmt/ostream.h>
+#include <iostream>
+#include <sstream>
 
 #include "openmc/cell.h"
 #include "openmc/constants.h"
@@ -363,6 +365,8 @@ BoundaryInfo distance_to_boundary(Particle& p)
     // Find the oncoming surface in this cell and the distance to it.
     auto surface_distance = c.distance(r, u, p.surface_, &p);
     d_surf = surface_distance.first;
+    std::cout << " " << d_surf << std::endl;
+
     level_surf_cross = surface_distance.second;
 
     // Find the distance to the next lattice tile crossing.
