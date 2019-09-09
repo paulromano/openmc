@@ -1,5 +1,5 @@
 #!/bin/bash
 set -ex
 
-# Download NNDC HDF5 data, ENDF/B-VII.1 distribution, multipole library
+# Download ENDF/B-VII.1 distribution, HDF5 data (including multipole library)
 source tools/ci/download-xs.sh

@@ -485,7 +485,6 @@ schemas.xml file in your own OpenMC source directory.
 .. _GNU Emacs: http://www.gnu.org/software/emacs/
 .. _validation: http://en.wikipedia.org/wiki/XML_validation
 .. _RELAX NG: http://relaxng.org/
-.. _NNDC: http://www.nndc.bnl.gov/endf/b7.1/acefiles.html
 .. _ctest: http://www.cmake.org/cmake/help/v2.8.12/ctest.html
 .. _Conda: https://conda.io/docs/
 .. _pip: https://pip.pypa.io/en/stable/
