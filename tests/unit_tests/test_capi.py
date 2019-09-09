@@ -337,8 +337,8 @@ def test_reset(capi_run):
         # Check the tally std devs to make sure results were cleared.
         _, keff_sd2 = openmc.capi.keff()
         tally_sd2 = openmc.capi.tallies[2].std_dev[0]
-        assert keff_sd2 > keff_sd1
-        assert tally_sd2 > tally_sd1
+        assert keff_sd2 != keff_sd1
+        assert tally_sd2 != tally_sd1
 
     finally:
         openmc.capi.simulation_finalize()

@@ -69,9 +69,10 @@ def sio2():
 def test_h2o_attributes(h2o):
     assert h2o.name == 'c_H_in_H2O'
     assert h2o.nuclides == ['H1']
-    assert h2o.temperatures == ['294K']
+    assert h2o.temperatures == ['294K', '350K', '400K', '450K', '500K', '550K',
+                                '600K', '650K', '800K']
     assert h2o.atomic_weight_ratio == pytest.approx(0.999167)
-    assert h2o.energy_max == pytest.approx(4.46)
+    assert h2o.energy_max == pytest.approx(3.75)
     assert isinstance(repr(h2o), str)
 
 
@@ -85,9 +86,10 @@ def test_h2o_xs(h2o):
 def test_graphite_attributes(graphite):
     assert graphite.name == 'c_Graphite'
     assert graphite.nuclides == ['C0', 'C12', 'C13']
-    assert graphite.temperatures == ['296K']
+    assert graphite.temperatures == ['1000K', '1200K', '1600K', '2000K', '296K',
+                                     '400K', '500K', '600K', '700K', '800K']
     assert graphite.atomic_weight_ratio == pytest.approx(11.898)
-    assert graphite.energy_max == pytest.approx(4.46)
+    assert graphite.energy_max == pytest.approx(2.02)
 
 
 def test_graphite_xs(graphite):
