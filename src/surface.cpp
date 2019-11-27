@@ -1346,13 +1346,85 @@ SurfaceXTorus::evaluate(Position r) const
 double
 SurfaceXTorus::distance(Position r, Direction ang, bool coincident) const
 {
-  return 0;
+  double u = ang.x;
+  double v = ang.y;
+  double w = ang.z;
+
+  double xr = r.x;
+  double yr = r.y;
+  double zr = r.z;
+
+  double A = A_;
+  double B = B_;
+  double C = C_;
+
+  double x0 = x0_ + xr;
+  double y0 = y0_ + yr;
+  double z0 = z0_ + zr;
+
+  double a,b,c,d,e; // coefficients of quartic
+
+  // a is always 1 maybe save the maths?
+  a = std::pow(v,4) + 2*std::pow(v,2)*std::pow(w,2) + std::pow(w,4) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(v,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(w,2)/std::pow(B,2) + std::pow(C,4)*std::pow(u,4)/std::pow(B,4);
+  b = 4*std::pow(v,3)*y0 + 4*std::pow(v,2)*w*z0 + 4*v*std::pow(w,2)*y0 + 4*std::pow(w,3)*z0 + 4*std::pow(C,2)*std::pow(u,2)*v*y0/std::pow(B,2) + 4*std::pow(C,2)*std::pow(u,2)*w*z0/std::pow(B,2) + 4*std::pow(C,2)*u*std::pow(v,2)*x0/std::pow(B,2) + 4*std::pow(C,2)*u*std::pow(w,2)*x0/std::pow(B,2) + 4*std::pow(C,4)*std::pow(u,3)*x0/std::pow(B,4);
+  c = -2*std::pow(A,2)*std::pow(v,2) - 2*std::pow(A,2)*std::pow(w,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(u,2)/std::pow(B,2) - 2*std::pow(C,2)*std::pow(v,2) - 2*std::pow(C,2)*std::pow(w,2) + 6*std::pow(v,2)*std::pow(y0,2) + 2*std::pow(v,2)*std::pow(z0,2) + 8*v*w*y0*z0 + 2*std::pow(w,2)*std::pow(y0,2) + 6*std::pow(w,2)*std::pow(z0,2) - 2*std::pow(C,4)*std::pow(u,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(y0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*u*v*x0*y0/std::pow(B,2) + 8*std::pow(C,2)*u*w*x0*z0/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(x0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(x0,2)/std::pow(B,2) + 6*std::pow(C,4)*std::pow(u,2)*std::pow(x0,2)/std::pow(B,4);
+  d = -4*std::pow(A,2)*v*y0 - 4*std::pow(A,2)*w*z0 + 4*std::pow(A,2)*std::pow(C,2)*u*x0/std::pow(B,2) - 4*std::pow(C,2)*v*y0 - 4*std::pow(C,2)*w*z0 + 4*v*std::pow(y0,3) + 4*v*y0*std::pow(z0,2) + 4*w*std::pow(y0,2)*z0 + 4*w*std::pow(z0,3) - 4*std::pow(C,4)*u*x0/std::pow(B,2) + 4*std::pow(C,2)*u*x0*std::pow(y0,2)/std::pow(B,2) + 4*std::pow(C,2)*u*x0*std::pow(z0,2)/std::pow(B,2) + 4*std::pow(C,2)*v*std::pow(x0,2)*y0/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(x0,2)*z0/std::pow(B,2) + 4*std::pow(C,4)*u*std::pow(x0,3)/std::pow(B,4);
+  e = std::pow(A,4) - 2*std::pow(A,2)*std::pow(C,2) - 2*std::pow(A,2)*std::pow(y0,2) - 2*std::pow(A,2)*std::pow(z0,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(x0,2)/std::pow(B,2) + std::pow(C,4) - 2*std::pow(C,2)*std::pow(y0,2) - 2*std::pow(C,2)*std::pow(z0,2) + std::pow(y0,4) + 2*std::pow(y0,2)*std::pow(z0,2) + std::pow(z0,4) - 2*std::pow(C,4)*std::pow(x0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(y0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(z0,2)/std::pow(B,2) + std::pow(C,4)*std::pow(x0,4)/std::pow(B,4);
+
+  //
+  std::array<double,4> roots;
+  quartic_solve(b,c,d,e,roots);
+
+  if (coincident) r += ang*TINY_BIT;
+
+  // special degerenate case two sets of repated
+  // roots
+  if ( b == 0.0 && d == 0) {
+    if ( roots[1] - roots[0] < 1e-5 ) return INFTY;
+    if ( roots[3] - roots[2] < 1e-5 ) return INFTY;
+  }
+
+  for ( int i = 0 ; i < 4 ; i++ ) {
+    // need something better than just raw tolerance
+    // use fastQS to get back lost precision
+    if ( roots[i] > 1e-6) {
+      return roots[i];
+    }
+  }
+
+  // otherwise no hit
+  return INFTY;
 }
 
 Direction
 SurfaceXTorus::normal(Position r) const
 {
-  return {0,0,0};
+  // reduce the expansion of the full form for torus
+  double x = r.x - x0_;
+  double y = r.y - y0_;
+  double z = r.z - z0_;
+
+  double A2 = A_*A_;
+  double B2 = B_*B_;
+  double C2 = C_*C_;
+
+  // coefficients for the x, x^2, x^3 and x^4 term
+  // but since we differeniate - we get x4 -> 4x3
+  double dx_4 = 4*x*x*x*C2*C2/(B2*B2);
+  double dx_2 = 4*x*C2/B2*(z*z + 2*y*y - 2*C2 + 2*A2);
+  double dx = dx_4 + dx_2;
+  // similarly to y
+  double dy_4 = 4*y*y*y;
+  double dy_2 = 4*y*(z*z  + C2*x*x/B2  - A2 - C2);
+  double dy = dy_2 + dy_4;
+  // and z
+  double dz_4 = 4*z*z*z;
+  double dz_2 = 4*z*(C2*x*x/B2 + y*y - C2 - A2);
+  double dz = dz_2 + dz_4;
+
+  double length = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+  return {dx/length,dy/length,dz/length};
 }
 
 SurfaceYTorus::SurfaceYTorus(pugi::xml_node surf_node)
@@ -1388,13 +1460,90 @@ SurfaceYTorus::evaluate(Position r) const
 double
 SurfaceYTorus::distance(Position r, Direction ang, bool coincident) const
 {
+  double u = ang.x;
+  double v = ang.y;
+  double w = ang.z;
+
+  double xr = r.x;
+  double yr = r.y;
+  double zr = r.z;
+
+  double A = A_;
+  double B = B_;
+  double C = C_;
+
+  double x0 = x0_ + xr;
+  double y0 = y0_ + yr;
+  double z0 = z0_ + zr;
+
+  double a,b,c,d,e; // coefficients of quartic
+
+  a = std::pow(u,4) + 2*std::pow(u,2)*std::pow(w,2) + std::pow(w,4) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(v,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(w,2)/std::pow(B,2) + std::pow(C,4)*std::pow(v,4)/std::pow(B,4);
+  b = 4*std::pow(u,3)*x0 + 4*std::pow(u,2)*w*z0 + 4*u*std::pow(w,2)*x0 + 4*std::pow(w,3)*z0 + 4*std::pow(C,2)*std::pow(u,2)*v*y0/std::pow(B,2) + 4*std::pow(C,2)*u*std::pow(v,2)*x0/std::pow(B,2) + 4*std::pow(C,2)*std::pow(v,2)*w*z0/std::pow(B,2) + 4*std::pow(C,2)*v*std::pow(w,2)*y0/std::pow(B,2) + 4*std::pow(C,4)*std::pow(v,3)*y0/std::pow(B,4);
+  c = -2*std::pow(A,2)*std::pow(u,2) - 2*std::pow(A,2)*std::pow(w,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(v,2)/std::pow(B,2) - 2*std::pow(C,2)*std::pow(u,2) - 2*std::pow(C,2)*std::pow(w,2) + 6*std::pow(u,2)*std::pow(x0,2) + 2*std::pow(u,2)*std::pow(z0,2) + 8*u*w*x0*z0 + 2*std::pow(w,2)*std::pow(x0,2) + 6*std::pow(w,2)*std::pow(z0,2) - 2*std::pow(C,4)*std::pow(v,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(u,2)*std::pow(y0,2)/std::pow(B,2) + 8*std::pow(C,2)*u*v*x0*y0/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(x0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(v,2)*std::pow(z0,2)/std::pow(B,2) + 8*std::pow(C,2)*v*w*y0*z0/std::pow(B,2) + 2*std::pow(C,2)*std::pow(w,2)*std::pow(y0,2)/std::pow(B,2) + 6*std::pow(C,4)*std::pow(v,2)*std::pow(y0,2)/std::pow(B,4);
+  d = -4*std::pow(A,2)*u*x0 - 4*std::pow(A,2)*w*z0 + 4*std::pow(A,2)*std::pow(C,2)*v*y0/std::pow(B,2) - 4*std::pow(C,2)*u*x0 - 4*std::pow(C,2)*w*z0 + 4*u*std::pow(x0,3) + 4*u*x0*std::pow(z0,2) + 4*w*std::pow(x0,2)*z0 + 4*w*std::pow(z0,3) - 4*std::pow(C,4)*v*y0/std::pow(B,2) + 4*std::pow(C,2)*u*x0*std::pow(y0,2)/std::pow(B,2) + 4*std::pow(C,2)*v*std::pow(x0,2)*y0/std::pow(B,2) + 4*std::pow(C,2)*v*y0*std::pow(z0,2)/std::pow(B,2) + 4*std::pow(C,2)*w*std::pow(y0,2)*z0/std::pow(B,2) + 4*std::pow(C,4)*v*std::pow(y0,3)/std::pow(B,4);
+  e = std::pow(A,4) - 2*std::pow(A,2)*std::pow(C,2) - 2*std::pow(A,2)*std::pow(x0,2) - 2*std::pow(A,2)*std::pow(z0,2) + 2*std::pow(A,2)*std::pow(C,2)*std::pow(y0,2)/std::pow(B,2) + std::pow(C,4) - 2*std::pow(C,2)*std::pow(x0,2) - 2*std::pow(C,2)*std::pow(z0,2) + std::pow(x0,4) + 2*std::pow(x0,2)*std::pow(z0,2) + std::pow(z0,4) - 2*std::pow(C,4)*std::pow(y0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(x0,2)*std::pow(y0,2)/std::pow(B,2) + 2*std::pow(C,2)*std::pow(y0,2)*std::pow(z0,2)/std::pow(B,2) + std::pow(C,4)*std::pow(y0,4)/std::pow(B,4);
+
+  //
+  std::array<double,4> roots;
+  quartic_solve(b,c,d,e,roots);
+
+  if (coincident) r += ang*TINY_BIT;
+
+  // special degerenate case two sets of repated
+  if ( b == 0.0 && d == 0) {
+    if ( roots[1] - roots[0] < 1e-5 ) return INFTY;
+    if ( roots[3] - roots[2] < 1e-5 ) return INFTY;
+  }
+
+  for ( int i = 0 ; i < 4 ; i++ ) {
+    // need something better than just raw tolerance
+    // use fastQS to get back lost precision
+    if ( roots[i] > 1e-6) {
+      return roots[i];
+    }
+  }
+
+  // otherwise no hit
+  return INFTY;
+
   return 0;
 }
 
 Direction
 SurfaceYTorus::normal(Position r) const
 {
-  return {0,0,0};
+  // reduce the expansion of the full form for torus
+  double x = r.x - x0_;
+  double y = r.y - y0_;
+  double z = r.z - z0_;
+
+  double A2 = A_*A_;
+  double B2 = B_*B_;
+  double C2 = C_*C_;
+
+  // a**4 - 2*a**2*c**2 - 2*a**2*x**2 - 2*a**2*z**2 + 2*a**2*c**2*y**2/b**2 + c**4
+  // - 2*c**2*x**2 - 2*c**2*z**2 + x**4 + 2*x**2*z**2 + z**4 - 2*c**4*y**2/b**2 +
+  // 2*c**2*x**2*y**2/b**2 + 2*c**2*y**2*z**2/b**2 + c**4*y**4/b**4
+
+
+  // coefficients for the x, x^2, x^3 and x^4 term
+  // but since we differeniate - we get x4 -> 4x3
+  double dx_4 = 4*x*x*x;
+  double dx_2 = 4*x*(z*z + C2*y*y/B2 - A2 - C2);
+  double dx = dx_4 + dx_2;
+  // similarly to y
+  double dy_4 = 4*y*y*y*C2*C2/(B2*B2);
+  double dy_2 = 4*y*(z*z  + C2*x*x/B2  - A2 - C2);
+  double dy = dy_2 + dy_4;
+  // and z
+  double dz_4 = 4*z*z*z;
+  double dz_2 = 4*z*(C2*y*y/B2 + x*x - C2 - A2);
+  double dz = dz_2 + dz_4;
+
+  double length = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+  return {dx/length,dy/length,dz/length};
 }
 
 void SurfaceYTorus::to_hdf5_inner(hid_t group_id) const
@@ -1463,17 +1612,6 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   std::array<double,4> roots;
   quartic_solve(b,c,d,e,roots);
 
- std::cout << std::scientific;
-  std::cout << coincident << " ";
-  std::cout << " roots ";
-  // roots is a sorted list, return the first that is larger than 0
-  for ( int i = 0 ; i < 4 ; i++ ) {
-    std::cout << roots[i] << " ";
-  }
-  std::cout << roots[0] - roots[1] << " ";
-  std::cout << roots[3] - roots[2];
-  std::cout << std::endl;
-  std::cout << "cooefs: " <<  a << "  " << b << " " << c << " " << d << " " << e << std::endl;
   if (coincident) r += ang*TINY_BIT;
 
   // special degerenate case two sets of repated
@@ -1484,8 +1622,9 @@ SurfaceZTorus::distance(Position r, Direction ang, bool coincident) const
   }
 
   for ( int i = 0 ; i < 4 ; i++ ) {
-    if ( roots[i] > FP_COINCIDENT) {
-      std::cout << evaluate(r) << " " << roots[i] << std::endl;
+    // need something better than just raw tolerance
+    // use fastQS to get back lost precision
+    if ( roots[i] > 1e-6) {
       return roots[i];
     }
   }

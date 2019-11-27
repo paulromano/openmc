@@ -365,7 +365,7 @@ BoundaryInfo distance_to_boundary(Particle& p)
     // Find the oncoming surface in this cell and the distance to it.
     auto surface_distance = c.distance(r, u, p.surface_, &p);
     d_surf = surface_distance.first;
-    std::cout << " " << d_surf << std::endl;
+    //std::cout << " " << d_surf << std::endl;
 
     level_surf_cross = surface_distance.second;
 
