@@ -8,6 +8,7 @@ import pandas as pd
 
 from .data import NEUTRON_MASS
 from .endf import get_head_record, get_cont_record, get_tab1_record, get_list_record
+from .function import Polynomial as polynomial
 try:
     from .reconstruct import wave_number, penetration_shift, reconstruct_mlbw, \
         reconstruct_slbw, reconstruct_rm
@@ -922,6 +923,11 @@ class Unresolved(ResonanceRange):
 
     Attributes
     ----------
+    case : {'A', 'B', or 'C'}
+        In case A, fission widths are not given and all parameters are
+        energy-independent. In case B, fission widths are given and only
+        fission widths are energy-dependent. In case C, all parameters are
+        energy-dependent.
     add_to_background : bool
         If True, file 3 contains partial cross sections to be added to the
         average unresolved cross sections calculated from parameters.
@@ -935,8 +941,8 @@ class Unresolved(ResonanceRange):
         Maximum energy of the unresolved resonance range in eV
     energy_min : float
         Minimum energy of the unresolved resonance range in eV
-    parameters : list of pandas.DataFrame
-        Average resonance parameters at each energy
+    parameters : pandas.DataFrame
+        Average resonance parameters
     scattering_radius : openmc.data.Function1D
         Scattering radii as a function of energy
     target_spin : float
@@ -951,6 +957,39 @@ class Unresolved(ResonanceRange):
         self.parameters = None
         self.add_to_background = False
         self.atomic_weight_ratio = None
+
+    def to_hdf5(self, group):
+        """Write unresolved resonance parameters to an HDF5 group
+
+        Parameters
+        ----------
+        group : h5py.Group
+            HDF5 group to write to
+
+        """
+
+        # Write basic data
+        cases = {'A': 1, 'B': 2, 'C': 3}
+        group.attrs['case'] = cases[self.case]
+        group.attrs['add_to_background'] = self.add_to_background
+        group.attrs['atomic_weight_ratio'] = self.atomic_weight_ratio
+        group.attrs['energy_max'] = self.energy_max
+        group.attrs['energy_min'] = self.energy_min
+        group.attrs['target_spin'] = self.target_spin
+
+        # Write channel radius
+        self.channel_radius.to_hdf5(group, 'channel_radius')
+
+        # Write scattering radius
+        self.scattering_radius.to_hdf5(group, 'scattering_radius')
+
+        # Write energies
+        if self.energies is not None:
+            group.create_dataset('energies', data=self.energies)
+
+        # Write parameters
+        group.create_dataset('parameters',
+                             data=self.parameters.values.astype(float))
 
     @classmethod
     def from_endf(cls, file_obj, items, fission_widths):
@@ -985,12 +1024,13 @@ class Unresolved(ResonanceRange):
             items = get_cont_record(file_obj)
             target_spin = items[0]
             if nro == 0:
-                ap = Polynomial((items[1],))
+                ap = polynomial((items[1],))
             add_to_background = (items[2] == 0)
 
         if not fission_widths and formalism == 1:
             # Case A -- fission widths not given, all parameters are
             # energy-independent
+            case = 'A'
             NLS = items[4]
             columns = ['L', 'J', 'd', 'amun', 'gn0', 'gg']
             records = []
@@ -1008,10 +1048,11 @@ class Unresolved(ResonanceRange):
         elif fission_widths and formalism == 1:
             # Case B -- fission widths given, only fission widths are
             # energy-dependent
+            case = 'B'
             items, energies = get_list_record(file_obj)
             target_spin = items[0]
             if nro == 0:
-                ap = Polynomial((items[1],))
+                ap = polynomial((items[1],))
             add_to_background = (items[2] == 0)
             NE, NLS = items[4:6]
             records = []
@@ -1036,6 +1077,7 @@ class Unresolved(ResonanceRange):
 
         elif formalism == 2:
             # Case C -- all parameters are energy-dependent
+            case = 'C'
             NLS = items[4]
             columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
                        'gg', 'gf']
@@ -1066,7 +1108,7 @@ class Unresolved(ResonanceRange):
             parameters = pd.DataFrame.from_records(records, columns=columns)
 
         # Calculate channel radius from ENDF-102 equation D.14
-        a = Polynomial((0.123 * (NEUTRON_MASS*awri)**(1./3.) + 0.08,))
+        a = polynomial((0.123 * (NEUTRON_MASS*awri)**(1./3.) + 0.08,))
 
         # Determine scattering and channel radius
         if nro == 0:
@@ -1087,6 +1129,7 @@ class Unresolved(ResonanceRange):
         urr = cls(target_spin, energy_min, energy_max, channel_radius,
                   scattering_radius)
         urr.parameters = parameters
+        urr.case = case
         urr.add_to_background = add_to_background
         urr.atomic_weight_ratio = awri
         urr.energies = energies

@@ -28,6 +28,58 @@ public:
   explicit UrrData(hid_t group_id);
 };
 
+//==============================================================================
+// Unresolved resonance parameters
+//==============================================================================
+
+class Unresolved {
+public:
+  // Constructors
+  Unresolved(hid_t group);
+
+  // Methods
+  ResonanceLadder sample(double E) const;
+
+  // Data members
+  int case_; //!< Which of 3 cases (A, B, or C)
+  bool add_to_background_; //!< Whether to add File 3 cross sections
+  double energy_min_; //!< Minimum energy of the unresolved resonance range in eV
+  double energy_max_; //!< Maximum energy of the unresolved resonance range in eV
+  double target_spin_; //!< Intrinsic spin of the target nuclide
+  std::unique_ptr<Function1D> channel_radius_;
+  std::unique_ptr<Function1D> scattering_radius_;
+  xt::xtensor<double, 1> energy_; //!< Energy at which parameters are tabulated
+  xt::xtensor<double, 2> params_; //!< Unresolved resonance parameters
+};
+
+//==============================================================================
+// Resonance ladder spanning the entire unresolved resonance range
+//==============================================================================
+
+class ResonanceLadder {
+public:
+  // Methods
+  double evaluate(double E, double T) const;
+
+  // Data members
+  std::vector<Resonance> res_; //!< Sampled resonance parameters
+};
+
 } // namespace openmc
+
+//==============================================================================
+//! Resonance parameters
+//==============================================================================
+
+struct Resonance {
+  double energy;
+  int l; //!< Neutron orbital angular momentum
+  int j; //!< Total angular momentum
+  double gt; //!< Total width
+  double gn; //!< Energy-dependent neutron width
+  double gg; //!< Radiation width
+  double gf; //!< Fission width
+  double gx; //!< Competitive width
+};
 
 #endif // OPENMC_URR_H

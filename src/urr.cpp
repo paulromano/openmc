@@ -28,4 +28,36 @@ UrrData::UrrData(hid_t group_id)
   read_dataset(group_id, "table", prob_);
 }
 
+Unresolved::Unresolved(hid_t group)
+{
+  // Read the metadata
+  read_attribute(group, "case", case_);
+  read_attribute(group, "add_to_background", add_to_background_);
+  read_attribute(group, "energy_min", energy_min_);
+  read_attribute(group, "energy_max", energy_max_);
+  read_attribute(group, "target_spin", target_spin_);
+
+  // Read channel and scattering radii
+  channel_radius_ = read_function(group, "channel_radius");
+  scattering_radius_ = read_function(group, "scattering_radius");
+
+  // Read energies for energy-dependent cases
+  if (case_ != 1) {
+    read_dataset(group, "energies", energy_);
+  }
+
+  // Read parameters
+  read_dataset(group, "parameters", params_);
+}
+
+ResonanceLadder Unresolved::sample(double E)
+{
+  // TODO
+}
+
+double ResonanceLadder::evaluate(double E, double T)
+{
+  // TODO
+}
+
 }

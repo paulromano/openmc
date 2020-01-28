@@ -403,6 +403,41 @@ class IncidentNeutron(EqualityMixin):
         else:
             return [mt] if mt in self else []
 
+    def export_urr_to_hdf5(self, path, mode='a', libver='earliest'):
+        """Export unresolved resonance parameters to an HDF5 file.
+
+        Parameters
+        ----------
+        path : str
+            Path to write HDF5 file to
+        mode : {'r', 'r+', 'w', 'x', 'a'}
+            Mode that is used to open the HDF5 file. This is the second argument
+            to the :class:`h5py.File` constructor.
+        libver : {'earliest', 'latest'}
+            Compatibility mode for the HDF5 file. 'latest' will produce files
+            that are less backwards compatible but have performance benefits.
+
+        """
+
+        urr = None
+        for rr in self.resonances:
+            if isinstance(rr, res.Unresolved):
+                urr = rr
+                break
+
+        if urr is None:
+            raise ValueError('No unresolved resonance parameters present.')
+
+        # Open file and write version
+        f = h5py.File(str(path), mode, libver=libver)
+        f.attrs['filetype'] = np.string_('urr_parameters')
+        f.attrs['version'] = np.array(HDF5_VERSION)
+
+        # Write URR data
+        g = f.create_group(self.name)
+        urr.to_hdf5(g)
+        f.close()
+
     def export_to_hdf5(self, path, mode='a', libver='earliest'):
         """Export incident neutron data to an HDF5 file.
 
