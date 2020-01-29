@@ -403,41 +403,6 @@ class IncidentNeutron(EqualityMixin):
         else:
             return [mt] if mt in self else []
 
-    def export_urr_to_hdf5(self, path, mode='a', libver='earliest'):
-        """Export unresolved resonance parameters to an HDF5 file.
-
-        Parameters
-        ----------
-        path : str
-            Path to write HDF5 file to
-        mode : {'r', 'r+', 'w', 'x', 'a'}
-            Mode that is used to open the HDF5 file. This is the second argument
-            to the :class:`h5py.File` constructor.
-        libver : {'earliest', 'latest'}
-            Compatibility mode for the HDF5 file. 'latest' will produce files
-            that are less backwards compatible but have performance benefits.
-
-        """
-
-        urr = None
-        for rr in self.resonances:
-            if isinstance(rr, res.Unresolved):
-                urr = rr
-                break
-
-        if urr is None:
-            raise ValueError('No unresolved resonance parameters present.')
-
-        # Open file and write version
-        f = h5py.File(str(path), mode, libver=libver)
-        f.attrs['filetype'] = np.string_('urr_parameters')
-        f.attrs['version'] = np.array(HDF5_VERSION)
-
-        # Write URR data
-        g = f.create_group(self.name)
-        urr.to_hdf5(g)
-        f.close()
-
     def export_to_hdf5(self, path, mode='a', libver='earliest'):
         """Export incident neutron data to an HDF5 file.
 
@@ -510,6 +475,13 @@ class IncidentNeutron(EqualityMixin):
             for temperature, urr in self.urr.items():
                 tgroup = urr_group.create_group(temperature)
                 urr.to_hdf5(tgroup)
+
+        # Write unresolved resonance parameters
+        for rr in self.resonances:
+            if isinstance(rr, res.Unresolved):
+                unr_group = g.create_group('unresolved')
+                rr.to_hdf5(unr_group)
+                break
 
         # Write fission energy release data
         if self.fission_energy is not None:
@@ -587,6 +559,12 @@ class IncidentNeutron(EqualityMixin):
             urr_group = group['urr']
             for temperature, tgroup in urr_group.items():
                 data.urr[temperature] = ProbabilityTables.from_hdf5(tgroup)
+
+        # Read unresolved resonance parameters
+        if 'unresolved' in group:
+            unr_group = group['unresolved']
+            rr = res.Unresolved.from_hdf5(unr_group)
+            data.resonances = res.Resonances([rr])
 
         # Read fission energy release data
         if 'fission_energy_release' in group:
@@ -730,6 +708,14 @@ class IncidentNeutron(EqualityMixin):
         urr = ProbabilityTables.from_ace(ace)
         if urr is not None:
             data.urr[strT] = urr
+
+        # Read unresolved resonance parameters
+        filename = os.path.join(os.path.dirname(__file__), 'urr.h5')
+        with h5py.File(filename, 'r') as f:
+            if name in f:
+                group = f[name]
+                rr = res.Unresolved.from_hdf5(group)
+                data.resonances = res.Resonances([rr])
 
         return data
 

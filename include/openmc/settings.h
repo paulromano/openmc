@@ -50,7 +50,6 @@ extern bool temperature_multipole;    //!< use multipole data?
 extern "C" bool trigger_on;           //!< tally triggers enabled?
 extern bool trigger_predict;          //!< predict batches for triggers?
 extern bool ufs_on;                   //!< uniform fission site method on?
-extern bool urr_ptables_on;           //!< use unresolved resonance prob. tables?
 extern bool write_all_tracks;         //!< write track files for every particle?
 extern bool write_initial_source;     //!< write out initial source file?
 
@@ -74,6 +73,7 @@ extern "C" int64_t n_particles;              //!< number of particles per genera
 
 extern int64_t max_particles_in_flight; //!< Max num. event-based particles in flight
 
+extern URRTreatment urr_treatment;  //!< how to calculate xs in the unresolved rasonance range
 extern ElectronTreatment electron_treatment;       //!< how to treat secondary electrons
 extern std::array<double, 4> energy_cutoff;  //!< Energy cutoff in [eV] for each particle type
 extern int legendre_to_tabular_points; //!< number of points to convert Legendres

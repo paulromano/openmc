@@ -110,7 +110,7 @@ int openmc_finalize()
   settings::trigger_predict = false;
   settings::trigger_batch_interval = 1;
   settings::ufs_on = false;
-  settings::urr_ptables_on = true;
+  settings::urr_treatment = URRTreatment::PTABLE;
   settings::verbosity = 7;
   settings::weight_cutoff = 0.25;
   settings::weight_survive = 1.0;

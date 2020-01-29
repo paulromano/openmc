@@ -103,8 +103,6 @@ class Settings:
         Number of particles per generation
     photon_transport : bool
         Whether to use photon transport.
-    ptables : bool
-        Determine whether probability tables are used.
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
         (bool), 'method' (str), 'energy_min' (float), 'energy_max' (float), and
@@ -174,6 +172,9 @@ class Settings:
     ufs_mesh : openmc.RegularMesh
         Mesh to be used for redistributing source sites via the uniform fision
         site (UFS) method.
+    urr_treatment : {'ptable', 'direct', 'none'}
+        Whether probability tables are used ('ptable') or cross sections are
+        calculated directly on-the-fly ('direct').
     verbosity : int
         Verbosity during simulation between 1 and 10. Verbosity levels are
         described in :ref:`verbosity`.
@@ -202,7 +203,7 @@ class Settings:
         self._confidence_intervals = None
         self._electron_treatment = None
         self._photon_transport = None
-        self._ptables = None
+        self._urr_treatment = None
         self._seed = None
         self._survival_biasing = None
 
@@ -304,8 +305,8 @@ class Settings:
         return self._electron_treatment
 
     @property
-    def ptables(self):
-        return self._ptables
+    def urr_treatment(self):
+        return self._urr_treatment
 
     @property
     def photon_transport(self):
@@ -578,10 +579,10 @@ class Settings:
         cv.check_type('dagmc geometry', dagmc, bool)
         self._dagmc = dagmc
 
-    @ptables.setter
-    def ptables(self, ptables):
-        cv.check_type('probability tables', ptables, bool)
-        self._ptables = ptables
+    @urr_treatment.setter
+    def urr_treatment(self, urr_treatment):
+        cv.check_value('urr treatment', urr_treatment, ['ptable', 'direct', 'none'])
+        self._urr_treatment = urr_treatment
 
     @seed.setter
     def seed(self, seed):
@@ -895,10 +896,10 @@ class Settings:
             element = ET.SubElement(root, "photon_transport")
             element.text = str(self._photon_transport).lower()
 
-    def _create_ptables_subelement(self, root):
-        if self._ptables is not None:
-            element = ET.SubElement(root, "ptables")
-            element.text = str(self._ptables).lower()
+    def _create_urr_treatment_subelement(self, root):
+        if self._urr_treatment is not None:
+            element = ET.SubElement(root, "urr_treatment")
+            element.text = str(self._urr_treatment)
 
     def _create_seed_subelement(self, root):
         if self._seed is not None:
@@ -1157,10 +1158,10 @@ class Settings:
         if text is not None:
             self.photon_transport = text in ('true', '1')
 
-    def _ptables_from_xml_element(self, root):
-        text = get_text(root, 'ptables')
+    def _urr_treatment_from_xml_element(self, root):
+        text = get_text(root, 'urr_treatment')
         if text is not None:
-            self.ptables = text in ('true', '1')
+            self.urr_treatment = text
 
     def _seed_from_xml_element(self, root):
         text = get_text(root, 'seed')
@@ -1335,7 +1336,7 @@ class Settings:
         self._create_energy_mode_subelement(root_element)
         self._create_max_order_subelement(root_element)
         self._create_photon_transport_subelement(root_element)
-        self._create_ptables_subelement(root_element)
+        self._create_urr_treatment_subelement(root_element)
         self._create_seed_subelement(root_element)
         self._create_survival_biasing_subelement(root_element)
         self._create_cutoff_subelement(root_element)
@@ -1407,7 +1408,7 @@ class Settings:
         settings._energy_mode_from_xml_element(root)
         settings._max_order_from_xml_element(root)
         settings._photon_transport_from_xml_element(root)
-        settings._ptables_from_xml_element(root)
+        settings._urr_treatment_from_xml_element(root)
         settings._seed_from_xml_element(root)
         settings._survival_biasing_from_xml_element(root)
         settings._cutoff_from_xml_element(root)

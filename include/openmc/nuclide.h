@@ -91,7 +91,7 @@ public:
   bool urr_present_ {false};
   int urr_inelastic_ {C_NONE};
   std::vector<UrrData> urr_data_;
-  Unresolved u_data_;
+  std::unique_ptr<Unresolved> u_data_;
 
   std::vector<std::unique_ptr<Reaction>> reactions_; //!< Reactions
   std::array<size_t, 902> reaction_index_; //!< Index of each reaction

@@ -3,12 +3,11 @@ from collections.abc import MutableSequence, Iterable
 import io
 
 import numpy as np
-from numpy.polynomial import Polynomial
 import pandas as pd
 
 from .data import NEUTRON_MASS
 from .endf import get_head_record, get_cont_record, get_tab1_record, get_list_record
-from .function import Polynomial as polynomial
+from .function import Polynomial
 try:
     from .reconstruct import wave_number, penetration_shift, reconstruct_mlbw, \
         reconstruct_slbw, reconstruct_rm
@@ -959,7 +958,7 @@ class Unresolved(ResonanceRange):
         self.atomic_weight_ratio = None
 
     def to_hdf5(self, group):
-        """Write unresolved resonance parameters to an HDF5 group
+        """Write unresolved resonance data to an HDF5 group
 
         Parameters
         ----------
@@ -969,8 +968,7 @@ class Unresolved(ResonanceRange):
         """
 
         # Write basic data
-        cases = {'A': 1, 'B': 2, 'C': 3}
-        group.attrs['case'] = cases[self.case]
+        group.attrs['case'] = self.case
         group.attrs['add_to_background'] = self.add_to_background
         group.attrs['atomic_weight_ratio'] = self.atomic_weight_ratio
         group.attrs['energy_max'] = self.energy_max
@@ -990,6 +988,51 @@ class Unresolved(ResonanceRange):
         # Write parameters
         group.create_dataset('parameters',
                              data=self.parameters.values.astype(float))
+
+    @classmethod
+    def from_hdf5(cls, group):
+        """Generate unresolved resonance data from an HDF5 group
+
+        Parameters
+        ----------
+        group : h5py.Group
+            HDF5 group to read from
+
+        Returns
+        -------
+        openmc.data.Unresolved
+            Unresolved resonance region parameters
+
+        """
+
+        # Read target spin, energy min and max, channel and scattering radii
+        target_spin = group.attrs['target_spin']
+        energy_min = group.attrs['energy_min']
+        energy_max = group.attrs['energy_max']
+        channel_radius = Polynomial.from_hdf5(group['channel_radius'])
+        scattering_radius = Polynomial.from_hdf5(group['scattering_radius'])
+        urr = cls(target_spin, energy_min, energy_max, channel_radius,
+                  scattering_radius)
+
+        # Read case and URR parameters and energies
+        urr.case = group.attrs['case']
+        if urr.case == 'A':
+            columns = ['L', 'J', 'd', 'amun', 'gn0', 'gg']
+        elif urr.case == 'B':
+            columns = ['L', 'J', 'E', 'd', 'amun', 'amuf', 'gn0', 'gg', 'gf']
+            urr.energies = group['energies'][...]
+        else:
+            columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
+                       'gg', 'gf']
+            urr.energies = group['energies'][...]
+
+        urr.parameters = pd.DataFrame(group['parameters'][()], columns=columns)
+
+        # Read LSSF and AWR
+        urr.add_to_background = group.attrs['add_to_background']
+        urr.atomic_weight_ratio = group.attrs['atomic_weight_ratio']
+
+        return urr
 
     @classmethod
     def from_endf(cls, file_obj, items, fission_widths):
@@ -1024,7 +1067,7 @@ class Unresolved(ResonanceRange):
             items = get_cont_record(file_obj)
             target_spin = items[0]
             if nro == 0:
-                ap = polynomial((items[1],))
+                ap = Polynomial((items[1],))
             add_to_background = (items[2] == 0)
 
         if not fission_widths and formalism == 1:
@@ -1052,7 +1095,7 @@ class Unresolved(ResonanceRange):
             items, energies = get_list_record(file_obj)
             target_spin = items[0]
             if nro == 0:
-                ap = polynomial((items[1],))
+                ap = Polynomial((items[1],))
             add_to_background = (items[2] == 0)
             NE, NLS = items[4:6]
             records = []
@@ -1108,7 +1151,7 @@ class Unresolved(ResonanceRange):
             parameters = pd.DataFrame.from_records(records, columns=columns)
 
         # Calculate channel radius from ENDF-102 equation D.14
-        a = polynomial((0.123 * (NEUTRON_MASS*awri)**(1./3.) + 0.08,))
+        a = Polynomial((0.123 * (NEUTRON_MASS*awri)**(1./3.) + 0.08,))
 
         # Determine scattering and channel radius
         if nro == 0:

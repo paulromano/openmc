@@ -65,7 +65,6 @@ bool temperature_multipole   {false};
 bool trigger_on              {false};
 bool trigger_predict         {false};
 bool ufs_on                  {false};
-bool urr_ptables_on          {true};
 bool write_all_tracks        {false};
 bool write_initial_source    {false};
 
@@ -94,6 +93,7 @@ int max_order {0};
 int n_log_bins {8000};
 int n_max_batches;
 ResScatMethod res_scat_method {ResScatMethod::rvs};
+URRTreatment urr_treatment {URRTreatment::PTABLE};
 double res_scat_energy_min {0.01};
 double res_scat_energy_max {1000.0};
 std::vector<std::string> res_scat_nuclides;
@@ -441,9 +441,18 @@ void read_settings_xml()
     survival_biasing = get_node_value_bool(root, "survival_biasing");
   }
 
-  // Probability tables
-  if (check_for_node(root, "ptables")) {
-    urr_ptables_on = get_node_value_bool(root, "ptables");
+  // Unresolved resonance range
+  if (check_for_node(root, "urr_treatment")) {
+    auto temp_str = get_node_value(root, "urr_treatment", true, true);
+    if (temp_str == "ptable") {
+      urr_treatment = URRTreatment::PTABLE;
+    } else if (temp_str == "direct") {
+      urr_treatment = URRTreatment::DIRECT;
+    } else if (temp_str == "none") {
+      urr_treatment = URRTreatment::NONE;
+    } else {
+      fatal_error("Unrecognized URR treatment: " + temp_str + ".");
+    }
   }
 
   // Cutoffs

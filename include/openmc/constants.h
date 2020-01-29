@@ -259,6 +259,12 @@ enum class URRTableParam {
   HEATING 
 };
 
+enum class URRTreatment {
+  PTABLE, // Use unresolved resonance probability tables
+  DIRECT, // Use on-the-fly direct sampling of cross sections
+  NONE
+};
+
 // Maximum number of partial fission reactions
 constexpr int PARTIAL_FISSION_MAX {4};
 

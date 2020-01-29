@@ -1,5 +1,7 @@
 #include "openmc/urr.h"
 
+#include "openmc/endf.h"
+
 #include <iostream>
 
 namespace openmc {
@@ -31,7 +33,15 @@ UrrData::UrrData(hid_t group_id)
 Unresolved::Unresolved(hid_t group)
 {
   // Read the metadata
-  read_attribute(group, "case", case_);
+  char c;
+  read_attribute(group, "case", c);
+  if (c == 'A') {
+    case_ = Case::A;
+  } else if (c == 'B') {
+    case_ = Case::B;
+  } else {
+    case_ = Case::C;
+  }
   read_attribute(group, "add_to_background", add_to_background_);
   read_attribute(group, "energy_min", energy_min_);
   read_attribute(group, "energy_max", energy_max_);
@@ -42,7 +52,7 @@ Unresolved::Unresolved(hid_t group)
   scattering_radius_ = read_function(group, "scattering_radius");
 
   // Read energies for energy-dependent cases
-  if (case_ != 1) {
+  if (case_ != Case::A) {
     read_dataset(group, "energies", energy_);
   }
 
@@ -50,12 +60,12 @@ Unresolved::Unresolved(hid_t group)
   read_dataset(group, "parameters", params_);
 }
 
-ResonanceLadder Unresolved::sample(double E)
+ResonanceLadder Unresolved::sample(double E) const
 {
   // TODO
 }
 
-double ResonanceLadder::evaluate(double E, double T)
+double ResonanceLadder::evaluate(double E, double T) const
 {
   // TODO
 }

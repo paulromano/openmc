@@ -250,6 +250,15 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature, int i_nucl
     }
   }
 
+  // Read unresolved resonance parameters if present and using on-the-fly
+  // direct calculation of cross sections
+  if (settings::urr_treatment == URRTreatment::DIRECT &&
+      object_exists(group, "unresolved")) {
+    hid_t unr_group = open_group(group, "unresolved");
+    u_data_ = std::make_unique<Unresolved>(unr_group);
+    close_group(unr_group);
+  }
+
   // Check for total nu data
   if (object_exists(group, "total_nu")) {
     // Read total nu data
@@ -718,7 +727,7 @@ void Nuclide::calculate_xs(int i_sab, int i_log_union, double sab_frac, Particle
 
   // If the particle is in the unresolved resonance range and there are
   // probability tables, we need to determine cross sections from the table
-  if (settings::urr_ptables_on && urr_present_ && !use_mp) {
+  if (settings::urr_treatment == URRTreatment::PTABLE && urr_present_ && !use_mp) {
     int n = urr_data_[micro.index_temp].n_energy_;
     if ((p.E_ > urr_data_[micro.index_temp].energy_(0)) &&
         (p.E_ < urr_data_[micro.index_temp].energy_(n-1))) {
