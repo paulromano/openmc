@@ -230,7 +230,7 @@ class Model(object):
         cells, surfaces, data = mcnp.parse(filename)
 
         openmc_materials = mcnp.get_openmc_materials(data['materials'])
-        openmc_surfaces = mcnp.get_openmc_surfaces(surfaces)
+        openmc_surfaces = mcnp.get_openmc_surfaces(surfaces, data)
         openmc_universes = mcnp.get_openmc_universes(cells, openmc_surfaces,
                                                      openmc_materials)
 
