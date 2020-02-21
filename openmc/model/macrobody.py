@@ -124,3 +124,78 @@ class Box(openmc.Surface):
         surf.zmin = surf.zmin.translate(vector)
         surf.zmax = surf.zmax.translate(vector)
         return surf
+
+
+class XConeOneSided(openmc.Surface):
+    def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
+        self.cone = openmc.XCone(x0, y0, z0, r2, **kwargs)
+        self.plane = openmc.XPlane(x0)
+        self.up = up
+
+    def __neg__(self):
+        return -self.cone & (+self.plane if self.up else -self.plane)
+
+    def __pos__(self):
+        return +self.cone & (+self.plane if self.up else -self.plane)
+
+    def evaluate(self, point):
+        raise NotImplementedError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        self.cone = surf.cone.translate(vector)
+        self.plane = surf.plane.translate(vector)
+        return surf
+
+    def _get_base_coeffs():
+        raise NotImplementedError
+
+
+class YConeOneSided(openmc.Surface):
+    def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
+        self.cone = openmc.YCone(x0, y0, z0, r2, **kwargs)
+        self.plane = openmc.YPlane(y0)
+        self.up = up
+
+    def __neg__(self):
+        return -self.cone & (+self.plane if self.up else -self.plane)
+
+    def __pos__(self):
+        return +self.cone & (+self.plane if self.up else -self.plane)
+
+    def evaluate(self, point):
+        raise NotImplementedError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        self.cone = surf.cone.translate(vector)
+        self.plane = surf.plane.translate(vector)
+        return surf
+
+    def _get_base_coeffs():
+        raise NotImplementedError
+
+
+class ZConeOneSided(openmc.Surface):
+    def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
+        self.cone = openmc.ZCone(x0, y0, z0, r2, **kwargs)
+        self.plane = openmc.ZPlane(z0)
+        self.up = up
+
+    def __neg__(self):
+        return -self.cone & (+self.plane if self.up else -self.plane)
+
+    def __pos__(self):
+        return +self.cone & (+self.plane if self.up else -self.plane)
+
+    def evaluate(self, point):
+        raise NotImplementedError('Macrobodies do not have a surface equation.')
+
+    def translate(self, vector):
+        surf = copy(self)
+        self.cone = surf.cone.translate(vector)
+        self.plane = surf.plane.translate(vector)
+        return surf
+
+    def _get_base_coeffs():
+        raise NotImplementedError

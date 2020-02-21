@@ -10,6 +10,7 @@ import openmc
 from openmc.data import get_thermal_name
 from openmc.data.ace import get_metadata
 from .macrobody import Box, RightCircularCylinder as RCC, RectangularParallelepiped as RPP
+import openmc.model.macrobody as macrobody
 
 
 _CELL1_RE = re.compile(r'\s*(\d+)\s+(\d+)([ \t0-9:#().dDeE\+-]+)((?:\S+\s*=.*)?)')
@@ -257,24 +258,38 @@ def get_openmc_surfaces(surfaces, data):
             coeffs = [float_(x) for x in s['coefficients'].split()]
             x0, y0, z0, R2 = coeffs[:4]
             if len(coeffs) > 4:
-                raise NotImplementedError('One-sheet cone not supported')
-            if s['mnemonic'] == 'k/x':
-                surf = openmc.XCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
-            elif s['mnemonic'] == 'k/y':
-                surf = openmc.YCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
-            elif s['mnemonic'] == 'k/z':
-                surf = openmc.ZCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
+                up = (coeffs[4] == 1)
+                if s['mnemonic'] == 'k/x':
+                    surf = macrobody.XConeOneSided(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2, up=up)
+                elif s['mnemonic'] == 'k/y':
+                    surf = macrobody.YConeOneSided(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2, up=up)
+                elif s['mnemonic'] == 'k/z':
+                    surf = macrobody.ZConeOneSided(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2, up=up)
+            else:
+                if s['mnemonic'] == 'k/x':
+                    surf = openmc.XCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
+                elif s['mnemonic'] == 'k/y':
+                    surf = openmc.YCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
+                elif s['mnemonic'] == 'k/z':
+                    surf = openmc.ZCone(surface_id=s['id'], x0=x0, y0=y0, z0=z0, r2=R2)
         elif s['mnemonic'] in ('kx', 'ky', 'kz'):
             coeffs = [float_(x) for x in s['coefficients'].split()]
             x, R2 = coeffs[:2]
             if len(coeffs) > 2:
-                raise NotImplementedError('One-sheet cone not supported')
-            if s['mnemonic'] == 'kx':
-                surf = openmc.XCone(surface_id=s['id'], x0=x, r2=R2)
-            elif s['mnemonic'] == 'ky':
-                surf = openmc.YCone(surface_id=s['id'], y0=x, r2=R2)
-            elif s['mnemonic'] == 'kz':
-                surf = openmc.ZCone(surface_id=s['id'], z0=x, r2=R2)
+                up = (coeffs[2] == 1)
+                if s['mnemonic'] == 'k/x':
+                    surf = macrobody.XConeOneSided(surface_id=s['id'], x0=x0, r2=R2, up=up)
+                elif s['mnemonic'] == 'k/y':
+                    surf = macrobody.YConeOneSided(surface_id=s['id'], y0=y0, r2=R2, up=up)
+                elif s['mnemonic'] == 'k/z':
+                    surf = macrobody.ZConeOneSided(surface_id=s['id'], z0=z0, r2=R2, up=up)
+            else:
+                if s['mnemonic'] == 'kx':
+                    surf = openmc.XCone(surface_id=s['id'], x0=x, r2=R2)
+                elif s['mnemonic'] == 'ky':
+                    surf = openmc.YCone(surface_id=s['id'], y0=x, r2=R2)
+                elif s['mnemonic'] == 'kz':
+                    surf = openmc.ZCone(surface_id=s['id'], z0=x, r2=R2)
         elif s['mnemonic'] == 'gq':
             a, b, c, d, e, f, g, h, j, k = map(float_, s['coefficients'].split())
             surf = openmc.Quadric(surface_id=s['id'], a=a, b=b, c=c, d=d, e=e,
