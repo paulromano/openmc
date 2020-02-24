@@ -3,7 +3,27 @@ from copy import copy
 import openmc
 
 
-class RightCircularCylinder(openmc.Surface):
+class CompositeMixin:
+    def evaluate(self, point):
+        raise NotImplementedError('Composite surfaces do not have a surface equation.')
+
+    def _get_base_coeffs(self):
+        raise NotImplementedError('Composite surfaces do not have base coefficients.')
+
+    def translate(self, vector, inplace=False):
+        surf = self if inplace else copy(self)
+        for name in self._surface_names:
+            s = getattr(surf, name)
+            setattr(surf, name, s.translate(vector, inplace))
+        return surf
+
+    def __repr__(self):
+        return "<{} at 0x{:x}>".format(type(self).__name__, id(self))
+
+
+class RightCircularCylinder(CompositeMixin, openmc.Surface):
+    _surface_names = ('cyl', 'bottom', 'top')
+
     def __init__(self, center_base, height, radius, axis='z',
                  boundary_type='transmission'):
         kwargs = {'boundary_type': boundary_type}
@@ -27,18 +47,10 @@ class RightCircularCylinder(openmc.Surface):
     def __pos__(self):
         return +self.cyl | -self.bottom | +self.top
 
-    def evaluate(self, point):
-        raise NotImplementedError('Macrobodies do not have a surface equation.')
 
-    def translate(self, vector):
-        surf = copy(self)
-        surf.cyl = surf.cyl.translate(vector)
-        surf.bottom = surf.bottom.translate(vector)
-        surf.top = surf.top.translate(vector)
-        return surf
+class RectangularParallelepiped(CompositeMixin, openmc.Surface):
+    _surface_names = ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')
 
-
-class RectangularParallelepiped(openmc.Surface):
     def __init__(self, xmin, xmax, ymin, ymax, zmin, zmax, boundary_type='transmission'):
         kwargs = {'boundary_type': boundary_type}
         self.xmin = openmc.XPlane(x0=xmin, **kwargs)
@@ -54,20 +66,10 @@ class RectangularParallelepiped(openmc.Surface):
     def __pos__(self):
         return -self.xmin | +self.ymax | -self.ymin | +self.ymax | -self.zmin | +self.zmax
 
-    def evaluate(self, point):
-        raise NotImplementedError('Macrobodies do not have a surface equation.')
 
-    def translate(self, vector):
-        surf = copy(self)
-        surf.xmin = surf.xmin.translate(vector)
-        surf.xmax = surf.xmax.translate(vector)
-        surf.ymin = surf.ymin.translate(vector)
-        surf.ymax = surf.ymax.translate(vector)
-        surf.zmin = surf.zmin.translate(vector)
-        surf.zmax = surf.zmax.translate(vector)
+class Box(CompositeMixin, openmc.Surface):
+    _surface_names = ('xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax')
 
-
-class Box(openmc.Surface):
     def __init__(self, v, a1, a2, a3, boundary_type='transmission'):
         kwargs = {'boundary_type': boundary_type}
         vx, vy, vz = v
@@ -112,21 +114,10 @@ class Box(openmc.Surface):
                 -self.ymin | +self.ymax |
                 -self.zmin | +self.zmax)
 
-    def evaluate(self, point):
-        raise NotImplementError('Macrobodies do not have a surface equation.')
 
-    def translate(self, vector):
-        surf = copy(self)
-        surf.xmin = surf.xmin.translate(vector)
-        surf.xmax = surf.xmax.translate(vector)
-        surf.ymin = surf.ymin.translate(vector)
-        surf.ymax = surf.ymax.translate(vector)
-        surf.zmin = surf.zmin.translate(vector)
-        surf.zmax = surf.zmax.translate(vector)
-        return surf
+class XConeOneSided(CompositeMixin, openmc.Surface):
+    _surface_names = ('cone', 'plane')
 
-
-class XConeOneSided(openmc.Surface):
     def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
         self.cone = openmc.XCone(x0, y0, z0, r2, **kwargs)
         self.plane = openmc.XPlane(x0)
@@ -136,66 +127,31 @@ class XConeOneSided(openmc.Surface):
         return -self.cone & (+self.plane if self.up else -self.plane)
 
     def __pos__(self):
-        return +self.cone & (+self.plane if self.up else -self.plane)
-
-    def evaluate(self, point):
-        raise NotImplementedError('Macrobodies do not have a surface equation.')
-
-    def translate(self, vector):
-        surf = copy(self)
-        self.cone = surf.cone.translate(vector)
-        self.plane = surf.plane.translate(vector)
-        return surf
-
-    def _get_base_coeffs():
-        raise NotImplementedError
+        if self.up:
+            return (+self.cone & +self.plane) | -self.plane
+        else:
+            return (+self.cone & -self.plane) | +self.plane
 
 
-class YConeOneSided(openmc.Surface):
+class YConeOneSided(CompositeMixin, openmc.Surface):
+    _surface_names = ('cone', 'plane')
+
     def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
         self.cone = openmc.YCone(x0, y0, z0, r2, **kwargs)
         self.plane = openmc.YPlane(y0)
         self.up = up
 
-    def __neg__(self):
-        return -self.cone & (+self.plane if self.up else -self.plane)
-
-    def __pos__(self):
-        return +self.cone & (+self.plane if self.up else -self.plane)
-
-    def evaluate(self, point):
-        raise NotImplementedError('Macrobodies do not have a surface equation.')
-
-    def translate(self, vector):
-        surf = copy(self)
-        self.cone = surf.cone.translate(vector)
-        self.plane = surf.plane.translate(vector)
-        return surf
-
-    def _get_base_coeffs():
-        raise NotImplementedError
+    __neg__ = XConeOneSided.__neg__
+    __pos__ = XConeOneSided.__pos__
 
 
-class ZConeOneSided(openmc.Surface):
+class ZConeOneSided(CompositeMixin, openmc.Surface):
+    _surface_names = ('cone', 'plane')
+
     def __init__(self, x0=0., y0=0., z0=0., r2=1., up=True, **kwargs):
         self.cone = openmc.ZCone(x0, y0, z0, r2, **kwargs)
         self.plane = openmc.ZPlane(z0)
         self.up = up
 
-    def __neg__(self):
-        return -self.cone & (+self.plane if self.up else -self.plane)
-
-    def __pos__(self):
-        return +self.cone & (+self.plane if self.up else -self.plane)
-
-    def evaluate(self, point):
-        raise NotImplementedError('Macrobodies do not have a surface equation.')
-
-    def translate(self, vector):
-        surf = copy(self)
-        self.cone = surf.cone.translate(vector)
-        self.plane = surf.plane.translate(vector)
-        return surf
-
-    def _get_base_coeffs():
-        raise NotImplementedError
+    __neg__ = XConeOneSided.__neg__
+    __pos__ = XConeOneSided.__pos__
