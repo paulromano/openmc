@@ -294,6 +294,15 @@ def get_openmc_surfaces(surfaces, data):
             a, b, c, d, e, f, g, h, j, k = map(float_, s['coefficients'].split())
             surf = openmc.Quadric(surface_id=s['id'], a=a, b=b, c=c, d=d, e=e,
                                   f=f, g=g, h=h, j=j, k=k)
+        elif s['mnemonic'] == 'tx':
+            x0, y0, z0, a, b, c = map(float_, s['coefficients'].split())
+            surf = openmc.XTorus(surface_id=s['id'], x0=x0, y0=y0, z0=z0, A=a, B=b, C=c)
+        elif s['mnemonic'] == 'ty':
+            x0, y0, z0, a, b, c = map(float_, s['coefficients'].split())
+            surf = openmc.YTorus(surface_id=s['id'], x0=x0, y0=y0, z0=z0, A=a, B=b, C=c)
+        elif s['mnemonic'] == 'tz':
+            x0, y0, z0, a, b, c = map(float_, s['coefficients'].split())
+            surf = openmc.ZTorus(surface_id=s['id'], x0=x0, y0=y0, z0=z0, A=a, B=b, C=c)
         elif s['mnemonic'] == 'rcc':
             vx, vy, vz, hx, hy, hz, r = map(float_, s['coefficients'].split())
             if hx == 0.0 and hy == 0.0:
