@@ -17,6 +17,13 @@ class CompositeMixin:
             setattr(surf, name, s.translate(vector, inplace))
         return surf
 
+    def rotate(self, rotation):
+        surf = copy(self)
+        for name in self._surface_names:
+            s = getattr(surf, name)
+            setattr(surf, name, s.rotate(rotation))
+        return surf
+
     def __repr__(self):
         return "<{} at 0x{:x}>".format(type(self).__name__, id(self))
 
