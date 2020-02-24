@@ -125,7 +125,7 @@ def parse_data(section):
             if len(values) >= 3:
                 displacement = np.array([float(x) for x in values[:3]])
             if len(values) >= 12:
-                rotation = np.array([float(x) for x in values[3:12]]).reshape((3,3))
+                rotation = np.array([float(x) for x in values[3:12]]).reshape((3,3)).T
                 if use_degrees:
                     rotation = np.cos(rotation * pi/180.0)
             else:
@@ -323,7 +323,7 @@ def get_openmc_surfaces(surfaces, data):
             displacement, rotation = data['tr'][tr_num]
             surf = surf.translate(displacement)
             if rotation is not None:
-                raise NotImplementedError('Surface rotation not supported (id={})'.format(s['id']))
+                surf = surf.rotate(rotation)
 
         openmc_surfaces[s['id']] = surf
 
@@ -475,14 +475,14 @@ def get_openmc_universes(cells, surfaces, materials):
                         mat.set_density('g/cm3', abs(c['density']))
 
         # Create lattices
-        if 'fill' in c['parameters']:
+        if 'fill' in c['parameters'] or '*fill' in c['parameters']:
             if 'lat' in c['parameters']:
                 # Check what kind of lattice this is
                 if int(c['parameters']['lat']) == 2:
                     raise NotImplementedError("Hexagonal lattices not supported")
 
                 # Cell filled with Lattice
-                uid = int(c['parameters']['u'])
+                uid = abs(int(c['parameters']['u']))
                 if uid not in universes:
                     universes[uid] = openmc.RectLattice(uid)
                 lattice = universes[uid]
@@ -614,14 +614,19 @@ def get_openmc_universes(cells, surfaces, materials):
                 cell._lattice = True
             else:
                 # Cell filled with universes
-                uid, ftrans = _CELL_FILL_RE.search(c['parameters']['fill']).groups()
+                if 'fill' in c['parameters']:
+                    uid, ftrans = _CELL_FILL_RE.search(c['parameters']['fill']).groups()
+                    use_degrees = False
+                else:
+                    uid, ftrans = _CELL_FILL_RE.search(c['parameters']['*fill']).groups()
+                    use_degrees = True
 
                 # First assign fill based on whether it is a universe/lattice
                 uid = int(uid)
                 if uid not in universes:
                     for ci in cells:
                         if 'u' in ci['parameters']:
-                            if int(ci['parameters']['u']) == uid:
+                            if abs(int(ci['parameters']['u'])) == uid:
                                 if 'lat' in ci['parameters']:
                                     universes[uid] = openmc.RectLattice(uid)
                                 else:
@@ -633,7 +638,11 @@ def get_openmc_universes(cells, surfaces, materials):
                 if ftrans is not None:
                     ftrans = ftrans.split()
                     if len(ftrans) > 3:
-                        raise NotImplemented('Fill rotation not supported.')
+                        cell.translation = tuple(float(x) for x in ftrans[:3])
+                        rotation_matrix = np.array([float(x) for x in ftrans[3:]]).reshape((3, 3))
+                        if use_degrees:
+                            rotation_matrix = np.cos(rotation_matrix * pi/180.0)
+                        cell.rotation = rotation_matrix
                     elif len(ftrans) < 3:
                         raise NotImplementedError('TRn card (fill trans) not supported.')
                     else:
