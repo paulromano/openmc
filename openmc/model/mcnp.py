@@ -337,7 +337,7 @@ def get_openmc_surfaces(surfaces, data):
         openmc_surfaces[s['id']] = surf
 
         # For macrobodies, we also need to add generated surfaces to dictionary
-        if s['mnemonic'] in ('rcc', 'box'):
+        if s['mnemonic'] in ('rcc', 'box', 'rpp'):
             openmc_surfaces.update((-surf).get_surfaces())
 
     return openmc_surfaces
