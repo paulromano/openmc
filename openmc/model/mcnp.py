@@ -174,7 +174,10 @@ def get_openmc_materials(materials):
             continue
         material = openmc.Material(m['id'])
         for nuclide, percent in m['nuclides']:
-            zaid, xs = nuclide.split('.')
+            if '.' in nuclide:
+                zaid, xs = nuclide.split('.')
+            else:
+                zaid = nuclide
             name, element, Z, A, metastable = get_metadata(int(zaid), 'mcnp')
             if percent < 0:
                 if A > 0:
@@ -189,7 +192,10 @@ def get_openmc_materials(materials):
 
         if 'sab' in m:
             for sab in m['sab']:
-                name, xs = sab.split('.')
+                if '.' in sab:
+                    name, xs = sab.split('.')
+                else:
+                    name = sab
                 material.add_s_alpha_beta(get_thermal_name(name))
         openmc_materials[m['id']] = material
 
