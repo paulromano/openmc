@@ -205,9 +205,9 @@ def get_openmc_surfaces(surfaces, data):
         if s['mnemonic'] == 'p':
             coeffs = s['coefficients'].split()
             if len(coeffs) == 9:
-                p1 = coeffs[:3]
-                p2 = coeffs[3:6]
-                p3 = coeffs[6:]
+                p1 = [float_(x) for x in coeffs[:3]]
+                p2 = [float_(x) for x in coeffs[3:6]]
+                p3 = [float_(x) for x in coeffs[6:]]
                 surf = openmc.Plane.from_points(p1, p2, p3)
             else:
                 A, B, C, D = map(float_, coeffs)
