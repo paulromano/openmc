@@ -56,6 +56,9 @@ public:
   //! from probability tables.
   void calculate_urr_xs(int i_temp, Particle& p) const;
 
+  // TODO: remove, just for testing
+  void sample_urr_xs(int n, double E, uint64_t* seed);
+
   // Data members
   std::string name_; //!< Name of nuclide, e.g. "U235"
   int Z_; //!< Atomic number
@@ -91,7 +94,8 @@ public:
   bool urr_present_ {false};
   int urr_inelastic_ {C_NONE};
   std::vector<UrrData> urr_data_;
-  std::unique_ptr<Unresolved> u_data_;
+  bool unr_present_ {false};
+  std::unique_ptr<Unresolved> unr_data_; //!< Unresolved resonance parameters
 
   std::vector<std::unique_ptr<Reaction>> reactions_; //!< Reactions
   std::array<size_t, 902> reaction_index_; //!< Index of each reaction

@@ -968,7 +968,7 @@ class Unresolved(ResonanceRange):
         """
 
         # Write basic data
-        group.attrs['case'] = self.case
+        group.attrs['case'] = np.string_(self.case)
         group.attrs['add_to_background'] = self.add_to_background
         group.attrs['atomic_weight_ratio'] = self.atomic_weight_ratio
         group.attrs['energy_max'] = self.energy_max
@@ -1015,17 +1015,12 @@ class Unresolved(ResonanceRange):
                   scattering_radius)
 
         # Read case and URR parameters and energies
-        urr.case = group.attrs['case']
-        if urr.case == 'A':
-            columns = ['L', 'J', 'd', 'amun', 'gn0', 'gg']
-        elif urr.case == 'B':
-            columns = ['L', 'J', 'E', 'd', 'amun', 'amuf', 'gn0', 'gg', 'gf']
-            urr.energies = group['energies'][...]
-        else:
-            columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
-                       'gg', 'gf']
+        urr.case = group.attrs['case'].decode()
+        if urr.case != 'A':
             urr.energies = group['energies'][...]
 
+        columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
+                   'gg', 'gf']
         urr.parameters = pd.DataFrame(group['parameters'][()], columns=columns)
 
         # Read LSSF and AWR
@@ -1070,13 +1065,12 @@ class Unresolved(ResonanceRange):
                 ap = Polynomial((items[1],))
             add_to_background = (items[2] == 0)
 
+        records = []
         if not fission_widths and formalism == 1:
             # Case A -- fission widths not given, all parameters are
             # energy-independent
             case = 'A'
             NLS = items[4]
-            columns = ['L', 'J', 'd', 'amun', 'gn0', 'gg']
-            records = []
             for ls in range(NLS):
                 items, values = get_list_record(file_obj)
                 awri = items[0]
@@ -1084,8 +1078,7 @@ class Unresolved(ResonanceRange):
                 NJS = items[5]
                 for j in range(NJS):
                     d, j, amun, gn0, gg = values[6*j:6*j + 5]
-                    records.append([l, j, d, amun, gn0, gg])
-            parameters = pd.DataFrame.from_records(records, columns=columns)
+                    records.append([l, j, 0, d, 0, amun, 0, 0, gn0, gg, 0])
             energies = None
 
         elif fission_widths and formalism == 1:
@@ -1098,8 +1091,6 @@ class Unresolved(ResonanceRange):
                 ap = Polynomial((items[1],))
             add_to_background = (items[2] == 0)
             NE, NLS = items[4:6]
-            records = []
-            columns = ['L', 'J', 'E', 'd', 'amun', 'amuf', 'gn0', 'gg', 'gf']
             for ls in range(NLS):
                 items = get_cont_record(file_obj)
                 awri = items[0]
@@ -1115,16 +1106,12 @@ class Unresolved(ResonanceRange):
                     gg = values[4]
                     gfs = values[6:]
                     for E, gf in zip(energies, gfs):
-                        records.append([l, j, E, d, amun, muf, gn0, gg, gf])
-            parameters = pd.DataFrame.from_records(records, columns=columns)
+                        records.append([l, j, E, d, 0, amun, muf, 0, gn0, gg, gf])
 
         elif formalism == 2:
             # Case C -- all parameters are energy-dependent
             case = 'C'
             NLS = items[4]
-            columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
-                       'gg', 'gf']
-            records = []
             for ls in range(NLS):
                 items = get_cont_record(file_obj)
                 awri = items[0]
@@ -1148,7 +1135,11 @@ class Unresolved(ResonanceRange):
                         energies.append(E)
                         records.append([l, j, E, d, amux, amun, amuf, gx, gn0,
                                         gg, gf])
-            parameters = pd.DataFrame.from_records(records, columns=columns)
+
+        # Create pandas dataframe from resonance parameters
+        columns = ['L', 'J', 'E', 'd', 'amux', 'amun', 'amuf', 'gx', 'gn0',
+                   'gg', 'gf']
+        parameters = pd.DataFrame.from_records(records, columns=columns)
 
         # Calculate channel radius from ENDF-102 equation D.14
         a = Polynomial((0.123 * (NEUTRON_MASS*awri)**(1./3.) + 0.08,))

@@ -477,11 +477,12 @@ class IncidentNeutron(EqualityMixin):
                 urr.to_hdf5(tgroup)
 
         # Write unresolved resonance parameters
-        for rr in self.resonances:
-            if isinstance(rr, res.Unresolved):
-                unr_group = g.create_group('unresolved')
-                rr.to_hdf5(unr_group)
-                break
+        if self.resonances:
+            for rr in self.resonances:
+                if isinstance(rr, res.Unresolved):
+                    unr_group = g.create_group('unresolved')
+                    rr.to_hdf5(unr_group)
+                    break
 
         # Write fission energy release data
         if self.fission_energy is not None:

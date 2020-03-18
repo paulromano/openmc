@@ -3,11 +3,14 @@
 #ifndef OPENMC_URR_H
 #define OPENMC_URR_H
 
-#include "xtensor/xtensor.hpp"
-
 #include "openmc/constants.h"
 #include "openmc/endf.h"
 #include "openmc/hdf5_interface.h"
+
+#include "xtensor/xtensor.hpp"
+
+#include <unordered_map>
+#include <utility>
 
 namespace openmc {
 
@@ -30,31 +33,33 @@ public:
 };
 
 //==============================================================================
-//! Resonance parameters
-//==============================================================================
-
-struct Resonance {
-  double energy;
-  int l; //!< Neutron orbital angular momentum
-  int j; //!< Total angular momentum
-  double gt; //!< Total width
-  double gn; //!< Energy-dependent neutron width
-  double gg; //!< Radiation width
-  double gf; //!< Fission width
-  double gx; //!< Competitive width
-};
-
-//==============================================================================
 // Resonance ladder spanning the entire unresolved resonance range
 //==============================================================================
 
 class ResonanceLadder {
 public:
+  // Types
+  struct Resonance {
+    double E; //!< Energy
+    int l; //!< Neutron orbital angular momentum
+    int j; //!< Total angular momentum
+    double gt; //!< Total width
+    double gn; //!< Energy-dependent neutron width
+    double gg; //!< Radiation width
+    double gf; //!< Fission width
+    double gx; //!< Competitive width
+    double p; //!< Penetration factor
+    double s; //!< Shift factor
+  };
+
   // Methods
-  double evaluate(double E, double T) const;
+  void evaluate(double E, double T, double target_spin, double awr,
+    Function1D& channel_radius, Function1D& scattering_radius, double* elastic,
+    double* capture, double* fission) const;
 
   // Data members
   std::vector<Resonance> res_; //!< Sampled resonance parameters
+  std::unordered_map<int, std::vector<int>> l_values_;
 };
 
 //==============================================================================
@@ -68,11 +73,29 @@ public:
     A, B, C
   };
 
+  struct URParameters {
+    double E;       //!< Energy
+    double avg_d;   //!< Average level spacing
+    double df_x;    //!< Degrees of freedom in competetive width distribution
+    double df_n;    //!< Degrees of freedom in neutron width distribution 
+    double df_f;    //!< Degrees of freedom in fission width distribution
+    double avg_gx;  //!< Average competitive reaction width
+    double avg_gn0; //!< Average reduced neutron width
+    double avg_gg;  //!< Average radiation width
+    double avg_gf;  //!< Average fission width
+  };
+
+  struct SpinSequence {
+    int l; //!< Neutron orbital angular momentum
+    int j; //!< Total angular momentum
+    std::vector<URParameters> params; //!< Unresolved resonance parameters
+  };
+
   // Constructors
   Unresolved(hid_t group);
 
   // Methods
-  ResonanceLadder sample(double E) const;
+  void sample_ladder(ResonanceLadder* ladder, uint64_t* seed) const;
 
   // Data members
   Case case_; //!< Which of 3 cases
@@ -80,11 +103,44 @@ public:
   double energy_min_; //!< Minimum energy of the unresolved resonance range in eV
   double energy_max_; //!< Maximum energy of the unresolved resonance range in eV
   double target_spin_; //!< Intrinsic spin of the target nuclide
+  double awr_; //!< Atomic weight ratio
   std::unique_ptr<Function1D> channel_radius_;
   std::unique_ptr<Function1D> scattering_radius_;
   xt::xtensor<double, 1> energy_; //!< Energy at which parameters are tabulated
-  xt::xtensor<double, 2> params_; //!< Unresolved resonance parameters
+  std::vector<SpinSequence> ljs_; //!< Unresolved resonance parameters at each (l,j)
 };
+
+//==============================================================================
+// Non-member functions
+//==============================================================================
+
+//! Calculate the neutron wave number in center-of-mass system.
+//!
+//! \param[in] A Ratio of target mass to neutron mass
+//! \param[in] E Energy in eV
+//! \return Neutron wave number in b^-0.5
+double wave_number(double A, double E);
+
+//! Calculate hardsphere phase shift
+//!
+//! \param[in] l Angular momentum quantum number
+//! \param[in] rho Product of the wave number and the channel radius
+//! \return Hardsphere phase shift
+double phase_shift(int l, double rho);
+
+//! Calculate shift and penetration factors
+//!
+//! \param[in] l Angular momentum quantum number
+//! \param[in] rho Product of the wave number and the channel radius
+//! \return Penetration factor and shift factor for given l
+std::pair<double, double> penetration_shift(int l, double rho);
+
+//! Sample from a chi-square distribution
+//!
+//! \param[in] df Number of degrees of freedom
+//! \param[in] seed PRNG seed
+//! \return Sample drawn from a chi-square distribution
+double chi_square(int df, uint64_t* seed);
 
 } // namespace openmc
 

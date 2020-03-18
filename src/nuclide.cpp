@@ -255,7 +255,8 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature, int i_nucl
   if (settings::urr_treatment == URRTreatment::DIRECT &&
       object_exists(group, "unresolved")) {
     hid_t unr_group = open_group(group, "unresolved");
-    u_data_ = std::make_unique<Unresolved>(unr_group);
+    unr_data_ = std::make_unique<Unresolved>(unr_group);
+    unr_present_ = true;
     close_group(unr_group);
   }
 
@@ -894,6 +895,40 @@ void Nuclide::calculate_urr_xs(int i_temp, Particle& p) const
     micro.nu_fission = nu(p.E_, EmissionMode::total) * micro.fission;
   }
 
+}
+
+// TODO: remove, just for testing
+void Nuclide::sample_urr_xs(int n, double E, uint64_t* seed)
+{
+  std::vector<double> total_xs;
+
+  for (int i = 0; i < n; ++i) {
+    // Stochastically generate a resonance ladder
+    ResonanceLadder lad;
+    unr_data_->sample_ladder(&lad, seed);
+ 
+    // Compute cross sections
+    double T = 0;
+    double els, cap, fis;
+    lad.evaluate(E, T, unr_data_->target_spin_, unr_data_->awr_,
+      *unr_data_->channel_radius_, *unr_data_->scattering_radius_, &els, &cap,
+      &fis);
+    double tot = els + cap + fis;
+
+    // Check for negative elastic cross sections
+
+
+    // Add background cross sections
+
+
+    total_xs.push_back(tot);
+  }
+
+  FILE* f = fopen("total_xs.txt", "w");
+  for (int i = 0; i < n; ++i) {
+    fprintf(f, "%f ", total_xs[i]);
+  }
+  fclose(f);
 }
 
 //==============================================================================
