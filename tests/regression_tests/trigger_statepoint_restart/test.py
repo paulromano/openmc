@@ -34,13 +34,13 @@ def model():
     settings.trigger_max_batches = 1000
     settings.trigger_batch_interval = 1
     settings.trigger_active = True
-    settings.verbosity = 1 # to test that this works even with no output
- 
+    settings.verbosity = 7 # to test that this works even with no output
+
     # Tallies
     t = openmc.Tally()
     t.scores = ['flux']
     tallies = openmc.Tallies([t])
- 
+
     # Put it all together
     model = openmc.model.Model(materials=materials,
                                geometry=geometry,
