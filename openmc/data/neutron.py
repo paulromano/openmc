@@ -710,14 +710,6 @@ class IncidentNeutron(EqualityMixin):
         if urr is not None:
             data.urr[strT] = urr
 
-        # Read unresolved resonance parameters
-        filename = os.path.join(os.path.dirname(__file__), 'urr.h5')
-        with h5py.File(filename, 'r') as f:
-            if name in f:
-                group = f[name]
-                rr = res.Unresolved.from_hdf5(group)
-                data.resonances = res.Resonances([rr])
-
         return data
 
     @classmethod
@@ -919,6 +911,10 @@ class IncidentNeutron(EqualityMixin):
                 heating_local.xs[temp] = Tabulated1D(E, kerma_local)
 
             data.reactions[901] = heating_local
+
+        # Add resonance data for URR
+        ev = evaluation if evaluation is not None else Evaluation(filename)
+        data.resonances = res.Resonances.from_endf(ev)
 
         return data
 
