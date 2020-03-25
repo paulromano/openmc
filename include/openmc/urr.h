@@ -33,6 +33,18 @@ public:
 };
 
 //==============================================================================
+// Cross section evaluated at a particular energy and temperature
+//==============================================================================
+
+struct URRXS {
+  double elastic;
+  double capture;
+  double fission;
+  double competitive;
+  double total;
+};
+
+//==============================================================================
 // Resonance ladder spanning the entire unresolved resonance range
 //==============================================================================
 
@@ -53,9 +65,8 @@ public:
   };
 
   // Methods
-  void evaluate(double E, double T, double target_spin, double awr,
-    Function1D& channel_radius, Function1D& scattering_radius, double* elastic,
-    double* capture, double* fission) const;
+  void evaluate(double E, double sqrtkT, double target_spin, double awr,
+    Function1D& channel_radius, Function1D& scattering_radius, URRXS& xs) const;
 
   // Data members
   std::vector<Resonance> res_; //!< Sampled resonance parameters

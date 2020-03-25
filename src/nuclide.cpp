@@ -898,30 +898,49 @@ void Nuclide::calculate_urr_xs(int i_temp, Particle& p) const
 }
 
 // TODO: remove, just for testing
-void Nuclide::sample_urr_xs(int n, double E, uint64_t* seed)
+void Nuclide::sample_urr_xs(int n, Particle& p)
 {
   std::vector<double> total_xs;
 
   for (int i = 0; i < n; ++i) {
     // Stochastically generate a resonance ladder
     ResonanceLadder lad;
-    unr_data_->sample_ladder(&lad, seed);
+    unr_data_->sample_ladder(&lad, p.current_seed());
  
     // Compute cross sections
-    double T = 0;
-    double els, cap, fis;
-    lad.evaluate(E, T, unr_data_->target_spin_, unr_data_->awr_,
-      *unr_data_->channel_radius_, *unr_data_->scattering_radius_, &els, &cap,
-      &fis);
-    double tot = els + cap + fis;
+    URRXS xs;
+    lad.evaluate(p.E_, p.sqrtkT_, unr_data_->target_spin_, unr_data_->awr_,
+      *unr_data_->channel_radius_, *unr_data_->scattering_radius_, xs);
 
     // Check for negative elastic cross sections
-
+    auto& micro = p.neutron_xs_[i_nuclide_];
+    calculate_elastic_xs(p);
+    if (unr_data_->add_to_background_ && xs.elastic + micro.elastic < 0) {
+      xs.total -= xs.elastic;
+      xs.elastic = -micro.elastic;
+    } else if (!unr_data_->add_to_background_ && xs.elastic < 0) {
+      xs.total -= xs.elastic;
+      xs.elastic = 0;
+    }
 
     // Add background cross sections
+    double total = micro.total;
+    if (unr_data_->add_to_background_) {
+      xs.elastic += micro.elastic;
+      xs.capture += (micro.absorption - micro.fission);
+      xs.fission += micro.fission;
+    } else {
+      total -= (micro.elastic + micro.absorption);
+    }
+    xs.total += total;
 
+    // TODO: If LSSF=0 (add_to_background_=1), File 2 is used for the
+    // calculstion of self-shielding factors, defined as the ratio of File 2
+    // average shielded cross section to the average unshielded value computed
+    // from the same parameters. File 3 cross sections should be multiplied by
+    // this ratio.
 
-    total_xs.push_back(tot);
+    total_xs.push_back(xs.total);
   }
 
   FILE* f = fopen("total_xs.txt", "w");

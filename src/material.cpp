@@ -797,11 +797,6 @@ void Material::calculate_neutron_xs(Particle& p) const
     // Determine microscopic cross sections for this nuclide
     int i_nuclide = nuclide_[i];
 
-    // TODO: remove, for testing URR
-    std::cout << "Sampling URR XS..." << std::endl;
-    data::nuclides[i_nuclide]->sample_urr_xs(1e3, 1.4e5, p.current_seed());
-    exit(0);
-
     // Calculate microscopic cross section for this nuclide
     const auto& micro {p.neutron_xs_[i_nuclide]};
     if (p.E_ != micro.last_E
@@ -822,6 +817,15 @@ void Material::calculate_neutron_xs(Particle& p) const
     p.macro_xs_.absorption += atom_density * micro.absorption;
     p.macro_xs_.fission += atom_density * micro.fission;
     p.macro_xs_.nu_fission += atom_density * micro.nu_fission;
+
+    // TODO: remove, for testing URR
+    int n_samples = 1000;
+    std::cout << "Sampling URR XS..." << std::endl;
+    std::cout << "E = " << p.E_ << std::endl;
+    std::cout << "T = " << p.sqrtkT_*p.sqrtkT_ / K_BOLTZMANN << std::endl;
+    std::cout << "n_samples = " << n_samples << std::endl;
+    data::nuclides[i_nuclide]->sample_urr_xs(n_samples, p);
+    exit(0);
   }
 }
 

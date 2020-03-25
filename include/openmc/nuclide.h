@@ -57,7 +57,7 @@ public:
   void calculate_urr_xs(int i_temp, Particle& p) const;
 
   // TODO: remove, just for testing
-  void sample_urr_xs(int n, double E, uint64_t* seed);
+  void sample_urr_xs(int n, Particle& p);
 
   // Data members
   std::string name_; //!< Name of nuclide, e.g. "U235"

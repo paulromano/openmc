@@ -1,3 +1,4 @@
+#include "openmc/math_functions.h"
 #include "openmc/urr.h"
 #include "openmc/random_lcg.h"
 
@@ -198,15 +199,20 @@ void Unresolved::sample_ladder(ResonanceLadder* ladder, uint64_t* seed) const
 // ResonanceLadder implementation
 //==============================================================================
 
-void ResonanceLadder::evaluate(double E, double T, double target_spin, double
-  awr, Function1D& channel_radius, Function1D& scattering_radius, double*
-  elastic, double* capture, double* fission) const
+void ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, double
+  awr, Function1D& channel_radius, Function1D& scattering_radius, URRXS& xs) const
 {
+  using namespace std::complex_literals;
+
   double k = wave_number(awr, E);
 
-  *elastic = 0.;
-  *capture = 0.;
-  *fission = 0.;
+  xs.elastic = 0.;
+  xs.capture = 0.;
+  xs.fission = 0.;
+  xs.competitive = 0.;
+
+  // Doppler width
+  double d = 2*sqrtkT * std::sqrt(E/awr);
 
   for (auto& it : l_values_) {
     int l = it.first;
@@ -220,7 +226,7 @@ void ResonanceLadder::evaluate(double E, double T, double target_spin, double
     double sinphi2 = std::pow(std::sin(phi), 2);
 
     // Add potential scattering
-    *elastic += 4*PI / (k*k) * (2*l + 1) * sinphi2;
+    xs.elastic += 4*PI / (k*k) * (2*l + 1) * sinphi2;
 
     for (auto& i_res : it.second) {
       // Get the resonance parameters
@@ -233,20 +239,33 @@ void ResonanceLadder::evaluate(double E, double T, double target_spin, double
       double Eprime = res.E + (res.s - s) / (2*res.p) * res.gn;
       double gJ = (2*res.j + 1) / (4*target_spin + 2);
 
-      // Calculate common factor for elastic, capture, and fission cross sections
-      double f = PI/(k*k) * gJ * gnE / (std::pow(E - Eprime, 2) + gtE*gtE/4);
+      // Calculate the symmetric and asymmetric Breit-Wigner line shape
+      // functions
+      double theta = gtE/d;
+      double x = 2*(E - Eprime)/gtE;
+      std::complex<double> z = theta*x/2 + theta/2 * 1.0i;
+      std::complex<double> w = theta * std::sqrt(PI/2) * faddeeva(z);
+      double psi = w.real();
+      double chi = w.imag();
+
+      // Calculate common factor for elastic, capture, and fission cross
+      // sections
+      double f = (4*PI)/(k*k) * gJ * res.gn/gtE;
 
       // Add contribution to elastic
-      *elastic += f * (gnE * cos2phi - 2*(res.gg + res.gf) * sinphi2 +
-        2*(E - Eprime) * sin2phi);
+      xs.elastic += f * (psi * (cos2phi - (1 - gnE/gtE)) + chi * sin2phi);
 
       // Add contribution to capture
-      *capture += f * res.gg;
+      xs.capture += f * res.gg / gtE * psi;
 
       // Add contribution to fission
-      *fission += f * res.gf;
+      xs.fission += f * res.gf / gtE * psi;
+
+      // Add contribution to competitive
+      xs.competitive += f * res.gx / gtE * psi;
     }
   }
+  xs.total = xs.elastic + xs.capture + xs.fission;
 }
 
 //==============================================================================
