@@ -314,20 +314,20 @@ void ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, doub
 {
   using namespace std::complex_literals;
 
-  double k = wave_number(awr, E);
-
   xs.elastic = 0.;
   xs.capture = 0.;
   xs.fission = 0.;
   xs.competitive = 0.;
+
+  double k = wave_number(awr, E);
+  double rho = k * channel_radius(E);
+  double rhohat = k * scattering_radius(E);
 
   // Doppler width
   double d = 2*sqrtkT * std::sqrt(E/awr);
 
   for (auto& it : l_values_) {
     int l = it.first;
-    double rho = k * channel_radius(E);
-    double rhohat = k * scattering_radius(E);
     double p, s;
     std::tie(p, s) = penetration_shift(l, rho);
     double phi = phase_shift(l, rhohat);
