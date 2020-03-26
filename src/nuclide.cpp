@@ -905,7 +905,7 @@ void Nuclide::sample_urr_xs(int n, Particle& p)
   for (int i = 0; i < n; ++i) {
     // Stochastically generate a resonance ladder
     ResonanceLadder lad;
-    unr_data_->sample_ladder(&lad, p.current_seed());
+    unr_data_->sample_ladder(p.E_, &lad, p.current_seed());
  
     // Compute cross sections
     URRXS xs;

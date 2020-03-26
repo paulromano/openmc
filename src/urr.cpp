@@ -1,6 +1,7 @@
 #include "openmc/math_functions.h"
 #include "openmc/urr.h"
 #include "openmc/random_lcg.h"
+#include "openmc/search.h"
 
 #include <iostream>
 
@@ -28,7 +29,7 @@ UrrData::UrrData(hid_t group_id)
   read_dataset(group_id, "energy", energy_);
 
   // Set n_energy_
-  n_energy_ = energy_.shape()[0];
+  n_energy_ = energy_.size();
 
   // Read URR tables
   read_dataset(group_id, "table", prob_);
@@ -95,7 +96,8 @@ Unresolved::Unresolved(hid_t group)
   }
 }
 
-void Unresolved::sample_ladder(ResonanceLadder* ladder, uint64_t* seed) const
+void Unresolved::sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed)
+  const
 {
   ladder->res_.clear();
   ladder->l_values_.clear();
@@ -191,6 +193,114 @@ void Unresolved::sample_ladder(ResonanceLadder* ladder, uint64_t* seed) const
         // energy bin for this spin sequence
         if (case_ != Case::A && E > p_r.E && p_l.E < energy_max_) break;
       }
+    }
+  }
+}
+
+void Unresolved::sample_ladder(double energy, ResonanceLadder* ladder,
+  uint64_t* seed) const
+{
+  // Number of resonances to sample
+  int n_res = 100;
+
+  ladder->res_.clear();
+  ladder->l_values_.clear();
+
+  // Find the energy bin
+  int i_grid;
+  if (energy < energy_.front()) {
+    i_grid = 0;
+  } else if (energy >= energy_.back()) {
+    i_grid = energy_.size() - 1;
+  } else {
+    i_grid = lower_bound_index(energy_.begin(), energy_.end(), energy);
+  }
+
+  int i_res = 0;
+  for (auto& spin_seq : ljs_) {
+    // Get the average parameters, interpolated at incident neutron energy if
+    // the parameters are energy-dependent
+    URParameters p;
+    auto p_l = spin_seq.params[i_grid];
+    if (case_ == Case::A) {
+      p = p_l;
+    } else {
+      // Parameters are energy-dependent, so get next values to interpolate
+      URParameters p_r;
+      if (energy <= energy_min_ || energy >= energy_max_) {
+        p_r = p_l;
+      } else {
+        p_r = spin_seq.params[i_grid + 1];
+      }
+      double f = p_l.E == p_r.E ? 0 : (energy - p_l.E) / (p_r.E - p_l.E);
+      p.avg_d = p_l.avg_d + f * (p_r.avg_d - p_l.avg_d);
+      p.df_x = p_l.df_x + f * (p_r.df_x - p_l.df_x);
+      p.df_n = p_l.df_n + f * (p_r.df_n - p_l.df_n);
+      p.df_f = p_l.df_f + f * (p_r.df_f - p_l.df_f);
+      p.avg_gx = p_l.avg_gx + f * (p_r.avg_gx - p_l.avg_gx);
+      p.avg_gn0 = p_l.avg_gn0 + f * (p_r.avg_gn0 - p_l.avg_gn0);
+      p.avg_gg = p_l.avg_gg + f * (p_r.avg_gg - p_l.avg_gg);
+      p.avg_gf = p_l.avg_gf + f * (p_r.avg_gf - p_l.avg_gf);
+    }
+
+    // Select a starting energy with random offset for this spin sequence
+    double E_start = energy + prn(seed) * p.avg_d;
+    double E = E_start;
+
+    int i_mid = n_res/2;
+    for (int i = 0; i < n_res; ++i) {
+      // Create resonance
+      ResonanceLadder::Resonance res;
+      res.l = spin_seq.l;
+      res.j = spin_seq.j;
+
+      // Finished sampling all the resonances to the right; now go to the left
+      if (i == i_mid) {
+        double d = p.avg_d * std::sqrt(-4.*std::log(prn(seed)) / PI);
+        E = E_start - d;
+      }
+
+      // Sample fission width
+      if (p.avg_gf == 0) {
+        res.gf = 0;
+      } else {
+        double xf = chi_square(p.df_f, seed);
+        res.gf = xf * p.avg_gf / p.df_f;
+      }
+
+      // Sample competetive width
+      if (p.avg_gx == 0) {
+        res.gx = 0;
+      } else {
+        double xx = chi_square(p.df_x, seed);
+        res.gx = xx * p.avg_gx / p.df_x;
+      }
+
+      // Calculate energy-dependent neutron width
+      double xn0 = chi_square(p.df_n, seed);
+      double k = wave_number(awr_, energy);
+      double rho = k * (*channel_radius_)(energy);
+      std::tie(res.p, res.s) = penetration_shift(res.l, rho);
+      res.gn = res.p / rho * std::sqrt(energy) * xn0 * p.avg_gn0;
+
+      // Calculate total width
+      res.gt = res.gn + p.avg_gg + res.gf + res.gx;
+
+      // Sample level spacing
+      double d = p.avg_d * std::sqrt(-4.*std::log(prn(seed)) / PI);
+
+      // Update resonance parameters and energy
+      res.E = E;
+      ladder->res_.push_back(res);
+      if (i < i_mid) {
+        E += d;
+      } else {
+        E -= d;
+      }
+
+      // Add the index of this resonance to the map of l-values
+      ladder->l_values_[res.l].push_back(i_res);
+      i_res++;
     }
   }
 }

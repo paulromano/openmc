@@ -106,7 +106,9 @@ public:
   Unresolved(hid_t group);
 
   // Methods
-  void sample_ladder(ResonanceLadder* ladder, uint64_t* seed) const;
+  void sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed) const;
+  void sample_ladder(double energy, ResonanceLadder* ladder, uint64_t* seed)
+    const;
 
   // Data members
   Case case_; //!< Which of 3 cases
@@ -117,7 +119,7 @@ public:
   double awr_; //!< Atomic weight ratio
   std::unique_ptr<Function1D> channel_radius_;
   std::unique_ptr<Function1D> scattering_radius_;
-  xt::xtensor<double, 1> energy_; //!< Energy at which parameters are tabulated
+  std::vector<double> energy_; //!< Energy at which parameters are tabulated
   std::vector<SpinSequence> ljs_; //!< Unresolved resonance parameters at each (l,j)
 };
 

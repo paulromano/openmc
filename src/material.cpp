@@ -819,7 +819,7 @@ void Material::calculate_neutron_xs(Particle& p) const
     p.macro_xs_.nu_fission += atom_density * micro.nu_fission;
 
     // TODO: remove, for testing URR
-    int n_samples = 1000;
+    int n_samples = 10000;
     std::cout << "Sampling URR XS..." << std::endl;
     std::cout << "E = " << p.E_ << std::endl;
     std::cout << "T = " << p.sqrtkT_*p.sqrtkT_ / K_BOLTZMANN << std::endl;
