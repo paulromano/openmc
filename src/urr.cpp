@@ -313,15 +313,12 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 // ResonanceLadder implementation
 //==============================================================================
 
-void ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, double
-  awr, Function1D& channel_radius, Function1D& scattering_radius, URRXS& xs) const
+URRXS ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, double
+  awr, const Function1D& channel_radius, const Function1D& scattering_radius) const
 {
   using namespace std::complex_literals;
 
-  xs.elastic = 0.;
-  xs.capture = 0.;
-  xs.fission = 0.;
-  xs.competitive = 0.;
+  URRXS xs;
 
   double k = wave_number(awr, E);
   double rho = k * channel_radius(E);
@@ -380,6 +377,7 @@ void ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, doub
     }
   }
   xs.total = xs.elastic + xs.capture + xs.fission;
+  return xs;
 }
 
 //==============================================================================
