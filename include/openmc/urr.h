@@ -88,7 +88,7 @@ public:
     double E;       //!< Energy
     double avg_d;   //!< Average level spacing
     double df_x;    //!< Degrees of freedom in competetive width distribution
-    double df_n;    //!< Degrees of freedom in neutron width distribution 
+    double df_n;    //!< Degrees of freedom in neutron width distribution
     double df_f;    //!< Degrees of freedom in fission width distribution
     double avg_gx;  //!< Average competitive reaction width
     double avg_gn0; //!< Average reduced neutron width
@@ -106,9 +106,8 @@ public:
   Unresolved(hid_t group);
 
   // Methods
-  void sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed) const;
-  void sample_ladder(double energy, ResonanceLadder* ladder, uint64_t* seed)
-    const;
+  ResonanceLadder sample_full_ladder(uint64_t* seed) const;
+  ResonanceLadder sample_ladder(double energy, uint64_t* seed) const;
 
   // Data members
   Case case_; //!< Which of 3 cases

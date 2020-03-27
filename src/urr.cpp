@@ -96,11 +96,11 @@ Unresolved::Unresolved(hid_t group)
   }
 }
 
-void Unresolved::sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed)
-  const
+ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
 {
-  ladder->res_.clear();
-  ladder->l_values_.clear();
+  ResonanceLadder ladder;
+  ladder.res_.clear();
+  ladder.l_values_.clear();
 
   int i_res = 0;
 
@@ -148,8 +148,8 @@ void Unresolved::sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed)
         }
 
         // Create resonance
-        ladder->res_.emplace_back();
-        auto& res {ladder->res_.back()};
+        ladder.res_.emplace_back();
+        auto& res {ladder.res_.back()};
         res.E = E;
         res.l = spin_seq.l;
         res.j = spin_seq.j;
@@ -185,7 +185,7 @@ void Unresolved::sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed)
         E += d;
 
         // Add the index of this resonance to the map of l-values
-        ladder->l_values_[res.l].push_back(i_res);
+        ladder.l_values_[res.l].push_back(i_res);
         i_res++;
 
         // If the parameters are energy-dependent (Case C) or fission widths
@@ -195,16 +195,18 @@ void Unresolved::sample_full_ladder(ResonanceLadder* ladder, uint64_t* seed)
       }
     }
   }
+
+  return ladder;
 }
 
-void Unresolved::sample_ladder(double energy, ResonanceLadder* ladder,
-  uint64_t* seed) const
+ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 {
   // Number of resonances to sample
   int n_res = 100;
 
-  ladder->res_.clear();
-  ladder->l_values_.clear();
+  ResonanceLadder ladder;
+  ladder.res_.clear();
+  ladder.l_values_.clear();
 
   // Find the energy bin
   int i_grid;
@@ -291,7 +293,7 @@ void Unresolved::sample_ladder(double energy, ResonanceLadder* ladder,
 
       // Update resonance parameters and energy
       res.E = E;
-      ladder->res_.push_back(res);
+      ladder.res_.push_back(res);
       if (i < i_mid) {
         E += d;
       } else {
@@ -299,10 +301,12 @@ void Unresolved::sample_ladder(double energy, ResonanceLadder* ladder,
       }
 
       // Add the index of this resonance to the map of l-values
-      ladder->l_values_[res.l].push_back(i_res);
+      ladder.l_values_[res.l].push_back(i_res);
       i_res++;
     }
   }
+
+  return ladder;
 }
 
 //==============================================================================
