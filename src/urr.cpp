@@ -136,15 +136,7 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
       while (E < E_max) {
         // Interpolate average parameters
         if (case_ != Case::A) {
-          double f = p_l.E == p_r.E ? 0 : (E - p_l.E) / (p_r.E - p_l.E);
-          p.avg_d = p_l.avg_d + f * (p_r.avg_d - p_l.avg_d);
-          p.df_x = p_l.df_x + f * (p_r.df_x - p_l.df_x);
-          p.df_n = p_l.df_n + f * (p_r.df_n - p_l.df_n);
-          p.df_f = p_l.df_f + f * (p_r.df_f - p_l.df_f);
-          p.avg_gx = p_l.avg_gx + f * (p_r.avg_gx - p_l.avg_gx);
-          p.avg_gn0 = p_l.avg_gn0 + f * (p_r.avg_gn0 - p_l.avg_gn0);
-          p.avg_gg = p_l.avg_gg + f * (p_r.avg_gg - p_l.avg_gg);
-          p.avg_gf = p_l.avg_gf + f * (p_r.avg_gf - p_l.avg_gf);
+          p = this->interpolate_parameters(p_l, p_r, E);
         }
 
         // Create resonance
@@ -155,20 +147,10 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
         res.j = spin_seq.j;
 
         // Sample fission width
-        if (p.avg_gf == 0) {
-          res.gf = 0;
-        } else {
-          double xf = chi_square(p.df_f, seed);
-          res.gf = xf * p.avg_gf / p.df_f;
-        }
+        res.gf = sample_width(p.avg_gf, p.df_f, seed);
 
         // Sample competetive width
-        if (p.avg_gx == 0) {
-          res.gx = 0;
-        } else {
-          double xx = chi_square(p.df_x, seed);
-          res.gx = xx * p.avg_gx / p.df_x;
-        }
+        res.gx = sample_width(p.avg_gx, p.df_x, seed);
 
         // Calculate energy-dependent neutron width
         double xn0 = chi_square(p.df_n, seed);
@@ -181,7 +163,7 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
         res.gt = res.gn + p.avg_gg + res.gf + res.gx;
 
         // Sample level spacing and update energy
-        double d = p.avg_d * std::sqrt(-4.*std::log(prn(seed)) / PI);
+        double d = sample_spacing(p.avg_d, seed);
         E += d;
 
         // Add the index of this resonance to the map of l-values
@@ -234,15 +216,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
       } else {
         p_r = spin_seq.params[i_grid + 1];
       }
-      double f = p_l.E == p_r.E ? 0 : (energy - p_l.E) / (p_r.E - p_l.E);
-      p.avg_d = p_l.avg_d + f * (p_r.avg_d - p_l.avg_d);
-      p.df_x = p_l.df_x + f * (p_r.df_x - p_l.df_x);
-      p.df_n = p_l.df_n + f * (p_r.df_n - p_l.df_n);
-      p.df_f = p_l.df_f + f * (p_r.df_f - p_l.df_f);
-      p.avg_gx = p_l.avg_gx + f * (p_r.avg_gx - p_l.avg_gx);
-      p.avg_gn0 = p_l.avg_gn0 + f * (p_r.avg_gn0 - p_l.avg_gn0);
-      p.avg_gg = p_l.avg_gg + f * (p_r.avg_gg - p_l.avg_gg);
-      p.avg_gf = p_l.avg_gf + f * (p_r.avg_gf - p_l.avg_gf);
+      p = this->interpolate_parameters(p_l, p_r, energy);
     }
 
     // Select a starting energy with random offset for this spin sequence
@@ -258,25 +232,16 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 
       // Finished sampling all the resonances to the right; now go to the left
       if (i == i_mid) {
-        double d = p.avg_d * std::sqrt(-4.*std::log(prn(seed)) / PI);
+        double d = sample_spacing(p.avg_d, seed);
         E = E_start - d;
       }
 
       // Sample fission width
-      if (p.avg_gf == 0) {
-        res.gf = 0;
-      } else {
-        double xf = chi_square(p.df_f, seed);
-        res.gf = xf * p.avg_gf / p.df_f;
-      }
+      res.gf = sample_width(p.avg_gf, p.df_f, seed);
 
       // Sample competetive width
-      if (p.avg_gx == 0) {
-        res.gx = 0;
-      } else {
-        double xx = chi_square(p.df_x, seed);
-        res.gx = xx * p.avg_gx / p.df_x;
-      }
+      res.gx = sample_width(p.avg_gx, p.df_x, seed);
+
 
       // Calculate energy-dependent neutron width
       double xn0 = chi_square(p.df_n, seed);
@@ -289,7 +254,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
       res.gt = res.gn + p.avg_gg + res.gf + res.gx;
 
       // Sample level spacing
-      double d = p.avg_d * std::sqrt(-4.*std::log(prn(seed)) / PI);
+      double d = sample_spacing(p.avg_d, seed);
 
       // Update resonance parameters and energy
       res.E = E;
@@ -307,6 +272,22 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   }
 
   return ladder;
+}
+
+Unresolved::URParameters Unresolved::interpolate_parameters(const URParameters& left,
+  const URParameters& right, double E) const
+{
+  URParameters p;
+  double f = left.E == right.E ? 0.0 : (E - left.E) / (right.E - left.E);
+  p.avg_d = left.avg_d + f * (right.avg_d - left.avg_d);
+  p.df_x = left.df_x + f * (right.df_x - left.df_x);
+  p.df_n = left.df_n + f * (right.df_n - left.df_n);
+  p.df_f = left.df_f + f * (right.df_f - left.df_f);
+  p.avg_gx = left.avg_gx + f * (right.avg_gx - left.avg_gx);
+  p.avg_gn0 = left.avg_gn0 + f * (right.avg_gn0 - left.avg_gn0);
+  p.avg_gg = left.avg_gg + f * (right.avg_gg - left.avg_gg);
+  p.avg_gf = left.avg_gf + f * (right.avg_gf - left.avg_gf);
+  return p;
 }
 
 //==============================================================================
@@ -461,4 +442,18 @@ double chi_square(int df, uint64_t* seed)
   return q;
 }
 
+double sample_width(double avg_width, double df, uint64_t* seed)
+{
+  if (avg_width == 0) {
+    return 0.0;
+  } else {
+    return chi_square(df, seed) * avg_width / df;
+  }
 }
+
+double sample_spacing(double avg_spacing, uint64_t* seed)
+{
+  return avg_spacing * std::sqrt(-4.*std::log(prn(seed)) / PI);
+}
+
+} // namespace openmc

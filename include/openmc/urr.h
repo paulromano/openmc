@@ -120,6 +120,10 @@ public:
   std::unique_ptr<Function1D> scattering_radius_;
   std::vector<double> energy_; //!< Energy at which parameters are tabulated
   std::vector<SpinSequence> ljs_; //!< Unresolved resonance parameters at each (l,j)
+
+private:
+  URParameters interpolate_parameters(const URParameters& left,
+    const URParameters& right, double E) const;
 };
 
 //==============================================================================
@@ -153,6 +157,21 @@ std::pair<double, double> penetration_shift(int l, double rho);
 //! \param[in] seed PRNG seed
 //! \return Sample drawn from a chi-square distribution
 double chi_square(int df, uint64_t* seed);
+
+//! Sample resonance width from chi-squared distribution
+//
+//! \param[in] avg_width Average resonance width
+//! \param[in] df Number of degrees of freedom
+//! \param[in] seed PRNG seed
+//! \return Sampled resonance width
+double sample_width(double avg_width, double df, uint64_t* seed);
+
+//! Sample resonance spacing from Wigner distribution
+//
+//! \param[in] avg_spacing Average resonance spacing
+//! \param[in] seed PRNG seed
+//! \return Sampled resonance spacing
+double sample_spacing(double avg_spacing, uint64_t* seed);
 
 } // namespace openmc
 
