@@ -253,7 +253,7 @@ ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutr
   // Calculate total width
   double gt = gn + p.avg_gg + gf + gx;
 
-  return {E, l, j, gt, gn, 0.0, gf, gx, penetration, shift};
+  return {E, l, j, gt, gn, p.avg_gg, gf, gx, penetration, shift};
 }
 
 Unresolved::URParameters Unresolved::interpolate_parameters(const URParameters& left,
