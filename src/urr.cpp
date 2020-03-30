@@ -99,8 +99,6 @@ Unresolved::Unresolved(hid_t group)
 ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
 {
   ResonanceLadder ladder;
-  ladder.res_.clear();
-  ladder.l_values_.clear();
 
   int i_res = 0;
 
@@ -168,8 +166,6 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   int n_res = 100;
 
   ResonanceLadder ladder;
-  ladder.res_.clear();
-  ladder.l_values_.clear();
 
   // Find the energy bin
   int i_grid;
