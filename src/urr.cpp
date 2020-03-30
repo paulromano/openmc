@@ -72,7 +72,7 @@ Unresolved::Unresolved(hid_t group)
   auto n_rows = matrix.shape()[0];
   for (int i = 0; i < n_rows; ++i) {
     int l = matrix(i, 0);
-    int j = matrix(i, 1);
+    double j = matrix(i, 1);
 
     // New spin sequence (l, j)
     if (ljs_.empty() || j != ljs_.back().j || l != ljs_.back().l) {
@@ -234,7 +234,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 }
 
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,
-  int l, int j, const URParameters& p, uint64_t* seed) const
+  int l, double j, const URParameters& p, uint64_t* seed) const
 {
   // Sample fission width
   double gf = sample_width(p.avg_gf, p.df_f, seed);

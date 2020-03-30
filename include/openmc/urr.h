@@ -54,7 +54,7 @@ public:
   struct Resonance {
     double E; //!< Energy
     int l; //!< Neutron orbital angular momentum
-    int j; //!< Total angular momentum
+    double j; //!< Total angular momentum
     double gt; //!< Total width
     double gn; //!< Energy-dependent neutron width
     double gg; //!< Radiation width
@@ -98,7 +98,7 @@ public:
 
   struct SpinSequence {
     int l; //!< Neutron orbital angular momentum
-    int j; //!< Total angular momentum
+    double j; //!< Total angular momentum
     std::vector<URParameters> params; //!< Unresolved resonance parameters
   };
 
@@ -132,7 +132,7 @@ private:
   //! \param[in,out] seed  PRNG seed
   //! \return Sampled resonance
   ResonanceLadder::Resonance sample_resonance(double E, double E_neutron,
-    int l, int j, const URParameters& p, uint64_t* seed) const;
+    int l, double j, const URParameters& p, uint64_t* seed) const;
 
   //! Linearly interpolate average resonance parameters
   //
