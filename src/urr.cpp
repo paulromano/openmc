@@ -140,27 +140,8 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
         }
 
         // Create resonance
-        ladder.res_.emplace_back();
-        auto& res {ladder.res_.back()};
-        res.E = E;
-        res.l = spin_seq.l;
-        res.j = spin_seq.j;
-
-        // Sample fission width
-        res.gf = sample_width(p.avg_gf, p.df_f, seed);
-
-        // Sample competetive width
-        res.gx = sample_width(p.avg_gx, p.df_x, seed);
-
-        // Calculate energy-dependent neutron width
-        double xn0 = chi_square(p.df_n, seed);
-        double k = wave_number(awr_, E);
-        double rho = k * (*channel_radius_)(E);
-        std::tie(res.p, res.s) = penetration_shift(res.l, rho);
-        res.gn = res.p / rho * std::sqrt(E) * xn0 * p.avg_gn0;
-
-        // Calculate total width
-        res.gt = res.gn + p.avg_gg + res.gf + res.gx;
+        auto res = this->sample_resonance(E, E, spin_seq.l, spin_seq.j, p, seed);
+        ladder.res_.push_back(res);
 
         // Sample level spacing and update energy
         double d = sample_spacing(p.avg_d, seed);
@@ -225,40 +206,18 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 
     int i_mid = n_res/2;
     for (int i = 0; i < n_res; ++i) {
-      // Create resonance
-      ResonanceLadder::Resonance res;
-      res.l = spin_seq.l;
-      res.j = spin_seq.j;
-
       // Finished sampling all the resonances to the right; now go to the left
       if (i == i_mid) {
         double d = sample_spacing(p.avg_d, seed);
         E = E_start - d;
       }
 
-      // Sample fission width
-      res.gf = sample_width(p.avg_gf, p.df_f, seed);
-
-      // Sample competetive width
-      res.gx = sample_width(p.avg_gx, p.df_x, seed);
-
-
-      // Calculate energy-dependent neutron width
-      double xn0 = chi_square(p.df_n, seed);
-      double k = wave_number(awr_, energy);
-      double rho = k * (*channel_radius_)(energy);
-      std::tie(res.p, res.s) = penetration_shift(res.l, rho);
-      res.gn = res.p / rho * std::sqrt(energy) * xn0 * p.avg_gn0;
-
-      // Calculate total width
-      res.gt = res.gn + p.avg_gg + res.gf + res.gx;
-
-      // Sample level spacing
-      double d = sample_spacing(p.avg_d, seed);
-
-      // Update resonance parameters and energy
-      res.E = E;
+      // Sample resonance and add to ladder
+      auto res = sample_resonance(E, energy, spin_seq.l, spin_seq.j, p, seed);
       ladder.res_.push_back(res);
+
+      // Sample level spacing and update energy
+      double d = sample_spacing(p.avg_d, seed);
       if (i < i_mid) {
         E += d;
       } else {
@@ -272,6 +231,29 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   }
 
   return ladder;
+}
+
+ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,
+  int l, int j, const URParameters& p, uint64_t* seed) const
+{
+  // Sample fission width
+  double gf = sample_width(p.avg_gf, p.df_f, seed);
+
+  // Sample competetive width
+  double gx = sample_width(p.avg_gx, p.df_x, seed);
+
+  // Calculate energy-dependent neutron width
+  double xn0 = chi_square(p.df_n, seed);
+  double k = wave_number(awr_, E_neutron);
+  double rho = k * (*channel_radius_)(E_neutron);
+  double penetration, shift;
+  std::tie(penetration, shift) = penetration_shift(l, rho);
+  double gn = penetration / rho * std::sqrt(E_neutron) * xn0 * p.avg_gn0;
+
+  // Calculate total width
+  double gt = gn + p.avg_gg + gf + gx;
+
+  return {E, l, j, gt, gn, 0.0, gf, gx, penetration, shift};
 }
 
 Unresolved::URParameters Unresolved::interpolate_parameters(const URParameters& left,
