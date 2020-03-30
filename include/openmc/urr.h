@@ -54,7 +54,7 @@ public:
   struct Resonance {
     double E; //!< Energy
     int l; //!< Neutron orbital angular momentum
-    int j; //!< Total angular momentum
+    double j; //!< Total angular momentum
     double gt; //!< Total width
     double gn; //!< Energy-dependent neutron width
     double gg; //!< Radiation width
@@ -98,7 +98,7 @@ public:
 
   struct SpinSequence {
     int l; //!< Neutron orbital angular momentum
-    int j; //!< Total angular momentum
+    double j; //!< Total angular momentum
     std::vector<URParameters> params; //!< Unresolved resonance parameters
   };
 
@@ -120,6 +120,28 @@ public:
   std::unique_ptr<Function1D> scattering_radius_;
   std::vector<double> energy_; //!< Energy at which parameters are tabulated
   std::vector<SpinSequence> ljs_; //!< Unresolved resonance parameters at each (l,j)
+
+private:
+  //! Sample a resonance to add to a ladder
+  //
+  //! \param[in] E  Energy of the resonance
+  //! \param[in] E_neutron  Energy at which penetration/shift are calculated at
+  //! \param[in] l  Neutron orbital angular momentum
+  //! \param[in] j  Total angular momentum
+  //! \param[in] p  Average unresolved resonance parameters
+  //! \param[in,out] seed  PRNG seed
+  //! \return Sampled resonance
+  ResonanceLadder::Resonance sample_resonance(double E, double E_neutron,
+    int l, double j, const URParameters& p, uint64_t* seed) const;
+
+  //! Linearly interpolate average resonance parameters
+  //
+  //! \param[in] left  Parameters to the left of energy E
+  //! \param[in] right  Parameters to the right of energy E
+  //! \param[in] E  Energy to interpolate to
+  //! \return Linearly interpolated parameters
+  URParameters interpolate_parameters(const URParameters& left,
+    const URParameters& right, double E) const;
 };
 
 //==============================================================================
@@ -150,9 +172,24 @@ std::pair<double, double> penetration_shift(int l, double rho);
 //! Sample from a chi-square distribution
 //!
 //! \param[in] df Number of degrees of freedom
-//! \param[in] seed PRNG seed
+//! \param[in,out] seed PRNG seed
 //! \return Sample drawn from a chi-square distribution
 double chi_square(int df, uint64_t* seed);
+
+//! Sample resonance width from chi-squared distribution
+//
+//! \param[in] avg_width Average resonance width
+//! \param[in] df Number of degrees of freedom
+//! \param[in,out] seed PRNG seed
+//! \return Sampled resonance width
+double sample_width(double avg_width, double df, uint64_t* seed);
+
+//! Sample resonance spacing from Wigner distribution
+//
+//! \param[in] avg_spacing Average resonance spacing
+//! \param[in,out] seed PRNG seed
+//! \return Sampled resonance spacing
+double sample_spacing(double avg_spacing, uint64_t* seed);
 
 } // namespace openmc
 
