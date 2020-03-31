@@ -3,6 +3,9 @@
 #include "openmc/random_lcg.h"
 #include "openmc/search.h"
 
+#include <fmt/ostream.h>
+
+#include <fstream>
 #include <iostream>
 
 namespace openmc {
@@ -216,6 +219,81 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   }
 
   return resonances;
+}
+
+void Unresolved::sample_xs_njoy(int i_energy, uint64_t* seed) const
+{
+  // Get spin sequence and associated parameters
+  double E_table = energy_.at(i_energy);
+
+  // Determine total level density and minimum spacing at this energy
+  double total_density;
+  double d_min = INFTY;
+  for (const auto& spin_seq : ljs_) {
+    for (const auto& p : spin_seq.params) {
+      if (p.E != E_table) continue;
+
+      if (p.avg_d < d_min) d_min = p.avg_d;
+
+      double level_density = 1. / p.avg_d;
+      total_density += level_density;
+    }
+  }
+
+  // Using total level density, get an average level spacing that accounts for
+  // all spin sequences
+  double d_average = 1. / total_density;
+
+  // Determine low/high energies for sampling resonances
+  double E_low = 10.0;
+  double E_high = E_low + 900*d_min;
+
+  // Define minimum/maximum energies within [E_low, E_high] that ensure there
+  // are a sufficient number of resonances immediately outside the boundaries
+  double E_min = E_low + 300*d_average;
+  double E_max = E_high - 300*d_average;
+
+  // Pick points randomly in [E_min, E_max] and sort
+  int n_sample = 10000;
+  std::vector<double> E_evaluate(10000);
+  for (int i = 0; i < n_sample; ++i) {
+    E_evaluate[i] = E_min + (E_max - E_min)*prn(seed);
+  }
+  std::sort(E_evaluate.begin(), E_evaluate.end());
+
+  // Sample resonances over [E_low, E_high] and create ladder
+  std::vector<ResonanceLadder::Resonance> resonances;
+  for (const auto& spin_seq : ljs_) {
+    for (const auto& p : spin_seq.params) {
+      if (p.E != E_table) continue;
+
+      // Choose starting point from uniform distribution
+      double dcon = p.avg_d * std::sqrt(4/PI);  // TODO: Where does this come from?
+      double E = E_low + dcon*prn(seed);
+
+      while (E < E_high) {
+        // Sample resonance and add to ladder
+        auto res = sample_resonance(E, E_table, spin_seq.l, spin_seq.j, p, seed);
+        resonances.push_back(res);
+
+        // Sample spacing and move energy up
+        E += sample_spacing(p.avg_d, seed);
+      }
+    }
+  }
+  ResonanceLadder ladder{std::move(resonances)};
+
+  // Evaluate cross sections at random energies in [E_min, E_max]
+  double sqrtkT = std::sqrt(K_BOLTZMANN * 293.6);
+  std::ofstream outfile;
+  outfile.open("sampled_xs");
+  for (double E : E_evaluate) {
+    auto xs = ladder.evaluate(E, sqrtkT, target_spin_, awr_,
+      *channel_radius_, *scattering_radius_);
+
+    fmt::print(outfile, "{} {} {} {}\n", xs.total, xs.elastic, xs.fission, xs.capture);
+  }
+  outfile.close();
 }
 
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,

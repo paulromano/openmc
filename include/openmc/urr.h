@@ -113,6 +113,8 @@ public:
   ResonanceLadder sample_full_ladder(uint64_t* seed) const;
   ResonanceLadder sample_ladder(double energy, uint64_t* seed) const;
 
+  void sample_xs_njoy(int i_energy, uint64_t* seed) const;
+
   // Data members
   Case case_; //!< Which of 3 cases
   bool add_to_background_; //!< Whether to add File 3 cross sections
