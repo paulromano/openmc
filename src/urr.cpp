@@ -98,10 +98,7 @@ Unresolved::Unresolved(hid_t group)
 
 ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
 {
-  ResonanceLadder ladder;
-
-  int i_res = 0;
-
+  std::vector<ResonanceLadder::Resonance> resonances;
   for (auto& spin_seq : ljs_) {
     // Keep about 300 resonances on either end of the unresolved resonance
     // range to avoid truncation effects
@@ -139,15 +136,11 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
 
         // Create resonance
         auto res = this->sample_resonance(E, E, spin_seq.l, spin_seq.j, p, seed);
-        ladder.res_.push_back(res);
+        resonances.push_back(res);
 
         // Sample level spacing and update energy
         double d = sample_spacing(p.avg_d, seed);
         E += d;
-
-        // Add the index of this resonance to the map of l-values
-        ladder.l_values_[res.l].push_back(i_res);
-        i_res++;
 
         // If the parameters are energy-dependent (Case C) or fission widths
         // are energy-dependent (Case B), get the parameters for the next
@@ -157,15 +150,13 @@ ResonanceLadder Unresolved::sample_full_ladder(uint64_t* seed) const
     }
   }
 
-  return ladder;
+  return resonances;
 }
 
 ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 {
   // Number of resonances to sample
   int n_res = 100;
-
-  ResonanceLadder ladder;
 
   // Find the energy bin
   int i_grid;
@@ -178,6 +169,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   }
 
   int i_res = 0;
+  std::vector<ResonanceLadder::Resonance> resonances;
   for (auto& spin_seq : ljs_) {
     // Get the average parameters, interpolated at incident neutron energy if
     // the parameters are energy-dependent
@@ -210,7 +202,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
 
       // Sample resonance and add to ladder
       auto res = sample_resonance(E, energy, spin_seq.l, spin_seq.j, p, seed);
-      ladder.res_.push_back(res);
+      resonances.push_back(res);
 
       // Sample level spacing and update energy
       double d = sample_spacing(p.avg_d, seed);
@@ -220,13 +212,10 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
         E -= d;
       }
 
-      // Add the index of this resonance to the map of l-values
-      ladder.l_values_[res.l].push_back(i_res);
-      i_res++;
     }
   }
 
-  return ladder;
+  return resonances;
 }
 
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,
@@ -271,6 +260,14 @@ Unresolved::URParameters Unresolved::interpolate_parameters(const URParameters& 
 //==============================================================================
 // ResonanceLadder implementation
 //==============================================================================
+
+ResonanceLadder::ResonanceLadder(std::vector<Resonance>&& res) : res_{res}
+{
+  // Create mapping from l value to indices of corresponding resonances
+  for (int i = 0; i < res_.size(); ++i) {
+    l_values_[res_[i].l].push_back(i);
+  }
+}
 
 URRXS ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, double
   awr, const Function1D& channel_radius, const Function1D& scattering_radius) const
