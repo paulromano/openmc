@@ -64,10 +64,14 @@ public:
     double s; //!< Shift factor
   };
 
+  // Constructors
+  ResonanceLadder(std::vector<Resonance>&& res);
+
   // Methods
   URRXS evaluate(double E, double sqrtkT, double target_spin, double awr,
     const Function1D& channel_radius, const Function1D& scattering_radius) const;
 
+private:
   // Data members
   std::vector<Resonance> res_; //!< Sampled resonance parameters
   std::unordered_map<int, std::vector<int>> l_values_;
