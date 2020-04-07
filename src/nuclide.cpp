@@ -907,7 +907,7 @@ void Nuclide::sample_urr_xs(int n, Particle& p)
     auto lad = unr_data_->sample_ladder(p.E_, p.current_seed());
 
     // Compute cross sections
-    auto xs = lad.evaluate(p.E_, p.sqrtkT_, unr_data_->target_spin_, unr_data_->awr_,
+    auto xs = lad.evaluate(p.E_, p.E_, p.sqrtkT_, unr_data_->target_spin_, unr_data_->awr_,
       *unr_data_->channel_radius_, *unr_data_->scattering_radius_);
 
     // Check for negative elastic cross sections

@@ -68,8 +68,9 @@ public:
   ResonanceLadder(std::vector<Resonance>&& res);
 
   // Methods
-  URRXS evaluate(double E, double sqrtkT, double target_spin, double awr,
-    const Function1D& channel_radius, const Function1D& scattering_radius) const;
+  URRXS evaluate(double E, double E_neutron, double sqrtkT, double target_spin,
+    double awr, const Function1D& channel_radius, const Function1D&
+    scattering_radius) const;
 
 private:
   // Data members

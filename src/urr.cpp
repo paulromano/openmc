@@ -288,7 +288,7 @@ void Unresolved::sample_xs_njoy(int i_energy, uint64_t* seed) const
   std::ofstream outfile;
   outfile.open("sampled_xs");
   for (double E : E_evaluate) {
-    auto xs = ladder.evaluate(E, sqrtkT, target_spin_, awr_,
+    auto xs = ladder.evaluate(E, E_table, sqrtkT, target_spin_, awr_,
       *channel_radius_, *scattering_radius_);
 
     fmt::print(outfile, "{} {} {} {}\n", xs.total, xs.elastic, xs.fission, xs.capture);
@@ -347,19 +347,20 @@ ResonanceLadder::ResonanceLadder(std::vector<Resonance>&& res) : res_{res}
   }
 }
 
-URRXS ResonanceLadder::evaluate(double E, double sqrtkT, double target_spin, double
-  awr, const Function1D& channel_radius, const Function1D& scattering_radius) const
+URRXS ResonanceLadder::evaluate(double E, double E_neutron, double sqrtkT,
+  double target_spin, double awr, const Function1D& channel_radius,
+  const Function1D& scattering_radius) const
 {
   using namespace std::complex_literals;
 
   URRXS xs;
 
-  double k = wave_number(awr, E);
-  double rho = k * channel_radius(E);
-  double rhohat = k * scattering_radius(E);
+  double k = wave_number(awr, E_neutron);
+  double rho = k * channel_radius(E_neutron);
+  double rhohat = k * scattering_radius(E_neutron);
 
   // Doppler width
-  double d = 2*sqrtkT * std::sqrt(E/awr);
+  double d = 2*sqrtkT * std::sqrt(E_neutron/awr);
 
   for (auto& it : l_values_) {
     int l = it.first;
