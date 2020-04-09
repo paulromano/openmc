@@ -293,6 +293,26 @@ std::vector<URRXS> Unresolved::sample_xs_njoy(int i_energy, double T, int n_samp
   return xss;
 }
 
+std::vector<URRXS> Unresolved::sample_xs_local(int i_energy, double T, int n_sample, uint64_t* seed) const
+{
+  // Get energy and temperature
+  double E = energy_.at(i_energy);
+  double sqrtkT = std::sqrt(K_BOLTZMANN * T);
+
+  std::vector<URRXS> xss;
+  for (int i = 0; i < n_sample; ++i) {
+    // Stochastically generate a resonance ladder for nearby energies
+    auto lad = this->sample_ladder(E, seed);
+
+    // Compute cross sections
+    auto xs = lad.evaluate(E, E, sqrtkT, target_spin_, awr_, *channel_radius_,
+      *scattering_radius_);
+    xss.push_back(xs);
+  }
+
+  return xss;
+}
+
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,
   int l, double j, const URParameters& p, uint64_t* seed) const
 {

@@ -25,10 +25,14 @@ _dll.openmc_load_nuclide.errcheck = _error_handler
 _dll.openmc_nuclide_name.argtypes = [c_int, POINTER(c_char_p)]
 _dll.openmc_nuclide_name.restype = c_int
 _dll.openmc_nuclide_name.errcheck = _error_handler
-_dll.openmc_nuclide_urr.argtypes = [c_int, c_int, c_double, c_int,
+_dll.openmc_nuclide_sample_urr_njoy.argtypes = [c_int, c_int, c_double, c_int,
     ndpointer(dtype=np.float64, ndim=2), POINTER(c_uint64)]
-_dll.openmc_nuclide_urr.restype = c_int
-_dll.openmc_nuclide_urr.errcheck = _error_handler
+_dll.openmc_nuclide_sample_urr_njoy.restype = c_int
+_dll.openmc_nuclide_sample_urr_njoy.errcheck = _error_handler
+_dll.openmc_nuclide_sample_urr_local.argtypes = [c_int, c_int, c_double, c_int,
+    ndpointer(dtype=np.float64, ndim=2), POINTER(c_uint64)]
+_dll.openmc_nuclide_sample_urr_local.restype = c_int
+_dll.openmc_nuclide_sample_urr_local.errcheck = _error_handler
 _dll.nuclides_size.restype = c_size_t
 
 
@@ -79,12 +83,20 @@ class Nuclide(_FortranObject):
         _dll.openmc_nuclide_name(self._index, name)
         return name.value.decode()
 
-    def sample_urr(self, idx, T, n_sample=10000, prn_seed=None):
+    def sample_urr_njoy(self, idx, T, n_sample=10000, prn_seed=None):
         if prn_seed is None:
             prn_seed = getrandbits(63)
 
         xs = np.empty((n_sample, 4))
-        _dll.openmc_nuclide_urr(self._index, idx, T, n_sample, xs, c_uint64(prn_seed))
+        _dll.openmc_nuclide_sample_urr_njoy(self._index, idx, T, n_sample, xs, c_uint64(prn_seed))
+        return pd.DataFrame(data=xs, columns=['total', 'elastic', 'fission', 'capture'])
+
+    def sample_urr_local(self, idx, T, n_sample=10000, prn_seed=None):
+        if prn_seed is None:
+            prn_seed = getrandbits(63)
+
+        xs = np.empty((n_sample, 4))
+        _dll.openmc_nuclide_sample_urr_local(self._index, idx, T, n_sample, xs, c_uint64(prn_seed))
         return pd.DataFrame(data=xs, columns=['total', 'elastic', 'fission', 'capture'])
 
 

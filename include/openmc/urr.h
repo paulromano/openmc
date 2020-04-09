@@ -115,6 +115,7 @@ public:
   ResonanceLadder sample_ladder(double energy, uint64_t* seed) const;
 
   std::vector<URRXS> sample_xs_njoy(int i_energy, double T, int n_sample, uint64_t* seed) const;
+  std::vector<URRXS> sample_xs_local(int i_energy, double T, int n_sample, uint64_t* seed) const;
 
   // Data members
   Case case_; //!< Which of 3 cases
