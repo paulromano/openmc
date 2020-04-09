@@ -825,9 +825,6 @@ void Material::calculate_neutron_xs(Particle& p) const
     std::cout << "T = " << p.sqrtkT_*p.sqrtkT_ / K_BOLTZMANN << std::endl;
     std::cout << "n_samples = " << n_samples << std::endl;
     data::nuclides[i_nuclide]->sample_urr_xs(n_samples, p);
-
-    std::cout << "Generating xs samples..." << std::endl;
-    data::nuclides[i_nuclide]->unr_data_->sample_xs_njoy(0, p.current_seed());
     exit(0);
   }
 }

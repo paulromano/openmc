@@ -221,7 +221,7 @@ ResonanceLadder Unresolved::sample_ladder(double energy, uint64_t* seed) const
   return resonances;
 }
 
-void Unresolved::sample_xs_njoy(int i_energy, uint64_t* seed) const
+std::vector<URRXS> Unresolved::sample_xs_njoy(int i_energy, double T, int n_sample, uint64_t* seed) const
 {
   // Get spin sequence and associated parameters
   double E_table = energy_.at(i_energy);
@@ -254,8 +254,7 @@ void Unresolved::sample_xs_njoy(int i_energy, uint64_t* seed) const
   double E_max = E_high - 300*d_average;
 
   // Pick points randomly in [E_min, E_max] and sort
-  int n_sample = 10000;
-  std::vector<double> E_evaluate(10000);
+  std::vector<double> E_evaluate(n_sample);
   for (int i = 0; i < n_sample; ++i) {
     E_evaluate[i] = E_min + (E_max - E_min)*prn(seed);
   }
@@ -284,16 +283,14 @@ void Unresolved::sample_xs_njoy(int i_energy, uint64_t* seed) const
   ResonanceLadder ladder{std::move(resonances)};
 
   // Evaluate cross sections at random energies in [E_min, E_max]
-  double sqrtkT = std::sqrt(K_BOLTZMANN * 293.6);
-  std::ofstream outfile;
-  outfile.open("sampled_xs");
+  double sqrtkT = std::sqrt(K_BOLTZMANN * T);
+  std::vector<URRXS> xss;
   for (double E : E_evaluate) {
     auto xs = ladder.evaluate(E, E_table, sqrtkT, target_spin_, awr_,
       *channel_radius_, *scattering_radius_);
-
-    fmt::print(outfile, "{} {} {} {}\n", xs.total, xs.elastic, xs.fission, xs.capture);
+    xss.push_back(xs);
   }
-  outfile.close();
+  return xss;
 }
 
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,

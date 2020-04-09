@@ -1,9 +1,11 @@
 from collections.abc import Mapping
-from ctypes import c_int, c_char_p, POINTER, c_size_t
+from ctypes import c_int, c_char_p, POINTER, c_size_t, c_double, c_uint64
+from random import getrandbits
 from weakref import WeakValueDictionary
 
 import numpy as np
-from numpy.ctypeslib import as_array
+from numpy.ctypeslib import as_array, ndpointer
+import pandas as pd
 
 from openmc.exceptions import DataError, AllocationError
 from . import _dll
@@ -23,6 +25,10 @@ _dll.openmc_load_nuclide.errcheck = _error_handler
 _dll.openmc_nuclide_name.argtypes = [c_int, POINTER(c_char_p)]
 _dll.openmc_nuclide_name.restype = c_int
 _dll.openmc_nuclide_name.errcheck = _error_handler
+_dll.openmc_nuclide_urr.argtypes = [c_int, c_int, c_double, c_int,
+    ndpointer(dtype=np.float64, ndim=2), POINTER(c_uint64)]
+_dll.openmc_nuclide_urr.restype = c_int
+_dll.openmc_nuclide_urr.errcheck = _error_handler
 _dll.nuclides_size.restype = c_size_t
 
 
@@ -72,6 +78,14 @@ class Nuclide(_FortranObject):
         name = c_char_p()
         _dll.openmc_nuclide_name(self._index, name)
         return name.value.decode()
+
+    def sample_urr(self, idx, T, n_sample=10000, prn_seed=None):
+        if prn_seed is None:
+            prn_seed = getrandbits(63)
+
+        xs = np.empty((n_sample, 4))
+        _dll.openmc_nuclide_urr(self._index, idx, T, n_sample, xs, c_uint64(prn_seed))
+        return pd.DataFrame(data=xs, columns=['total', 'elastic', 'fission', 'capture'])
 
 
 class _NuclideMapping(Mapping):

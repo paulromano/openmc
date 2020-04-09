@@ -1044,6 +1044,25 @@ openmc_nuclide_name(int index, const char** name)
   }
 }
 
+extern "C" int
+openmc_nuclide_urr(int index, int idx, double T, int n_sample, double* data, uint64_t* seed)
+{
+  if (index >= 0 && index < data::nuclides.size()) {
+    auto xs = data::nuclides[index]->unr_data_->sample_xs_njoy(idx, T, n_sample, seed);
+    for (int i = 0; i < xs.size(); ++i) {
+      data[4*i] = xs[i].total;
+      data[4*i + 1] = xs[i].elastic;
+      data[4*i + 2] = xs[i].fission;
+      data[4*i + 3] = xs[i].capture;
+    }
+    return 0;
+  } else {
+    set_errmsg("Index in nuclides vector is out of bounds.");
+    return OPENMC_E_OUT_OF_BOUNDS;
+  }
+
+}
+
 void nuclides_clear()
 {
   data::nuclides.clear();
