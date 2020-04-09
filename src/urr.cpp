@@ -284,13 +284,12 @@ std::vector<URRXS> Unresolved::sample_xs_njoy(int i_energy, double T, int n_samp
 
   // Evaluate cross sections at random energies in [E_min, E_max]
   double sqrtkT = std::sqrt(K_BOLTZMANN * T);
-  std::vector<URRXS> xss;
-  for (double E : E_evaluate) {
-    auto xs = ladder.evaluate(E, E_table, sqrtkT, target_spin_, awr_,
+  std::vector<URRXS> xs(n_sample);
+  for (int i = 0; i < n_sample; ++i) {
+    xs[i] = ladder.evaluate(E_evaluate[i], E_table, sqrtkT, target_spin_, awr_,
       *channel_radius_, *scattering_radius_);
-    xss.push_back(xs);
   }
-  return xss;
+  return xs;
 }
 
 std::vector<URRXS> Unresolved::sample_xs_local(int i_energy, double T, int n_sample, uint64_t* seed) const
@@ -299,18 +298,17 @@ std::vector<URRXS> Unresolved::sample_xs_local(int i_energy, double T, int n_sam
   double E = energy_.at(i_energy);
   double sqrtkT = std::sqrt(K_BOLTZMANN * T);
 
-  std::vector<URRXS> xss;
-  for (int i = 0; i < n_sample; ++i) {
+  std::vector<URRXS> xs(n_sample);
+  for (auto& xs_i : xs) {
     // Stochastically generate a resonance ladder for nearby energies
     auto lad = this->sample_ladder(E, seed);
 
     // Compute cross sections
-    auto xs = lad.evaluate(E, E, sqrtkT, target_spin_, awr_, *channel_radius_,
+    xs_i = lad.evaluate(E, E, sqrtkT, target_spin_, awr_, *channel_radius_,
       *scattering_radius_);
-    xss.push_back(xs);
   }
 
-  return xss;
+  return xs;
 }
 
 ResonanceLadder::Resonance Unresolved::sample_resonance(double E, double E_neutron,
@@ -406,8 +404,8 @@ URRXS ResonanceLadder::evaluate(double E, double E_neutron, double sqrtkT,
       // functions
       double theta = gtE/d;
       double x = 2*(E - Eprime)/gtE;
-      std::complex<double> z = theta*x/2 + theta/2 * 1.0i;
-      std::complex<double> w = theta * std::sqrt(PI/2) * faddeeva(z);
+      std::complex<double> z(theta*x/2, theta/2);
+      std::complex<double> w = theta * SQRT_PI/2.0 * faddeeva(z);
       double psi = w.real();
       double chi = w.imag();
 
