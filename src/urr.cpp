@@ -393,17 +393,12 @@ URRXS ResonanceLadder::evaluate(double E, double E_neutron, double sqrtkT,
       // Get the resonance parameters
       auto& res = res_[i_res];
 
-      // Calculate neutron and total width at energy E
-      double gnE = p * res.gn / res.p;
-      double gtE = gnE + res.gg + res.gf + res.gx;
-
-      double Eprime = res.E + (res.s - s) / (2*res.p) * res.gn;
       double gJ = (2*res.j + 1) / (4*target_spin + 2);
 
       // Calculate the symmetric and asymmetric Breit-Wigner line shape
       // functions
-      double theta = gtE/d;
-      double x = 2*(E - Eprime)/gtE;
+      double theta = res.gt/d;
+      double x = 2*(E - res.E)/res.gt;
       std::complex<double> z(theta*x/2, theta/2);
       std::complex<double> w = theta * SQRT_PI/2.0 * faddeeva(z);
       double psi = w.real();
@@ -411,19 +406,19 @@ URRXS ResonanceLadder::evaluate(double E, double E_neutron, double sqrtkT,
 
       // Calculate common factor for elastic, capture, and fission cross
       // sections
-      double f = (4*PI)/(k*k) * gJ * res.gn/gtE;
+      double f = (4*PI)/(k*k) * gJ * res.gn/res.gt;
 
       // Add contribution to elastic
-      xs.elastic += f * (psi * (cos2phi - (1 - gnE/gtE)) + chi * sin2phi);
+      xs.elastic += f * (psi * (cos2phi - (1 - res.gn/res.gt)) + chi * sin2phi);
 
       // Add contribution to capture
-      xs.capture += f * res.gg / gtE * psi;
+      xs.capture += f * res.gg / res.gt * psi;
 
       // Add contribution to fission
-      xs.fission += f * res.gf / gtE * psi;
+      xs.fission += f * res.gf / res.gt * psi;
 
       // Add contribution to competitive
-      xs.competitive += f * res.gx / gtE * psi;
+      xs.competitive += f * res.gx / res.gt * psi;
     }
   }
   xs.total = xs.elastic + xs.capture + xs.fission;
