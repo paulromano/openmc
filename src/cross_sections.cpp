@@ -21,6 +21,7 @@
 #include "openmc/xml_interface.h"
 #include "openmc/wmp.h"
 
+#include <gsl/gsl>
 #include "pugixml.hpp"
 
 #include <cstdlib> // for getenv
@@ -198,22 +199,11 @@ read_ce_cross_sections(const std::vector<std::vector<double>>& nuc_temps,
   }
 
   // Read cross sections
-  for (const auto& mat : model::materials) {
-    for (int i_nuc : mat->nuclide_) {
-      // Find name of corresponding nuclide. Because we haven't actually loaded
-      // data, we don't have the name available, so instead we search through
-      // all key/value pairs in nuclide_map
-      std::string& name = nuclide_names[i_nuc];
-
-      // If we've already read this nuclide, skip it
-      if (already_read.find(name) != already_read.end()) continue;
-
-      const auto& temps = nuc_temps[i_nuc];
-      int err = openmc_load_nuclide(name.c_str(), temps.data(), temps.size());
-      if (err < 0) throw std::runtime_error{openmc_err_msg};
-
-      already_read.insert(name);
-    }
+  for (gsl::index i = 0; i < data::nuclide_map.size(); ++i) {
+    const auto& name = nuclide_names[i];
+    const auto& temps = nuc_temps[i];
+    int err = openmc_load_nuclide(name.c_str(), temps.data(), temps.size());
+    if (err < 0) throw std::runtime_error{openmc_err_msg};
   }
 
   // Perform final tasks -- reading S(a,b) tables, normalizing densities
