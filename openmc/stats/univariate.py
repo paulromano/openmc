@@ -672,6 +672,10 @@ class Tabular(Univariate):
             raise NotImplementedError
         self.c = np.cumsum(np.insert(c, 0, 0.0))
 
+        # Normalize to last value on CDF
+        self.p /= self.c[-1]
+        self.c /= self.c[-1]
+
     def __len__(self):
         return len(self.x)
 
