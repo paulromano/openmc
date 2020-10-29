@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from functools import partial
+from math import pi, sqrt, erf, exp, sinh
 from numbers import Integral, Real
 from warnings import warn
 
@@ -7,10 +9,26 @@ import numpy as np
 
 import openmc.checkvalue as cv
 from openmc.mixin import EqualityMixin
-from openmc.stats.univariate import Univariate, Tabular, Discrete, Mixture
+import openmc.stats.univariate as uni
 from .data import EV_PER_MEV
 from .endf import get_tab1_record, get_tab2_record
 from .function import Tabulated1D, INTERPOLATION_SCHEME
+from .grid import linearize
+
+
+def _sample_with_max(sample_func, max_value, size):
+    # Initial sampling
+    rvs = sample_func(size)
+
+    while True:
+        # Check for values exceeding maximum energy
+        idx, = (rvs > max_value).nonzero()
+        if idx.size == 0:
+            break
+
+        # Replace values that were out of range
+        rvs[idx] = sample_func(idx.size)
+    return rvs
 
 
 class EnergyDistribution(EqualityMixin, ABC):
@@ -90,6 +108,26 @@ class EnergyDistribution(EqualityMixin, ABC):
         elif lf == 12:
             return MadlandNix.from_endf(file_obj, params)
 
+    @abstractmethod
+    def sample(self, E, size=None):
+        """Draw random samples for energy distribution
+
+        Parameters
+        ----------
+        E : float
+            Incident energy in [eV]
+        size : int or tuple or ints, optional
+            Output shape. If the given shape is, e.g., `(m, n)`, then `m*n`
+            samples are drawn. If size is `None` (default), a single value is
+            returned.
+
+        Returns
+        -------
+        numpy.ndarray or scalar
+            Sampled energies in [eV]
+
+        """
+
 
 class ArbitraryTabulated(EnergyDistribution):
     r"""Arbitrary tabulated function given in ENDF MF=5, LF=1 represented as
@@ -151,6 +189,9 @@ class ArbitraryTabulated(EnergyDistribution):
             energy[j] = params[1]
             pdf.append(func)
         return cls(energy, pdf)
+
+    def sample(self, E, size=None):
+        raise NotImplementedError
 
 
 class GeneralEvaporation(EnergyDistribution):
@@ -218,6 +259,9 @@ class GeneralEvaporation(EnergyDistribution):
         params, theta = get_tab1_record(file_obj)
         params, g = get_tab1_record(file_obj)
         return cls(theta, g, u)
+
+    def sample(self, E, size=None):
+        raise NotImplementedError
 
 
 class MaxwellEnergy(EnergyDistribution):
@@ -352,6 +396,37 @@ class MaxwellEnergy(EnergyDistribution):
         params, theta = get_tab1_record(file_obj)
         return cls(theta, u)
 
+    def sample(self, E, size=None):
+        # Determine theta as function of incident energy
+        theta = self.theta(E)
+
+        # Sample outgoing energies
+        dist = uni.Maxwell(theta)
+        return _sample_with_max(dist.sample, E - self.u, size)
+
+    def to_continuous_tabular(self):
+        energy = self.theta.x
+        breakpoints = [energy.size]
+        interpolation = [2]
+
+        # Define function for probability density
+        def pdf(E):
+            return sqrt(E)/norm * exp(-E / theta)
+
+        energy_out = []
+        u = self.u
+        for E, theta in zip(self.theta.x, self.theta.y):
+            # Determine normalization constant (I from ENDF-102 Section 5.1.1.3)
+            v = (E - u)/theta
+            norm = theta**(3/2)*(sqrt(pi)/2*erf(sqrt(v)) - sqrt(v)*exp(-v))
+
+            # Convert density to tabulated form
+            dist = uni.Tabular(*linearize([1.0e-5, E - u], pdf))
+            energy_out.append(dist)
+
+        return ContinuousTabular(breakpoints, interpolation, energy, energy_out)
+
+
 
 class Evaporation(EnergyDistribution):
     r"""Evaporation spectrum represented as
@@ -484,6 +559,37 @@ class Evaporation(EnergyDistribution):
         u = params[0]
         params, theta = get_tab1_record(file_obj)
         return cls(theta, u)
+
+    def sample(self, E, size=None):
+        # Determine theta as function of incident energy
+        theta = self.theta(E)
+
+        # Sample outgoing energies
+        rg = np.random.default_rng()
+        sample_func = partial(rg.gamma, 2, scale=theta)
+        return _sample_with_max(sample_func, E - self.u, size)
+
+    def to_continuous_tabular(self):
+        energy = self.theta.x
+        breakpoints = [energy.size]
+        interpolation = [2]
+
+        # Define function for probability density
+        def pdf(E):
+            return E/norm * exp(-E / theta)
+
+        energy_out = []
+        u = self.u
+        for E, theta in zip(self.theta.x, self.theta.y):
+            # Determine normalization constant (I from ENDF-102 Section 5.1.1.4)
+            v = (E - u)/theta
+            norm = theta**2*(1 - exp(-v)*(1 + v))
+
+            # Convert density to tabulated form
+            dist = uni.Tabular(*linearize([1.0e-5, E - u], pdf))
+            energy_out.append(dist)
+
+        return ContinuousTabular(breakpoints, interpolation, energy, energy_out)
 
 
 class WattEnergy(EnergyDistribution):
@@ -645,6 +751,38 @@ class WattEnergy(EnergyDistribution):
         params, a = get_tab1_record(file_obj)
         params, b = get_tab1_record(file_obj)
         return cls(a, b, u)
+
+    def sample(self, E, size=None):
+        # Determine theta as function of incident energy
+        a = self.a(E)
+        b = self.b(E)
+
+        # Sample outgoing energies
+        dist = uni.Watt(a, b)
+        return _sample_with_max(dist.sample, E - self.u, size)
+
+    def to_continuous_tabular(self):
+        energy = self.a.x
+        breakpoints = [energy.size]
+        interpolation = [2]
+
+        # Define function for probability density
+        def pdf(E):
+            return exp(-E/a)/norm * sinh(sqrt(b*E))
+
+        energy_out = []
+        u = self.u
+        for E, a, b in zip(self.a.x, self.a.y, self.b.y):
+            # Determine normalization constant (I from ENDF-102 Section 5.1.1.5)
+            v = (E - u)/a
+            norm = 1/2*sqrt(pi*a**3*b/4)*exp(a*b/4)*(erf(sqrt(v) - sqrt(a*b/4)) \
+                + erf(sqrt(v) + sqrt(a*b/4))) - a*exp(-v)*sinh(sqrt(b*(E - u)))
+
+            # Convert density to tabulated form
+            dist = uni.Tabular(*linearize([1.0e-5, E - u], pdf))
+            energy_out.append(dist)
+
+        return ContinuousTabular(breakpoints, interpolation, energy, energy_out)
 
 
 class MadlandNix(EnergyDistribution):
@@ -893,6 +1031,29 @@ class DiscretePhoton(EnergyDistribution):
         energy = ace.xss[idx + 1]*EV_PER_MEV
         return cls(primary_flag, energy, ace.atomic_weight_ratio)
 
+    def sample(self, E, size=None):
+        if self.primary_flag == 2:
+            A = self.atomic_weight_ratio
+            rvs = np.full(size, self.energy + (A + 1)/A * E)
+        else:
+            rvs = np.full(size, self.energy)
+        return rvs.item() if rvs.shape == () else rvs
+
+    def to_continuous_tabular(self):
+        energy = [0.0, 150e6]
+        breakpoints = [2]
+        interpolation = [2]
+
+        energy_out = []
+        for E in energy:
+            # Get outgoing energy
+            E_out = self.sample(E)
+
+            # Create discrete distribution
+            energy_out.append(uni.Discrete([E_out], [1.0]))
+
+        return ContinuousTabular(breakpoints, interpolation, energy, energy_out)
+
 
 class LevelInelastic(EnergyDistribution):
     r"""Level inelastic scattering
@@ -990,6 +1151,13 @@ class LevelInelastic(EnergyDistribution):
         mass_ratio = ace.xss[idx + 1]
         return cls(threshold, mass_ratio)
 
+    def sample(self, E, size=None):
+        E_out = self.mass_ratio*(E - self.threshold)
+        rvs = np.full(size, E_out)
+        return rvs.item() if rvs.shape == () else rvs
+
+    to_continuous_tabular = DiscretePhoton.to_continuous_tabular
+
 
 class ContinuousTabular(EnergyDistribution):
     """Continuous tabular distribution
@@ -1062,7 +1230,7 @@ class ContinuousTabular(EnergyDistribution):
     @energy_out.setter
     def energy_out(self, energy_out):
         cv.check_type('continuous tabular outgoing energy', energy_out,
-                      Iterable, Univariate)
+                      Iterable, uni.Univariate)
         self._energy_out = energy_out
 
     def to_hdf5(self, group):
@@ -1096,7 +1264,7 @@ class ContinuousTabular(EnergyDistribution):
             n = len(eout)
             offsets[i] = j
 
-            if isinstance(eout, Mixture):
+            if isinstance(eout, uni.Mixture):
                 discrete, continuous = eout.distribution
                 n_discrete_lines[i] = m = len(discrete)
                 interpolation[i] = 1 if continuous.interpolation == 'histogram' else 2
@@ -1107,10 +1275,10 @@ class ContinuousTabular(EnergyDistribution):
                 pairs[1, j+m:j+n] = continuous.p
                 pairs[2, j+m:j+n] = continuous.c
             else:
-                if isinstance(eout, Tabular):
+                if isinstance(eout, uni.Tabular):
                     n_discrete_lines[i] = 0
                     interpolation[i] = 1 if eout.interpolation == 'histogram' else 2
-                elif isinstance(eout, Discrete):
+                elif isinstance(eout, uni.Discrete):
                     n_discrete_lines[i] = n
                     interpolation[i] = 1
                 pairs[0, j:j+n] = eout.x
@@ -1165,14 +1333,14 @@ class ContinuousTabular(EnergyDistribution):
 
             # Create discrete distribution if lines are present
             if m > 0:
-                eout_discrete = Discrete(data[0, j:j+m], data[1, j:j+m])
+                eout_discrete = uni.Discrete(data[0, j:j+m], data[1, j:j+m])
                 eout_discrete.c = data[2, j:j+m]
                 p_discrete = eout_discrete.c[-1]
 
             # Create continuous distribution
             if m < n:
                 interp = INTERPOLATION_SCHEME[interpolation[i]]
-                eout_continuous = Tabular(data[0, j+m:j+n], data[1, j+m:j+n], interp)
+                eout_continuous = uni.Tabular(data[0, j+m:j+n], data[1, j+m:j+n], interp)
                 eout_continuous.c = data[2, j+m:j+n]
 
             # If both continuous and discrete are present, create a mixture
@@ -1182,8 +1350,8 @@ class ContinuousTabular(EnergyDistribution):
             elif m == n:
                 eout_i = eout_discrete
             else:
-                eout_i = Mixture([p_discrete, 1. - p_discrete],
-                                 [eout_discrete, eout_continuous])
+                eout_i = uni.Mixture([p_discrete, 1. - p_discrete],
+                                     [eout_discrete, eout_continuous])
             energy_out.append(eout_i)
 
         return cls(energy_breakpoints, energy_interpolation,
@@ -1253,21 +1421,21 @@ class ContinuousTabular(EnergyDistribution):
             data[0,:] *= EV_PER_MEV
 
             # Create continuous distribution
-            eout_continuous = Tabular(data[0][n_discrete_lines:],
+            eout_continuous = uni.Tabular(data[0][n_discrete_lines:],
                                       data[1][n_discrete_lines:]/EV_PER_MEV,
                                       INTERPOLATION_SCHEME[intt])
             eout_continuous.c = data[2][n_discrete_lines:]
 
             # If discrete lines are present, create a mixture distribution
             if n_discrete_lines > 0:
-                eout_discrete = Discrete(data[0][:n_discrete_lines],
+                eout_discrete = uni.Discrete(data[0][:n_discrete_lines],
                                          data[1][:n_discrete_lines])
                 eout_discrete.c = data[2][:n_discrete_lines]
                 if n_discrete_lines == n_energy_out:
                     eout_i = eout_discrete
                 else:
                     p_discrete = min(sum(eout_discrete.p), 1.0)
-                    eout_i = Mixture([p_discrete, 1. - p_discrete],
+                    eout_i = uni.Mixture([p_discrete, 1. - p_discrete],
                                      [eout_discrete, eout_continuous])
             else:
                 eout_i = eout_continuous
@@ -1275,3 +1443,32 @@ class ContinuousTabular(EnergyDistribution):
             energy_out.append(eout_i)
 
         return cls(breakpoints, interpolation, energy, energy_out)
+
+    def sample(self, E, size=None):
+        i = np.searchsorted(self.energy, E, side='right') - 1
+        r = (E - self.energy[i]) / (self.energy[i + 1] - self.energy[i])
+
+        histogram_interp = (self.interpolation[0] == 1)
+        rg = np.random.default_rng()
+        if histogram_interp:
+            l = i
+        else:
+            l = i + 1 if r > rg.uniform() else i
+
+        # TODO: Account for discrete distributions
+        E_i_1 = self.energy_out[i].x[0]
+        E_i_K = self.energy_out[i].x[-1]
+        E_i1_1 = self.energy_out[i+1].x[0]
+        E_i1_K = self.energy_out[i+1].x[-1]
+        E_1 = E_i_1 + r * (E_i1_1 - E_i_1)
+        E_K = E_i_K + r * (E_i1_K - E_i_K)
+
+        E_out = self.energy_out[l].sample(size=size)
+
+        if not histogram_interp:
+            if l == i:
+                return E_1 + (E_out - E_i_1)*(E_K - E_1)/(E_i_K - E_i_1)
+            else:
+                return E_1 + (E_out - E_i1_1)*(E_K - E_1)/(E_i1_K - E_i1_1)
+        else:
+            return E_out
