@@ -58,6 +58,24 @@ class Univariate(EqualityMixin, ABC):
         elif distribution == 'mixture':
             return Mixture.from_xml_element(elem)
 
+    @abstractmethod
+    def sample(self, size=None):
+        """Draw random samples
+
+        Parameters
+        ----------
+        size : int or tuple or ints, optional
+            Output shape. If the given shape is, e.g., `(m, n)`, then `m*n`
+            samples are drawn. If size is `None` (default), a single value is
+            returned.
+
+        Returns
+        -------
+        numpy.ndarray or scalar
+            Drawn samples from distribution
+
+        """
+
 
 class Discrete(Univariate):
     """Distribution characterized by a probability mass function.
