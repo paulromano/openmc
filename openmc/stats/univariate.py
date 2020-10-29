@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from math import sqrt
 from numbers import Real
 from xml.etree import ElementTree as ET
 
@@ -154,6 +155,10 @@ class Discrete(Univariate):
         p = params[len(params)//2:]
         return cls(x, p)
 
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        return rg.choice(self.x, size=size, p=self.p)
+
 
 class Uniform(Univariate):
     """Distribution with constant probability over a finite interval [a,b]
@@ -242,6 +247,10 @@ class Uniform(Univariate):
         params = get_text(elem, 'parameters').split()
         return cls(*map(float, params))
 
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        return rg.uniform(self.a, self.b, size=size)
+
 
 class Maxwell(Univariate):
     r"""Maxwellian distribution in energy.
@@ -314,6 +323,10 @@ class Maxwell(Univariate):
         """
         theta = float(get_text(elem, 'parameters'))
         return cls(theta)
+
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        return rg.gamma(3/2, scale=self.theta, size=size)
 
 
 class Watt(Univariate):
@@ -403,6 +416,13 @@ class Watt(Univariate):
         params = get_text(elem, 'parameters').split()
         return cls(*map(float, params))
 
+    def sample(self, size=None):
+        a, b = self.a, self.b
+        rg = np.random.default_rng()
+        w = rg.gamma(3/2, scale=a, size=size)
+        u = rg.uniform(-1., 1., size=size)
+        return w + 0.25*a*a*b + u*np.sqrt(a*a*b*w)
+
 
 class Normal(Univariate):
     r"""Normally distributed sampling.
@@ -488,6 +508,10 @@ class Normal(Univariate):
         """
         params = get_text(elem, 'parameters').split()
         return cls(*map(float, params))
+
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        return rg.normal(self.mean_value, self.std_dev, size=size)
 
 
 class Muir(Univariate):
@@ -595,6 +619,11 @@ class Muir(Univariate):
         params = get_text(elem, 'parameters').split()
         return cls(*map(float, params))
 
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        sigma = sqrt(2*self.e0*self.kt/self.m_rat)
+        return rg.normal(self.e0, sigma, size=size)
+
 
 class Tabular(Univariate):
     """Piecewise continuous probability distribution.
@@ -633,6 +662,15 @@ class Tabular(Univariate):
         self.x = x
         self.p = p
         self.interpolation = interpolation
+
+        # Calculate cumulative distribution
+        if interpolation == 'histogram':
+            c = np.diff(x) * self.p[:-1]
+        elif interpolation == 'linear-linear':
+            c = 0.5*(p[:-1] + p[1:]) * np.diff(x)
+        else:
+            raise NotImplementedError
+        self.c = np.cumsum(np.insert(c, 0, 0.0))
 
     def __len__(self):
         return len(self.x)
@@ -711,6 +749,32 @@ class Tabular(Univariate):
         p = params[len(params)//2:]
         return cls(x, p, interpolation)
 
+    def sample(self, size=None):
+        rg = np.random.default_rng()
+        c = rg.uniform(size=size)
+
+        # Determine first CDF bin which is above sample value
+        idx = np.searchsorted(self.c, c, side='right') - 1
+
+        # Determine bounding PDF values
+        x_i = self.x[idx]
+        p_i = self.p[idx]
+        c_i = self.c[idx]
+
+        with np.errstate(divide='ignore'):
+            if self.interpolation == 'histogram':
+                return np.where(p_i > 0.0, x_i + (c - c_i)/p_i, x_i)
+            else:
+                x_i1 = self.x[idx + 1]
+                p_i1 = self.p[idx + 1]
+                m = (p_i1 - p_i)/(x_i1 - x_i)
+                return np.where(
+                    m == 0.0,
+                    x_i + (c - c_i)/p_i,
+                    x_i + (np.sqrt(np.maximum(0.0, p_i*p_i + 2*m*(c - c_i))) - p_i)/m
+                )
+
+
 
 class Legendre(Univariate):
     r"""Probability density given by a Legendre polynomial expansion
@@ -759,6 +823,9 @@ class Legendre(Univariate):
 
     @classmethod
     def from_xml_element(cls, elem):
+        raise NotImplementedError
+
+    def sample(self, size=None):
         raise NotImplementedError
 
 
@@ -817,3 +884,18 @@ class Mixture(Univariate):
     @classmethod
     def from_xml_element(cls, elem):
         raise NotImplementedError
+
+    def sample(self, size=None):
+        # Sample between distributions
+        rg = np.random.default_rng()
+        i_dist = rg.choice(len(self.probability), size=size, p=self.probability)
+
+        # For each distribution, sample a single value
+        if size is not None:
+            rvs = np.empty(size)
+            rvs_flat = rvs.ravel()
+            for i_out, i_d in enumerate(i_dist.ravel()):
+                rvs_flat[i_out] = self.distribution[i_d].sample()
+            return rvs
+        else:
+            return self.distribution[i_dist].sample()
