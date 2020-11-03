@@ -1,10 +1,14 @@
+from math import pi, isclose
 from numbers import Real, Integral
+from openmc.data.correlated import CorrelatedAngleEnergy
 
 import numpy as np
 
 import openmc.checkvalue as cv
+from openmc.stats.univariate import Tabular, Discrete
 from .angle_energy import AngleEnergy
 from .endf import get_cont_record
+
 
 class NBodyPhaseSpace(AngleEnergy):
     """N-body phase space distribution
@@ -163,3 +167,73 @@ class NBodyPhaseSpace(AngleEnergy):
         n_particles = items[5]
         # TODO: get awr and Q value
         return cls(total_mass, n_particles, 1.0, 0.0)
+
+    def to_correlated(self):
+        n = self.n_particles
+        Ap = self.total_mass
+        A = self.atomic_weight_ratio
+        Q = self.q_value
+
+        # Determine threshold energy
+        E_min = -(A + 1)/A*self.q_value
+
+        # TODO: Determine number of incident energies in a better way
+        energy = np.linspace(E_min, 150.0e6, 100)
+
+        energy_out = []
+        mu = []
+        for E_in in energy:
+            # Determine maximum outgoing energy, ENDF-102, Eq. (6.27) and (6.28)
+            E_max = (Ap - 1)/Ap * (A/(A + 1)*E_in + Q)
+            if isclose(E_max , 0.0):
+                dist = Discrete([0.0], [1.0])
+            else:
+                # Determine normalization constant, c_n
+                if n == 3:
+                    c_n = 4/(pi*E_max**2)  # ENDF-102, Eq. (6.22)
+                elif n == 4:
+                    c_n = 105/(32*E_max**(7/2))  # ENDF-102, Eq. (6.23)
+                elif n == 5:
+                    c_n = 256/(14*pi*E_max**5)  # ENDF-102, Eq. (6.24)
+                else:
+                    raise NotImplementedError
+
+                # In other instances, we use the linearize function to pick the
+                # x points for us. In this case, this ends up in way too many
+                # points near the ends of the distribution. Instead, we use the
+                # nodes of a Gauss-Lobatto quadrature, scaled to fit the
+                # internal [0, E_max]
+
+                # Get nodes of a Gauss-Lobatto quadrature
+                lobatto_nodes = _gauss_lobatto_nodes(50)
+
+                # Scale to interval [0, E_max]
+                x = (lobatto_nodes + 1.)*E_max/2.
+
+                # Evaluate pdf
+                p = c_n*np.sqrt(x)*(E_max - x)**(3*n/2 - 4)
+                dist = Tabular(x, p)
+
+            energy_out.append(dist)
+
+            # Generate isotropic angular distributions
+            uniform = Tabular([-1., 1.], [0.5, 0.5])
+            mu.append([uniform for _ in dist.x])
+
+        breakpoints = [len(energy)]
+        interpolation = [2]
+        return CorrelatedAngleEnergy(
+            breakpoints,
+            interpolation,
+            energy,
+            energy_out,
+            mu
+        )
+
+
+def _gauss_lobatto_nodes(n):
+    # Get roots of (n-1)th Legendre polynomial
+    roots = np.polynomial.legendre.legroots([0.0]*(n-2) + [1.0])
+
+    # Add end pointss
+    return np.concatenate(([-1.], roots, [1.]))
