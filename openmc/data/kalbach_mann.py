@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from math import sinh, cosh
 from numbers import Real, Integral
 from warnings import warn
 
@@ -8,8 +9,10 @@ import openmc.checkvalue as cv
 from openmc.stats import Tabular, Univariate, Discrete, Mixture
 from .function import Tabulated1D, INTERPOLATION_SCHEME
 from .angle_energy import AngleEnergy
+from .correlated import CorrelatedAngleEnergy
 from .data import EV_PER_MEV
 from .endf import get_list_record, get_tab2_record
+from .grid import linearize
 
 
 class KalbachMann(AngleEnergy):
@@ -401,3 +404,25 @@ class KalbachMann(AngleEnergy):
 
         return cls(tab2.breakpoints, tab2.interpolation, energy,
                    energy_out, precompound, slope)
+
+    def to_correlated(self):
+        # Define probability density function for mu based on parameters
+        def pdf(mu):
+            return a/(2*sinh(a))*(cosh(a*mu) + r*sinh(a*mu))
+
+        # Create angular distributions for each incoming/outgoing energy
+        mu = []
+        for r_i, a_i in zip(self.precompound, self.slope):
+            mu_i = []
+            for r, a in zip(r_i.y, a_i.y):
+                dist = Tabular(*linearize([-1., 1.], pdf))
+                mu_i.append(dist)
+            mu.append(mu_i)
+
+        return CorrelatedAngleEnergy(
+            self.breakpoints,
+            self.interpolation,
+            self.energy,
+            self.energy_out,
+            mu
+        )
