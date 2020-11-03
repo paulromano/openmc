@@ -797,6 +797,15 @@ class Tabular(Univariate):
                 )
 
 
+def interpolate_tabular(d1, d2, f):
+    assert d1.x[0] == d2.x[0]
+    assert d1.x[-1] == d2.x[-1]
+    x = np.union1d(d1.x, d2.x)
+    p1 = np.interp(x, d1.x, d1.p)
+    p2 = np.interp(x, d2.x, d2.p)
+    p = p1 + f*(p2 - p1)
+    return Tabular(x, p)
+
 
 class Legendre(Univariate):
     r"""Probability density given by a Legendre polynomial expansion
