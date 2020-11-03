@@ -581,12 +581,17 @@ class Evaporation(EnergyDistribution):
         energy_out = []
         u = self.u
         for E, theta in zip(self.theta.x, self.theta.y):
-            # Determine normalization constant (I from ENDF-102 Section 5.1.1.4)
-            v = (E - u)/theta
-            norm = theta**2*(1 - exp(-v)*(1 + v))
+            # If incident energy matches restriction energy, outgoing energy is zero
+            if E == u:
+                dist = uni.Discrete([0.0], [1.0])
+            else:
+                # Determine normalization constant (I from ENDF-102 Section 5.1.1.4)
+                v = (E - u)/theta
+                norm = theta**2*(1 - exp(-v)*(1 + v))
 
-            # Convert density to tabulated form
-            dist = uni.Tabular(*linearize([1.0e-5, E - u], pdf))
+                # Convert density to tabulated form
+                dist = uni.Tabular(*linearize([1.0e-5, E - u], pdf))
+
             energy_out.append(dist)
 
         return ContinuousTabular(breakpoints, interpolation, energy, energy_out)
