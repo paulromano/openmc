@@ -677,15 +677,15 @@ class Tabular(Univariate):
     def __init__(self, x, p, interpolation='linear-linear',
                  ignore_negative=False):
         self._ignore_negative = ignore_negative
-        self.x = x
-        self.p = p
+        self.x = np.array(x)
+        self.p = np.array(p)
         self.interpolation = interpolation
 
         # Calculate cumulative distribution
         if interpolation == 'histogram':
-            c = np.diff(x) * self.p[:-1]
+            c = np.diff(self.x) * self.p[:-1]
         elif interpolation == 'linear-linear':
-            c = 0.5*(p[:-1] + p[1:]) * np.diff(x)
+            c = 0.5*(self.p[:-1] + self.p[1:]) * np.diff(self.x)
         else:
             raise NotImplementedError
         self.c = np.cumsum(np.insert(c, 0, 0.0))
