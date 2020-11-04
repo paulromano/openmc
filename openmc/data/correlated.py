@@ -463,3 +463,6 @@ class CorrelatedAngleEnergy(AngleEnergy):
 
         return cls(tab2.breakpoints, tab2.interpolation, energy,
                    energy_out, mu)
+
+    def to_correlated(self):
+        return self

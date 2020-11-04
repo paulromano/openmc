@@ -1045,6 +1045,9 @@ class DiscretePhoton(EnergyDistribution):
         return rvs.item() if rvs.shape == () else rvs
 
     def to_continuous_tabular(self):
+        # TODO: This can cause problems if the angular distributions associated
+        # with an uncorrelated angle-energy distribution only extend to, say, 20
+        # MeV
         energy = [0.0, 150e6]
         breakpoints = [2]
         interpolation = [2]
@@ -1477,3 +1480,6 @@ class ContinuousTabular(EnergyDistribution):
                 return E_1 + (E_out - E_i1_1)*(E_K - E_1)/(E_i1_K - E_i1_1)
         else:
             return E_out
+
+    def to_continuous_tabular(self):
+        return self
