@@ -1,7 +1,7 @@
 import numpy as np
 
 import openmc.checkvalue as cv
-from openmc.stats.univariate import interpolate_tabular
+from openmc.stats.univariate import interpolate_tabular, Tabular
 from .angle_energy import AngleEnergy
 from .energy_distribution import EnergyDistribution
 from .angle_distribution import AngleDistribution
@@ -105,14 +105,8 @@ class UncorrelatedAngleEnergy(AngleEnergy):
 
         # Get angle distribution in tabular form
         mu = []
-        if energy.size == self.angle.energy.size and np.allclose(energy, self.angle.energy):
-            # If angular distributions are given for same incident energies as
-            # the outgoing energy distributions, we can iterate over them
-            # together
-            for eout_i, mu_i in zip(energy_out, self.angle.mu):
-                mu.append([mu_i]*len(eout_i))
-        else:
-            for ein_i, eout_i in zip(energy, energy_out):
+        for ein_i, eout_i in zip(energy, energy_out):
+            if self.angle is not None:
                 # Determine correct mu distribution to use
                 ein = self.angle.energy
                 if ein_i >= ein[-1]:
@@ -122,9 +116,15 @@ class UncorrelatedAngleEnergy(AngleEnergy):
 
                 # Interpolate tabular mu distributions
                 f = (ein_i - ein[idx]) / (ein[idx + 1] - ein[idx])
+                f = max(0.0, min(1.0, f))
                 mu_i = interpolate_tabular(
                     self.angle.mu[idx], self.angle.mu[idx + 1], f)
-                mu.append([mu_i]*len(eout_i))
+
+            else:
+                # If not angle distribution specified, it is isotropic
+                mu_i = Tabular([-1., 1.], [0.5, 0.5])
+
+            mu.append([mu_i]*len(eout_i))
 
         breakpoints = [len(energy)]
         interpolation = [2]
