@@ -272,6 +272,7 @@ list(APPEND libopenmc_SOURCES
   src/secondary_nbody.cpp
   src/secondary_thermal.cpp
   src/secondary_uncorrelated.cpp
+  src/secondary_unified.cpp
   src/settings.cpp
   src/simulation.cpp
   src/source.cpp
@@ -329,7 +330,7 @@ endif()
 # Avoid vs error lnk1149 :output filename matches input filename
 if(NOT MSVC)
 set_target_properties(libopenmc PROPERTIES
-  OUTPUT_NAME openmc) 
+  OUTPUT_NAME openmc)
 endif()
 
 target_include_directories(libopenmc
