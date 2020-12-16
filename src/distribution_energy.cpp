@@ -18,9 +18,15 @@ double EnergyDistributionFlat::sample(double E, uint64_t* seed) const
 {
   switch (type_) {
   case EnergyDistType::DISCRETE_PHOTON:
-    break;
+    {
+      DiscretePhotonFlat dist(data_);
+      return dist.sample(E, seed);
+    }
   case EnergyDistType::LEVEL_INELASTIC:
-    break;
+    {
+      LevelInelasticFlat dist(data_);
+      return dist.sample(E, seed);
+    }
   case EnergyDistType::CONTINUOUS_TABULAR:
     break;
   case EnergyDistType::EVAPORATION:
@@ -29,9 +35,15 @@ double EnergyDistributionFlat::sample(double E, uint64_t* seed) const
       return dist.sample(E, seed);
     }
   case EnergyDistType::MAXWELL:
-    break;
+    {
+      MaxwellFlat dist(data_);
+      return dist.sample(E, seed);
+    }
   case EnergyDistType::WATT:
-    break;
+    {
+      WattFlat dist(data_);
+      return dist.sample(E, seed);
+    }
   }
 }
 
@@ -63,6 +75,16 @@ void DiscretePhoton::serialize(DataBuffer& buffer) const
   buffer.add(A_);
 }
 
+double DiscretePhotonFlat::sample(double E, uint64_t* seed) const
+{
+  if (this->primary_flag() == 2) {
+    double A = this->A();
+    return energy() + A/(A+ 1)*E;
+  } else {
+    return energy();
+  }
+}
+
 //==============================================================================
 // LevelInelastic implementation
 //==============================================================================
@@ -83,6 +105,11 @@ void LevelInelastic::serialize(DataBuffer& buffer) const
   buffer.add(static_cast<int>(EnergyDistType::LEVEL_INELASTIC));
   buffer.add(threshold_);
   buffer.add(mass_ratio_);
+}
+
+double LevelInelasticFlat::sample(double E, uint64_t* seed) const
+{
+  return this->mass_ratio()*(E - this->threshold());
 }
 
 //==============================================================================
@@ -383,6 +410,31 @@ void MaxwellEnergy::serialize(DataBuffer& buffer) const
   theta_.serialize(buffer);
 }
 
+double MaxwellFlat::sample(double E, uint64_t* seed) const
+{
+  // Get temperature corresponding to incoming energy
+  double theta = this->theta()(E);
+
+  while (true) {
+    // Sample maxwell fission spectrum
+    double E_out = maxwell_spectrum(theta, seed);
+
+    // Accept energy based on restriction energy
+    if (E_out <= E - this->u()) return E_out;
+  }
+}
+
+double MaxwellFlat::u() const
+{
+  return *reinterpret_cast<const double*>(data_);
+}
+
+Tabulated1DFlat MaxwellFlat::theta() const
+{
+  return Tabulated1DFlat(data_ + 8);
+}
+
+
 //==============================================================================
 // Evaporation implementation
 //==============================================================================
@@ -492,10 +544,42 @@ void WattEnergy::serialize(DataBuffer& buffer) const
 {
   buffer.add(static_cast<int>(EnergyDistType::WATT));
   buffer.add(u_);
-  size_t n = b_.nbytes();
-  buffer.add(n);
+  size_t n = a_.nbytes();
+  buffer.add(16 + n);
   a_.serialize(buffer);
   b_.serialize(buffer);
+}
+
+double WattFlat::sample(double E, uint64_t* seed) const
+{
+  // Determine Watt parameters at incident energy
+  double a = this->a()(E);
+  double b = this->b()(E);
+
+  double u = this->u();
+  while (true) {
+    // Sample energy-dependent Watt fission spectrum
+    double E_out = watt_spectrum(a, b, seed);
+
+    // Accept energy based on restriction energy
+    if (E_out <= E - u) return E_out;
+  }
+}
+
+double WattFlat::u() const
+{
+  return *reinterpret_cast<const double*>(data_);
+}
+
+Tabulated1DFlat WattFlat::a() const
+{
+  return Tabulated1DFlat(data_ + 16);
+}
+
+Tabulated1DFlat WattFlat::b() const
+{
+  auto offset = *reinterpret_cast<const size_t*>(data_ + 8);
+  return Tabulated1DFlat(data_ + offset);
 }
 
 }
