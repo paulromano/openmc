@@ -15,6 +15,12 @@
 
 namespace openmc {
 
+EnergyDistributionFlat::EnergyDistributionFlat(const uint8_t* data)
+  : data_{data}
+{
+  type_ = static_cast<EnergyDistType>(*reinterpret_cast<const int*>(data_));
+}
+
 double EnergyDistributionFlat::sample(double E, uint64_t* seed) const
 {
   switch (type_) {
@@ -346,7 +352,7 @@ void ContinuousTabular::serialize(DataBuffer& buffer) const
 
   // Create locators
   std::vector<int> locators;
-  int offset = 4 + (4 + 4)*n_region_ + 8 + (8 + 4)*energy_.size();
+  int offset = 4 + 4 + (4 + 4)*n_region_ + 8 + (8 + 4)*energy_.size();
   for (const auto& dist : distribution_) {
     locators.push_back(offset);
     size_t n_eout = dist.e_out.size();
@@ -400,8 +406,8 @@ gsl::span<const double> CTTableFlat::c() const
 
 ContinuousTabularFlat::ContinuousTabularFlat(const uint8_t* data) : data_(data)
 {
-  n_region_ = *reinterpret_cast<const int*>(data_);
-  n_energy_ = *reinterpret_cast<const size_t*>(data_ + 4 + (4 + 4)*n_region_);
+  n_region_ = *reinterpret_cast<const int*>(data_ + 4);
+  n_energy_ = *reinterpret_cast<const size_t*>(data_ + 4 + 4 + (4 + 4)*n_region_);
 }
 
 double ContinuousTabularFlat::sample(double E, uint64_t* seed) const
@@ -531,25 +537,25 @@ double ContinuousTabularFlat::sample(double E, uint64_t* seed) const
 
 gsl::span<const int> ContinuousTabularFlat::breakpoints() const
 {
-  auto start = reinterpret_cast<const int*>(data_ + 4);
+  auto start = reinterpret_cast<const int*>(data_ + 4 + 4);
   return {start, n_region_};
 }
 
 Interpolation ContinuousTabularFlat::interpolation(gsl::index i) const
 {
-  auto start = reinterpret_cast<const int*>(data_ + 4 + 4*n_region_);
+  auto start = reinterpret_cast<const int*>(data_ + 4 + 4 + 4*n_region_);
   return static_cast<Interpolation>(start[i]);
 }
 
 gsl::span<const double> ContinuousTabularFlat::energy() const
 {
-  auto start = reinterpret_cast<const double*>(data_ + 4 + (4 + 4)*n_region_ + 8);
+  auto start = reinterpret_cast<const double*>(data_ + 4 + 4 + (4 + 4)*n_region_ + 8);
   return {start, n_energy_};
 }
 
 CTTableFlat ContinuousTabularFlat::distribution(gsl::index i) const
 {
-  auto indices = reinterpret_cast<const int*>(data_ + 4 + (4 + 4)*n_region_ + 8 + 8*n_energy_);
+  auto indices = reinterpret_cast<const int*>(data_ + 4 + 4 + (4 + 4)*n_region_ + 8 + 8*n_energy_);
   size_t offset = indices[i];
   return CTTableFlat(data_ + offset);
 }
@@ -603,12 +609,12 @@ double MaxwellFlat::sample(double E, uint64_t* seed) const
 
 double MaxwellFlat::u() const
 {
-  return *reinterpret_cast<const double*>(data_);
+  return *reinterpret_cast<const double*>(data_ + 4);
 }
 
 Tabulated1DFlat MaxwellFlat::theta() const
 {
-  return Tabulated1DFlat(data_ + 8);
+  return Tabulated1DFlat(data_ + 4 + 8);
 }
 
 
@@ -671,12 +677,12 @@ double EvaporationFlat::sample(double E, uint64_t* seed) const
 
 double EvaporationFlat::u() const
 {
-  return *reinterpret_cast<const double*>(data_);
+  return *reinterpret_cast<const double*>(data_ + 4);
 }
 
 Tabulated1DFlat EvaporationFlat::theta() const
 {
-  return Tabulated1DFlat(data_ + 8);
+  return Tabulated1DFlat(data_ + 4 + 8);
 }
 
 //==============================================================================
@@ -717,7 +723,7 @@ void WattEnergy::serialize(DataBuffer& buffer) const
   buffer.add(static_cast<int>(EnergyDistType::WATT));
   buffer.add(u_);
   size_t n = buffer_nbytes(a_);
-  buffer.add(16 + n);
+  buffer.add(20 + n); // offset for b
   a_.serialize(buffer);
   b_.serialize(buffer);
 }
@@ -740,17 +746,17 @@ double WattFlat::sample(double E, uint64_t* seed) const
 
 double WattFlat::u() const
 {
-  return *reinterpret_cast<const double*>(data_);
+  return *reinterpret_cast<const double*>(data_ + 4);
 }
 
 Tabulated1DFlat WattFlat::a() const
 {
-  return Tabulated1DFlat(data_ + 16);
+  return Tabulated1DFlat(data_ + 4 + 16);
 }
 
 Tabulated1DFlat WattFlat::b() const
 {
-  auto offset = *reinterpret_cast<const size_t*>(data_ + 8);
+  auto offset = *reinterpret_cast<const size_t*>(data_ + 4 + 8);
   return Tabulated1DFlat(data_ + offset);
 }
 
