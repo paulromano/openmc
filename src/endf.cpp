@@ -121,6 +121,12 @@ double Polynomial::operator()(double x) const
   return y;
 }
 
+void Polynomial::serialize(DataBuffer& buffer) const
+{
+  buffer.add(coef_.size());
+  buffer.add(coef_);
+}
+
 //==============================================================================
 // Tabulated1D implementation
 //==============================================================================
@@ -345,6 +351,13 @@ double CoherentElasticXS::operator()(double E) const
   }
 }
 
+void CoherentElasticXS::serialize(DataBuffer& buffer) const
+{
+  buffer.add(bragg_edges_.size());
+  buffer.add(bragg_edges_);
+  buffer.add(factors_);
+}
+
 //==============================================================================
 // IncoherentElasticXS implementation
 //==============================================================================
@@ -362,6 +375,13 @@ double IncoherentElasticXS::operator()(double E) const
   // Determine cross section using ENDF-102, Eq. (7.5)
   double W = debye_waller_;
   return bound_xs_ / 2.0 * ((1 - std::exp(-4.0*E*W))/(2.0*E*W));
+}
+
+
+void IncoherentElasticXS::serialize(DataBuffer& buffer) const
+{
+  buffer.add(bound_xs_);
+  buffer.add(debye_waller_);
 }
 
 } // namespace openmc
