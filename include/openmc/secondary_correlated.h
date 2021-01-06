@@ -12,7 +12,7 @@
 #include "openmc/angle_energy.h"
 #include "openmc/endf.h"
 #include "openmc/distribution.h"
-#include "openmc/secondary_unified.h"
+#include "openmc/secondary_flat.h"
 
 namespace openmc {
 
