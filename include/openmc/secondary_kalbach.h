@@ -34,8 +34,6 @@ public:
   void sample(double E_in, double& E_out, double& mu, uint64_t* seed) const override;
 
   void serialize(DataBuffer& buffer) const;
-
-  UnifiedAngleEnergy flatten() const;
 private:
   //! Outgoing energy/angle at a single incoming energy
   struct KMTable {
@@ -72,7 +70,7 @@ private:
   size_t n_eout_;
 };
 
-class KalbachMannFlat : AngleEnergy {
+class KalbachMannFlat {
 public:
   explicit KalbachMannFlat(const uint8_t* data);
 

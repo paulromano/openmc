@@ -43,9 +43,7 @@ public:
   void sample(double E_in, double& E_out, double& mu,
     uint64_t* seed) const override;
 
-  void serialize(DataBuffer& buffer) const;
-
-  UnifiedAngleEnergy flatten() const;
+  void serialize(DataBuffer& buffer) const override;
 
   // energy property
   std::vector<double>& energy() { return energy_; }
@@ -78,7 +76,7 @@ private:
   size_t n_eout_;
 };
 
-class CorrelatedAngleEnergyFlat : AngleEnergy {
+class CorrelatedAngleEnergyFlat {
 public:
   explicit CorrelatedAngleEnergyFlat(const uint8_t* data);
 
