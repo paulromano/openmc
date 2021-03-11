@@ -175,7 +175,8 @@ set(GSL_LITE_OPT_INSTALL_COMPAT_HEADER ON CACHE BOOL
 add_subdirectory(vendor/gsl-lite)
 
 # Make sure contract violations throw exceptions
-target_compile_definitions(gsl-lite-v1 INTERFACE GSL_THROW_ON_CONTRACT_VIOLATION)
+#target_compile_definitions(gsl-lite-v1 INTERFACE GSL_THROW_ON_CONTRACT_VIOLATION)
+target_compile_definitions(gsl-lite-v1 INTERFACE gsl_CONFIG_CONTRACT_CHECKING_OFF)
 target_compile_definitions(gsl-lite-v1 INTERFACE gsl_CONFIG_ALLOWS_NONSTRICT_SPAN_COMPARISON=1)
 
 #===============================================================================
