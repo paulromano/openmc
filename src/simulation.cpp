@@ -3,6 +3,7 @@
 #include "openmc/bank.h"
 #include "openmc/capi.h"
 #include "openmc/container_util.h"
+#include "openmc/device.h"
 #include "openmc/eigenvalue.h"
 #include "openmc/error.h"
 #include "openmc/event.h"
@@ -121,6 +122,9 @@ int openmc_simulation_init()
     }
   }
 
+  // Transfer data to GPU
+  map_to_device();
+
   // Display header
   if (mpi::master) {
     if (settings::run_mode == RunMode::FIXED_SOURCE) {
@@ -146,6 +150,9 @@ int openmc_simulation_finalize()
   // Stop active batch timer and start finalization timer
   simulation::time_active.stop();
   simulation::time_finalize.start();
+
+  // Release data from device
+  release_from_device();
 
   // Clear material nuclide mapping
   for (auto& mat : model::materials) {
