@@ -242,14 +242,12 @@ Cell::temperature(int32_t instance) const
 void
 Cell::set_temperature(double T, int32_t instance, bool set_contained)
 {
-  if (settings::temperature_method == TemperatureMethod::INTERPOLATION) {
-    if (T < data::temperature_min) {
-      throw std::runtime_error{"Temperature is below minimum temperature at "
-        "which data is available."};
-    } else if (T > data::temperature_max) {
-      throw std::runtime_error{"Temperature is above maximum temperature at "
-        "which data is available."};
-    }
+  if (T < data::temperature_min) {
+    throw std::runtime_error {"Temperature is below minimum temperature at "
+                              "which data is available."};
+  } else if (T > data::temperature_max) {
+    throw std::runtime_error {"Temperature is above maximum temperature at "
+                              "which data is available."};
   }
 
   if (type_ == Fill::MATERIAL) {

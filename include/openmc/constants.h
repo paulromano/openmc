@@ -106,12 +106,6 @@ constexpr int NUCLIDE_NONE  {-1};
 // ============================================================================
 // CROSS SECTION RELATED CONSTANTS
 
-// Temperature treatment method
-enum class TemperatureMethod {
-  NEAREST,
-  INTERPOLATION
-};
-
 // Reaction types
 enum ReactionType {
   REACTION_NONE = 0,

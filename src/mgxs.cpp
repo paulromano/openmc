@@ -102,59 +102,27 @@ Mgxs::metadata_from_hdf5(hid_t xs_id, const std::vector<double>& temperature,
   delete[] dset_names;
   std::sort(available_temps.begin(), available_temps.end());
 
-  // If only one temperature is available, lets just use nearest temperature
-  // interpolation
-  if ((num_temps == 1) && (settings::temperature_method == TemperatureMethod::INTERPOLATION)) {
-    warning("Cross sections for " + strtrim(name) + " are only available " +
-            "at one temperature.  Reverting to the nearest temperature " +
-            "method.");
-    settings::temperature_method = TemperatureMethod::NEAREST;
-  }
-
-  switch(settings::temperature_method) {
-    case TemperatureMethod::NEAREST:
-      // Determine actual temperatures to read
-      for (const auto& T : temperature) {
-        auto i_closest = xt::argmin(xt::abs(available_temps - T))[0];
-        double temp_actual = available_temps[i_closest];
-        if (std::fabs(temp_actual - T) < settings::temperature_tolerance) {
-          if (std::find(temps_to_read.begin(), temps_to_read.end(), std::round(temp_actual))
-              == temps_to_read.end()) {
-            temps_to_read.push_back(std::round(temp_actual));
-          }
-        } else {
-          fatal_error(fmt::format(
-            "MGXS library does not contain cross sections for {} at or near {} K.",
-            in_name, std::round(T)));
-        }
+  for (int i = 0; i < temperature.size(); i++) {
+    for (int j = 0; j < num_temps; j++) {
+      if (j == (num_temps - 1)) {
+        fatal_error("MGXS Library does not contain cross sections for " +
+                    in_name + " at temperatures that bound " +
+                    std::to_string(std::round(temperature[i])));
       }
-      break;
-
-    case TemperatureMethod::INTERPOLATION:
-      for (int i = 0; i < temperature.size(); i++) {
-        for (int j = 0; j < num_temps; j++) {
-          if (j == (num_temps - 1)) {
-            fatal_error("MGXS Library does not contain cross sections for " +
-                  in_name + " at temperatures that bound " +
-                  std::to_string(std::round(temperature[i])));
-          }
-          if ((available_temps[j] <= temperature[i]) &&
-              (temperature[i] < available_temps[j + 1])) {
-            if (std::find(temps_to_read.begin(),
-                          temps_to_read.end(),
-                          std::round(available_temps[j])) == temps_to_read.end()) {
-              temps_to_read.push_back(std::round((int)available_temps[j]));
-            }
-
-            if (std::find(temps_to_read.begin(), temps_to_read.end(),
-                          std::round(available_temps[j + 1])) == temps_to_read.end()) {
-              temps_to_read.push_back(std::round((int) available_temps[j + 1]));
-            }
-            break;
-          }
+      if ((available_temps[j] <= temperature[i]) &&
+          (temperature[i] < available_temps[j + 1])) {
+        if (std::find(temps_to_read.begin(), temps_to_read.end(),
+              std::round(available_temps[j])) == temps_to_read.end()) {
+          temps_to_read.push_back(std::round((int)available_temps[j]));
         }
 
+        if (std::find(temps_to_read.begin(), temps_to_read.end(),
+              std::round(available_temps[j + 1])) == temps_to_read.end()) {
+          temps_to_read.push_back(std::round((int)available_temps[j + 1]));
+        }
+        break;
       }
+    }
   }
   std::sort(temps_to_read.begin(), temps_to_read.end());
 
@@ -347,20 +315,18 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
     std::vector<int> micro_t(micros.size(), 0);
     std::vector<double> micro_t_interp(micros.size(), 0.);
     for (int m = 0; m < micros.size(); m++) {
-      switch(settings::temperature_method) {
-      case TemperatureMethod::NEAREST:
-        {
-          micro_t[m] = xt::argmin(xt::abs(micros[m]->kTs - temp_desired))[0];
-          auto temp_actual = micros[m]->kTs[micro_t[m]];
+      // Use nearest interpolation if only one temperature available
+      if (micros[m]->kTs.size() == 1) {
+        micro_t[m] = xt::argmin(xt::abs(micros[m]->kTs - temp_desired))[0];
+        auto temp_actual = micros[m]->kTs[micro_t[m]];
 
-          if (std::abs(temp_actual - temp_desired) >= K_BOLTZMANN * settings::temperature_tolerance) {
-            fatal_error(fmt::format(
-              "MGXS Library does not contain cross section for {} at or near {} K.",
-              name, std::round(temp_desired / K_BOLTZMANN)));
-          }
+        if (std::abs(temp_actual - temp_desired) >=
+            K_BOLTZMANN * settings::temperature_tolerance) {
+          fatal_error(fmt::format("MGXS Library does not contain cross section "
+                                  "for {} at or near {} K.",
+            name, std::round(temp_desired / K_BOLTZMANN)));
         }
-        break;
-      case TemperatureMethod::INTERPOLATION:
+      } else {
         // Get a list of bounding temperatures for each actual temperature
         // present in the model
         for (int k = 0; k < micros[m]->kTs.shape()[0] - 1; k++) {
@@ -375,7 +341,7 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
             }
           }
         }
-      } // end switch
+      }
     } // end microscopic temperature loop
 
     // Now combine the microscopic data at each relevant temperature
@@ -390,7 +356,7 @@ Mgxs::Mgxs(const std::string& in_name, const std::vector<double>& mat_kTs,
     // combine the data. We will step through each microscopic data and
     // add in its lower and upper temperature points
     for (int m = 0; m < micros.size(); m++) {
-      if (settings::temperature_method == TemperatureMethod::NEAREST) {
+      if (micros[m]->kTs.size() == 1) {
         // Nearest interpolation only has one temperature point per isotope
         // and so we dont need to include a temperature interpolant in
         // the interpolant vector

@@ -154,8 +154,6 @@ element settings {
 
   element temperature_default { xsd:double }? &
 
-  element temperature_method { xsd:string }? &
-
   element temperature_multipole { xsd:boolean }? &
 
   element temperature_range { list { xsd:double, xsd:double } }? &

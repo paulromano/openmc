@@ -12,6 +12,7 @@
 #include "xtensor/xview.hpp"
 
 #include "openmc/constants.h"
+#include "openmc/container_util.h"
 #include "openmc/endf.h"
 #include "openmc/error.h"
 #include "openmc/random_lcg.h"
@@ -75,46 +76,43 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
     }
   }
 
-  switch (settings::temperature_method) {
-  case TemperatureMethod::NEAREST:
-    // Determine actual temperatures to read
-    for (const auto& T : temperature) {
-
-      auto i_closest = xt::argmin(xt::abs(temps_available - T))[0];
-      auto temp_actual = temps_available[i_closest];
-      if (std::abs(temp_actual - T) < settings::temperature_tolerance) {
-        if (std::find(temps_to_read.begin(), temps_to_read.end(), std::round(temp_actual))
-            == temps_to_read.end()) {
-          temps_to_read.push_back(std::round(temp_actual));
-        }
-      } else {
-        fatal_error(fmt::format("Nuclear data library does not contain cross "
-          "sections for {} at or near {} K.", name_, std::round(T)));
+  // Get a list of bounding temperatures for each actual temperature present in
+  // the model If only one temperature is available, we check that the desired
+  // temperatures are within temperature_tolerance and only load that, then use
+  // nearest interpolation.
+  if (temps_available.size() == 1) {
+    // Check we're within the tolerance
+    for (double T_desired : temperature) {
+      if (std::abs(T_desired - temps_available[0]) >
+          settings::temperature_tolerance) {
+        fatal_error(
+          "Nuclear data library does not contain cross sections for " + name_ +
+          " at or near " + std::to_string(T_desired) + " K.");
       }
     }
-    break;
 
-  case TemperatureMethod::INTERPOLATION:
-    // If temperature interpolation or multipole is selected, get a list of
-    // bounding temperatures for each actual temperature present in the model
-    for (const auto& T : temperature) {
-      bool found = false;
-      for (int j = 0; j < temps_available.size() - 1; ++j) {
-        if (temps_available[j] <= T && T < temps_available[j + 1]) {
-          int T_j = std::round(temps_available[j]);
-          int T_j1 = std::round(temps_available[j + 1]);
-          if (std::find(temps_to_read.begin(), temps_to_read.end(), T_j) == temps_to_read.end()) {
-            temps_to_read.push_back(T_j);
-          }
-          if (std::find(temps_to_read.begin(), temps_to_read.end(), T_j1) == temps_to_read.end()) {
-            temps_to_read.push_back(T_j1);
-          }
-          found = true;
-        }
+    if (!contains(temps_to_read, temps_available[0])) {
+      temps_to_read.push_back(std::round(temps_available[0]));
+    }
+  } else {
+    for (double T_desired : temperature) {
+      auto T_upper_it = std::lower_bound(
+        temps_available.begin(), temps_available.end(), T_desired);
+      if (T_upper_it == temps_available.end() ||
+          T_upper_it == temps_available.begin()) {
+        fatal_error(
+          "Nuclear data library does not contain cross sections for " + name_ +
+          " at temperatures that bound " + std::to_string(T_desired) + " K.");
       }
-      if (!found) {
-        fatal_error(fmt::format("Nuclear data library does not contain cross "
-          "sections for {} at temperatures that bound {} K.", name_, std::round(T)));
+
+      // If we found an exact match, only load the one temperature. Otherwise,
+      // load both bounding temperatures.
+      if (!contains(temps_to_read, *T_upper_it))
+        temps_to_read.push_back(std::round(*T_upper_it));
+      if (T_desired != *T_upper_it) {
+        T_upper_it--;
+        if (!contains(temps_to_read, *T_upper_it))
+          temps_to_read.push_back(std::round(*T_upper_it));
       }
     }
   }
@@ -151,23 +149,18 @@ ThermalScattering::calculate_xs(double E, double sqrtkT, int* i_temp,
 {
   // Determine temperature for S(a,b) table
   double kT = sqrtkT*sqrtkT;
-  int i = 0;
+  int i;
 
-  auto n = kTs_.size();
-  if (n > 1) {
-    // Find temperatures that bound the actual temperature
-    while (kTs_[i+1] < kT && i + 1 < n - 1) ++i;
-
-    if (settings::temperature_method == TemperatureMethod::NEAREST) {
-      // Pick closer of two bounding temperatures
-      if (kT - kTs_[i] > kTs_[i+1] - kT) ++i;
-
-    } else {
-      // Randomly sample between temperature i and i+1
-      double f = (kT - kTs_[i]) / (kTs_[i+1] - kTs_[i]);
-      if (f > prn(seed)) ++i;
-    }
+  // Find temperatures that bound this particle's temperature
+  for (i = 0; i < kTs_.size() - 1; ++i) {
+    if (kTs_[i] <= kT && kT < kTs_[i + 1])
+      break;
   }
+  const int i_upper = i + static_cast<int>(kTs_.size() > 1);
+
+  // Randomly sample between temperature i and i+1 to linearly interpolate
+  if (kT - kTs_[i] > (kTs_[i_upper] - kTs_[i]) * prn(seed))
+    i = i_upper;
 
   // Set temperature index
   *i_temp = i;

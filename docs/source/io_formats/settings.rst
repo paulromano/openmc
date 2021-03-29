@@ -812,24 +812,6 @@ a material default temperature.
 
   *Default*: 293.6 K
 
-.. _temperature_method:
-
---------------------------------
-``<temperature_method>`` Element
---------------------------------
-
-The ``<temperature_method>`` element has an accepted value of "nearest" or
-"interpolation". A value of "nearest" indicates that for each
-cell, the nearest temperature at which cross sections are given is to be
-applied, within a given tolerance (see :ref:`temperature_tolerance`). A value of
-"interpolation" indicates that cross sections are to be linear-linear
-interpolated between temperatures at which nuclear data are present (see
-:ref:`temperature_treatment`).
-
-  *Default*: "nearest"
-
-.. _temperature_multipole:
-
 -----------------------------------
 ``<temperature_multipole>`` Element
 -----------------------------------
@@ -859,11 +841,16 @@ where the temperatures might change from one iteration to the next.
 ``<temperature_tolerance>`` Element
 -----------------------------------
 
-The ``<temperature_tolerance>`` element specifies a tolerance in Kelvin that is
-to be applied when the "nearest" temperature method is used. For example, if a
-cell temperature is 340 K and the tolerance is 15 K, then the closest
-temperature in the range of 325 K to 355 K will be used to evaluate cross
-sections.
+The ``<temperature_tolerance>`` element specifies a fallback tolerance in
+Kelvin that is to be applied if linear interpolation of cross sections may not
+be used. Linear interpolation may not be used if only one temperature is
+available for a nuclide within the nuclear data library provided by
+OPENMC_CROSS_SECTIONS. Since most distributions of nuclear data for OpenMC do
+contain more than one temperature point for each nuclide, this option is
+primarily relevant to data used for testing OpenMC where only one temperature
+is present. If a cross section evaluation within this tolerance cannot be found
+and only one temperature is available for a given nuclide, OpenMC reports an
+error.
 
   *Default*: 10 K
 

@@ -73,15 +73,6 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature)
   }
   std::sort(temps_available.begin(), temps_available.end());
 
-  // If only one temperature is available, revert to nearest temperature
-  if (temps_available.size() == 1 && settings::temperature_method == TemperatureMethod::INTERPOLATION) {
-    if (mpi::master) {
-      warning("Cross sections for " + name_ + " are only available at one "
-        "temperature. Reverting to nearest temperature method.");
-    }
-    settings::temperature_method = TemperatureMethod::NEAREST;
-  }
-
   // Determine actual temperatures to read -- start by checking whether a
   // temperature range was given (indicated by T_max > 0), in which case all
   // temperatures in the range are loaded irrespective of what temperatures
@@ -105,65 +96,43 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature)
     }
   }
 
-  switch (settings::temperature_method) {
-  case TemperatureMethod::NEAREST:
-    // Find nearest temperatures
+  // Get a list of bounding temperatures for each actual temperature present in
+  // the model If only one temperature is available, we check that the desired
+  // temperatures are within temperature_tolerance and only load that, then use
+  // nearest interpolation.
+  if (temps_available.size() == 1) {
+    // Check we're within the tolerance
     for (double T_desired : temperature) {
-
-      // Determine closest temperature
-      double min_delta_T = INFTY;
-      double T_actual = 0.0;
-      for (auto T : temps_available) {
-        double delta_T = std::abs(T - T_desired);
-        if (delta_T < min_delta_T) {
-          T_actual = T;
-          min_delta_T = delta_T;
-        }
-      }
-
-      if (std::abs(T_actual - T_desired) < settings::temperature_tolerance) {
-        if (!contains(temps_to_read, std::round(T_actual))) {
-          temps_to_read.push_back(std::round(T_actual));
-
-          // Write warning for resonance scattering data if 0K is not available
-          if (std::abs(T_actual - T_desired) > 0 && T_desired == 0 && mpi::master) {
-            warning(name_ + " does not contain 0K data needed for resonance "
-              "scattering options selected. Using data at " + std::to_string(T_actual)
-              + " K instead.");
-          }
-        }
-      } else {
+      if (std::abs(T_desired - temps_available[0]) >
+          settings::temperature_tolerance) {
         fatal_error("Nuclear data library does not contain cross sections for " +
           name_ + " at or near " + std::to_string(T_desired) + " K.");
       }
     }
-    break;
 
-  case TemperatureMethod::INTERPOLATION:
-    // If temperature interpolation or multipole is selected, get a list of
-    // bounding temperatures for each actual temperature present in the model
+    if (!contains(temps_to_read, temps_available[0])) {
+      temps_to_read.push_back(std::round(temps_available[0]));
+    }
+  } else {
     for (double T_desired : temperature) {
-      bool found_pair = false;
-      for (int j = 0; j < temps_available.size() - 1; ++j) {
-        if (temps_available[j] <= T_desired && T_desired < temps_available[j + 1]) {
-          int T_j = std::round(temps_available[j]);
-          int T_j1 = std::round(temps_available[j+1]);
-          if (!contains(temps_to_read, T_j)) {
-            temps_to_read.push_back(T_j);
-          }
-          if (!contains(temps_to_read, T_j1)) {
-            temps_to_read.push_back(T_j1);
-          }
-          found_pair = true;
-        }
-      }
-
-      if (!found_pair) {
+      auto T_upper_it = std::lower_bound(
+        temps_available.begin(), temps_available.end(), T_desired);
+      if (T_upper_it == temps_available.end() ||
+          T_upper_it == temps_available.begin()) {
         fatal_error("Nuclear data library does not contain cross sections for " +
           name_ +" at temperatures that bound " + std::to_string(T_desired) + " K.");
       }
+
+      // If we found an exact match, only load the one temperature. Otherwise,
+      // load both bounding temperatures.
+      if (!contains(temps_to_read, *T_upper_it))
+        temps_to_read.push_back(std::round(*T_upper_it));
+      if (T_desired != *T_upper_it) {
+        T_upper_it--;
+        if (!contains(temps_to_read, *T_upper_it))
+          temps_to_read.push_back(std::round(*T_upper_it));
+      }
     }
-    break;
   }
 
   // Sort temperatures to read
@@ -596,7 +565,7 @@ void Nuclide::calculate_xs(int i_sab, int i_log_union, double sab_frac, Particle
     // Note, the only time either is used is in one of 4 places:
     // 1. physics.cpp - scatter - For inelastic scatter.
     // 2. physics.cpp - sample_fission - For partial fissions.
-    // 3. tally.F90 - score_general - For tallying on MTxxx reactions.
+    // 3. tally_scoring.cpp - score_general - For tallying on MTxxx reactions.
     // 4. nuclide.cpp - calculate_urr_xs - For unresolved purposes.
     // It is worth noting that none of these occur in the resolved
     // resonance range, so the value here does not matter.  index_temp is
@@ -610,32 +579,19 @@ void Nuclide::calculate_xs(int i_sab, int i_log_union, double sab_frac, Particle
     // Find the appropriate temperature index.
     double kT = p.sqrtkT_*p.sqrtkT_;
     double f;
-    int i_temp = -1;
-    switch (settings::temperature_method) {
-    case TemperatureMethod::NEAREST:
-      {
-        double max_diff = INFTY;
-        for (int t = 0; t < kTs_.size(); ++t) {
-          double diff = std::abs(kTs_[t] - kT);
-          if (diff < max_diff) {
-            i_temp = t;
-            max_diff = diff;
-          }
-        }
-      }
-      break;
+    int i_temp;
 
-    case TemperatureMethod::INTERPOLATION:
-      // Find temperatures that bound the actual temperature
-      for (i_temp = 0; i_temp < kTs_.size() - 1; ++i_temp) {
-        if (kTs_[i_temp] <= kT && kT < kTs_[i_temp + 1]) break;
-      }
-
-      // Randomly sample between temperature i and i+1
-      f = (kT - kTs_[i_temp]) / (kTs_[i_temp + 1] - kTs_[i_temp]);
-      if (f > prn(p.current_seed())) ++i_temp;
-      break;
+    // Find temperatures that bound this particle's temperature
+    for (i_temp = 0; i_temp < kTs_.size() - 1; ++i_temp) {
+      if (kTs_[i_temp] <= kT && kT < kTs_[i_temp + 1])
+        break;
     }
+    const int i_temp_upper = i_temp + static_cast<int>(kTs_.size() > 1);
+
+    // Randomly sample between temperature i and i+1 to linearly interpolate
+    if (kT - kTs_[i_temp] >
+        (kTs_[i_temp_upper] - kTs_[i_temp]) * prn(p.current_seed()))
+      i_temp = i_temp_upper;
 
     // Determine the energy grid index using a logarithmic mapping to
     // reduce the energy range over which a binary search needs to be
@@ -927,30 +883,19 @@ std::pair<gsl::index, double> Nuclide::find_temperature(double T) const
   gsl::index i_temp = 0;
   double f = 0.0;
   double kT = K_BOLTZMANN * T;
-  gsl::index n = kTs_.size();
-  switch (settings::temperature_method) {
-  case TemperatureMethod::NEAREST:
-    {
-      double max_diff = INFTY;
-      for (gsl::index t = 0; t < n; ++t) {
-        double diff = std::abs(kTs_[t] - kT);
-        if (diff < max_diff) {
-          i_temp = t;
-          max_diff = diff;
-        }
-      }
-    }
-    break;
 
-  case TemperatureMethod::INTERPOLATION:
-    // Find temperatures that bound the actual temperature
-    while (kTs_[i_temp + 1] < kT && i_temp + 1 < n - 1) ++i_temp;
-
-    // Determine interpolation factor
-    f = (kT - kTs_[i_temp]) / (kTs_[i_temp + 1] - kTs_[i_temp]);
+  // Find temperatures that bound the actual temperature
+  while (i_temp + 1 < kTs_.size() - 1) {
+    if (kTs_[i_temp + 1] < kT)
+      ++i_temp;
+    else
+      break;
   }
 
-  Ensures(i_temp >= 0 && i_temp < n);
+  // Determine interpolation factor
+  f = (kT - kTs_[i_temp]) / (kTs_[i_temp + 1] - kTs_[i_temp]);
+
+  Ensures(i_temp >= 0 && i_temp < kTs_.size());
 
   return {i_temp, f};
 }

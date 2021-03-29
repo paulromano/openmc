@@ -691,11 +691,6 @@
       </element>
     </optional>
     <optional>
-      <element name="temperature_method">
-        <data type="string"/>
-      </element>
-    </optional>
-    <optional>
       <element name="temperature_multipole">
         <data type="boolean"/>
       </element>

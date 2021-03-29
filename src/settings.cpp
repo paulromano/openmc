@@ -102,7 +102,6 @@ std::unordered_set<int> sourcepoint_batch;
 std::unordered_set<int> statepoint_batch;
 std::unordered_set<int> source_write_surf_id;
 int64_t max_surface_particles;
-TemperatureMethod temperature_method {TemperatureMethod::NEAREST};
 double temperature_tolerance {10.0};
 double temperature_default {293.6};
 std::array<double, 2> temperature_range {0.0, 0.0};
@@ -762,16 +761,6 @@ void read_settings_xml()
   // Get temperature settings
   if (check_for_node(root, "temperature_default")) {
     temperature_default = std::stod(get_node_value(root, "temperature_default"));
-  }
-  if (check_for_node(root, "temperature_method")) {
-    auto temp = get_node_value(root, "temperature_method", true, true);
-    if (temp == "nearest") {
-      temperature_method = TemperatureMethod::NEAREST;
-    } else if (temp == "interpolation") {
-      temperature_method = TemperatureMethod::INTERPOLATION;
-    } else {
-      fatal_error("Unknown temperature method: " + temp);
-    }
   }
   if (check_for_node(root, "temperature_tolerance")) {
     temperature_tolerance = std::stod(get_node_value(root, "temperature_tolerance"));
