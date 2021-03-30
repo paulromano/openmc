@@ -115,8 +115,10 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature)
     }
   } else {
     for (double T_desired : temperature) {
-      auto T_upper_it = std::lower_bound(
-        temps_available.begin(), temps_available.end(), T_desired);
+      auto T_upper_it = std::lower_bound(temps_available.begin(),
+        temps_available.end(), T_desired, [](const double& l, const double& r) {
+          return std::round(l) < std::round(r);
+        });
       if (T_upper_it == temps_available.end() ||
           T_upper_it == temps_available.begin()) {
         fatal_error("Nuclear data library does not contain cross sections for " +
@@ -127,7 +129,7 @@ Nuclide::Nuclide(hid_t group, const std::vector<double>& temperature)
       // load both bounding temperatures.
       if (!contains(temps_to_read, *T_upper_it))
         temps_to_read.push_back(std::round(*T_upper_it));
-      if (T_desired != *T_upper_it) {
+      if (std::round(T_desired) != std::round(*T_upper_it)) {
         T_upper_it--;
         if (!contains(temps_to_read, *T_upper_it))
           temps_to_read.push_back(std::round(*T_upper_it));
