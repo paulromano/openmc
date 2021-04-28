@@ -23,7 +23,7 @@ env:
 
 jobs:
   main:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-18.04
     strategy:
       matrix:
         python-version: [3.8]
@@ -101,9 +101,8 @@ jobs:
                               libhdf5-serial-dev \
                               libhdf5-mpich-dev \
                               libeigen3-dev
-          sudo update-alternatives --set mpi /usr/bin/mpicc.mpich
+          sudo update-alternatives --set mpi /usr/include/mpich
           sudo update-alternatives --set mpirun /usr/bin/mpirun.mpich
-          sudo update-alternatives --set mpi-x86_64-linux-gnu /usr/include/x86_64-linux-gnu/mpich
 
       -
         name: install
