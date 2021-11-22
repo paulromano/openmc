@@ -274,8 +274,8 @@ class Library(EqualityMixin):
 
             # Read name, atomic mass ratio, temperature, date, comment, and
             # material
-            name, atomic_weight_ratio, temperature, date, comment, mat = \
-                struct.unpack(str('=10sdd10s70s10s'), ace_file.read(116))
+            _, name, atomic_weight_ratio, temperature, date, comment, mat = \
+                struct.unpack(str('=i10sdd10s70s10s'), ace_file.read(120))
             name = name.decode().strip()
 
             # Read ZAID/awr combinations
@@ -302,7 +302,6 @@ class Library(EqualityMixin):
             jxs = list(struct.unpack(str('=32i'), ace_file.read(128)))
 
             # Read XSS
-            ace_file.seek(start_position + recl_length)
             xss = list(struct.unpack(str('={}d'.format(length)),
                                      ace_file.read(length*8)))
 

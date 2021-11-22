@@ -74,57 +74,71 @@ _THERMAL_DATA = {
 
 
 _TEMPLATE_RECONR = """
+moder / Convert to binary
+{nendf} -{nendf_b}
 reconr / %%%%%%%%%%%%%%%%%%% Reconstruct XS for neutrons %%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {npendf}
+-{nendf_b} -{npendf_b}
 '{library} PENDF for {zsymam}'/
 {mat} 2/
 {error}/ err
 '{library}: {zsymam}'/
 'Processed by NJOY'/
 0/
+moder / Convert back to ASCII
+-{npendf_b} {npendf}
 """
 
 _TEMPLATE_BROADR = """
 broadr / %%%%%%%%%%%%%%%%%%%%%%% Doppler broaden XS %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {npendf} {nbroadr}
+-{nendf_b} -{npendf_b} -{nbroadr_b}
 {mat} {num_temp} 0 0 0. /
 {error}/ errthn
 {temps}
 0/
+moder /
+-{nbroadr_b} {nbroadr}
 """
 
 _TEMPLATE_HEATR = """
 heatr / %%%%%%%%%%%%%%%%%%%%%%%%% Add heating kerma %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {nheatr_in} {nheatr} /
+-{nendf_b} -{nheatr_in_b} -{nheatr_b} /
 {mat} 4 0 0 0 /
 302 318 402 444 /
+moder /
+-{nheatr_b} {nheatr}
 """
 
 _TEMPLATE_HEATR_LOCAL = """
 heatr / %%%%%%%%%%%%%%%%% Add heating kerma (local photons) %%%%%%%%%%%%%%%%%%%%
-{nendf} {nheatr_in} {nheatr_local} /
+-{nendf_b} -{nheatr_in_b} -{nheatr_local_b} /
 {mat} 4 0 0 1 /
 302 318 402 444 /
+moder /
+-{nheatr_local_b} {nheatr_local}
 """
 
 _TEMPLATE_GASPR = """
 gaspr / %%%%%%%%%%%%%%%%%%%%%%%%% Add gas production %%%%%%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {ngaspr_in} {ngaspr} /
+-{nendf_b} -{ngaspr_in_b} -{ngaspr_b} /
+moder /
+-{ngaspr_b} {ngaspr}
 """
 
 _TEMPLATE_PURR = """
 purr / %%%%%%%%%%%%%%%%%%%%%%%% Add probability tables %%%%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {npurr_in} {npurr} /
+-{nendf_b} -{npurr_in_b} -{npurr_b} /
 {mat} {num_temp} 1 20 64 /
 {temps}
 1.e10
 0/
+moder /
+-{npurr_b} {npurr}
 """
 
 _TEMPLATE_ACER = """
 acer / %%%%%%%%%%%%%%%%%%%%%%%% Write out in ACE format %%%%%%%%%%%%%%%%%%%%%%%%
-{nendf} {nacer_in} 0 {nace} {ndir}
-1 0 1 .{ext} /
+-{nendf_b} -{nacer_in_b} 0 {nace} {ndir}
+1 0 2 .{ext} /
 '{library}: {zsymam} at {temperature}'/
 {mat} {temperature}
 1 1/
@@ -331,7 +345,8 @@ def make_ace(filename, temperatures=None, acer=True, xsdir=None,
     # Create njoy commands by modules
     commands = ""
 
-    nendf, npendf = 20, 21
+    nendf, nendf_b = 20, 21
+    npendf, npendf_b = 22, 23
     tapein = {nendf: filename}
     tapeout = {}
     if pendf:
@@ -339,64 +354,71 @@ def make_ace(filename, temperatures=None, acer=True, xsdir=None,
 
     # reconr
     commands += _TEMPLATE_RECONR
-    nlast = npendf
+    nlast = npendf_b
 
     # broadr
     if broadr:
         nbroadr = nlast + 1
+        nbroadr_b = nlast + 2
         tapeout[nbroadr] = (output_dir / "broadr") if broadr is True else broadr
         commands += _TEMPLATE_BROADR
-        nlast = nbroadr
+        nlast = nbroadr_b
 
     # heatr
     if heatr:
-        nheatr_in = nlast
-        nheatr_local = nheatr_in + 1
+        nheatr_in_b = nlast
+        nheatr_local = nheatr_in_b + 1
+        nheatr_local_b = nheatr_in_b + 2
         tapeout[nheatr_local] = (output_dir / "heatr_local") if heatr is True \
             else heatr + '_local'
         commands += _TEMPLATE_HEATR_LOCAL
-        nheatr = nheatr_local + 1
+
+        nheatr = nheatr_local_b + 1
+        nheatr_b = nheatr_local_b + 2
         tapeout[nheatr] = (output_dir / "heatr") if heatr is True else heatr
         commands += _TEMPLATE_HEATR
-        nlast = nheatr
+        nlast = nheatr_b
 
     # gaspr
     if gaspr:
-        ngaspr_in = nlast
-        ngaspr = ngaspr_in + 1
+        ngaspr_in_b = nlast
+        ngaspr = ngaspr_in_b + 1
+        ngaspr_b = ngaspr_in_b + 2
         tapeout[ngaspr] = (output_dir / "gaspr") if gaspr is True else gaspr
         commands += _TEMPLATE_GASPR
-        nlast = ngaspr
+        nlast = ngaspr_b
 
     # purr
     if purr:
-        npurr_in = nlast
-        npurr = npurr_in + 1
+        npurr_in_b = nlast
+        npurr = npurr_in_b + 1
+        npurr_b = npurr_in_b + 2
         tapeout[npurr] = (output_dir / "purr") if purr is True else purr
         commands += _TEMPLATE_PURR
-        nlast = npurr
+        nlast = npurr_b
 
     commands = commands.format(**locals())
 
     # acer
     if acer:
-        nacer_in = nlast
+        nacer_in_b = nlast
         for i, temperature in enumerate(temperatures):
             # Extend input with an ACER run for each temperature
-            nace = nacer_in + 1 + 2*i
+            nace = nacer_in_b + 1 + 2*i
             ndir = nace + 1
-            ext = '{:02}'.format(i + 1)
+            ext = f'{i + 1:02}'
             commands += _TEMPLATE_ACER.format(**locals())
 
             # Indicate tapes to save for each ACER run
-            tapeout[nace] = output_dir / "ace_{:.1f}".format(temperature)
-            tapeout[ndir] = output_dir / "xsdir_{:.1f}".format(temperature)
+            tapeout[nace] = output_dir / f"ace_{temperature:.1f}"
+            tapeout[ndir] = output_dir / f"xsdir_{temperature:.1f}"
     commands += 'stop\n'
     run(commands, tapein, tapeout, **kwargs)
 
     if acer:
         ace = (output_dir / "ace") if acer is True else Path(acer)
         xsdir = (ace.parent / "xsdir") if xsdir is None else xsdir
+        # TODO: The below block assumes ASCII and will need to be changed for binary
         with ace.open('w') as ace_file, xsdir.open('w') as xsdir_file:
             for temperature in temperatures:
                 # Get contents of ACE file
