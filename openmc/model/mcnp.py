@@ -1,15 +1,18 @@
-import argparse
 from collections import defaultdict
-import copy
 from math import pi
 import re
+import warnings
 
 import numpy as np
 
 import openmc
 from openmc.data import get_thermal_name
 from openmc.data.ace import get_metadata
-from .surface_composite import Box, RightCircularCylinder as RCC, RectangularParallelepiped as RPP
+from .surface_composite import (
+    Box, CompositeSurface,
+    RightCircularCylinder as RCC,
+    RectangularParallelepiped as RPP
+)
 import openmc.model.surface_composite as surface_composite
 
 
@@ -214,7 +217,7 @@ def get_openmc_surfaces(surfaces, data):
                 p1 = [float_(x) for x in coeffs[:3]]
                 p2 = [float_(x) for x in coeffs[3:6]]
                 p3 = [float_(x) for x in coeffs[6:]]
-                surf = openmc.Plane.from_points(p1, p2, p3)
+                surf = openmc.Plane.from_points(p1, p2, p3, surface_id=s['id'])
             else:
                 A, B, C, D = map(float_, coeffs)
                 surf = openmc.Plane(surface_id=s['id'], a=A, b=B, c=C, d=D)
@@ -336,14 +339,16 @@ def get_openmc_surfaces(surfaces, data):
         if 'tr' in s:
             tr_num = s['tr']
             displacement, rotation = data['tr'][tr_num]
-            surf = surf.translate(displacement)
-            if rotation is not None:
-                surf = surf.rotate(rotation)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", openmc.IDWarning)
+                surf = surf.translate(displacement, inplace=True)
+                if rotation is not None:
+                    surf = surf.rotate(rotation, inplace=True)
 
         openmc_surfaces[s['id']] = surf
 
         # For macrobodies, we also need to add generated surfaces to dictionary
-        if s['mnemonic'] in ('rcc', 'box', 'rpp'):
+        if isinstance(surf, CompositeSurface):
             openmc_surfaces.update((-surf).get_surfaces())
 
     return openmc_surfaces
@@ -368,14 +373,14 @@ def get_openmc_universes(cells, surfaces, materials):
     # Cell-complements pose a unique challenge for conversion because the
     # referenced cell may have a region that was translated, so we can't simply
     # replace the cell-complement by what appears on the referenced
-    # cell. Insetad, we loop over all the cells and construct regions for all
+    # cell. Instead, we loop over all the cells and construct regions for all
     # cells without cell complements. Then, we handle the remaining cells by
     # replacing the cell-complement with the string representation of the actual
     # region that was already converted
     has_cell_complement = []
     translate_memo = {}
     for c in cells:
-        # Skip cells that hvae cell-complements to be handled later
+        # Skip cells that have cell-complements to be handled later
         match = _COMPLEMENT_RE.search(c['region'])
         if match:
             has_cell_complement.append(c)
@@ -405,7 +410,7 @@ def get_openmc_universes(cells, surfaces, materials):
             # Update surfaces dictionary with new surfaces
             for surf_id, surf in c['_region'].get_surfaces().items():
                 surfaces[surf_id] = surf
-                if isinstance(surf, (RCC, Box)):
+                if isinstance(surf, CompositeSurface):
                     surfaces.update((-surf).get_surfaces())
 
     # Now that all cells without cell-complements have been handled, we loop
@@ -421,7 +426,9 @@ def get_openmc_universes(cells, surfaces, materials):
             try:
                 r = ~other_cell['_region']
             except KeyError:
-                raise NotImplementedError('Cannot handle nested cell-complements.')
+                raise NotImplementedError(
+                    'Cannot handle nested cell-complements for cell {}: {}'
+                    .format(c['id'], c['region']))
             region = _COMPLEMENT_RE.sub(str(r), region, count=1)
 
         # Assign region to cell based on expression
