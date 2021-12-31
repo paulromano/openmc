@@ -354,7 +354,7 @@ def get_openmc_surfaces(surfaces, data):
     return openmc_surfaces
 
 
-def get_openmc_universes(cells, surfaces, materials):
+def get_openmc_universes(cells, surfaces, materials, data):
     openmc_cells = {}
     cell_by_id = {c['id']: c for c in cells}
     universes = {}
@@ -679,10 +679,14 @@ def get_openmc_universes(cells, surfaces, materials):
                             rotation_matrix = np.cos(rotation_matrix * pi/180.0)
                         cell.rotation = rotation_matrix
                     elif len(ftrans) < 3:
-                        raise NotImplementedError('TRn card (fill trans) not supported.')
+                        assert len(ftrans) == 1
+                        tr_num = int(ftrans[0])
+                        translation, rotation = data['tr'][tr_num]
+                        cell.translation = translation
+                        if rotation is not None:
+                            cell.rotation = rotation.T
                     else:
                         cell.translation = tuple(float(x) for x in ftrans)
-
 
         elif c['material'] > 0:
             cell.fill = mat

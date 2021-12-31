@@ -898,7 +898,7 @@ class Model:
         openmc_materials = mcnp.get_openmc_materials(data['materials'])
         openmc_surfaces = mcnp.get_openmc_surfaces(surfaces, data)
         openmc_universes = mcnp.get_openmc_universes(cells, openmc_surfaces,
-                                                     openmc_materials)
+                                                     openmc_materials, data)
 
         geometry = openmc.Geometry(openmc_universes[0])
         materials = openmc.Materials(geometry.get_all_materials().values())
