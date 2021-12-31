@@ -47,7 +47,7 @@ def parse_cell(line):
 
     else:
         # Handle normal form
-        m = _CELL1_RE.match(line)
+        m = _CELL1_RE.match(line.lower())
         if m is not None:
             g = m.groups()
             if g[1] == '0':
@@ -286,11 +286,11 @@ def get_openmc_surfaces(surfaces, data):
             x, R2 = coeffs[:2]
             if len(coeffs) > 2:
                 up = (coeffs[2] == 1)
-                if s['mnemonic'] == 'k/x':
+                if s['mnemonic'] == 'kx':
                     surf = surface_composite.XConeOneSided(surface_id=s['id'], x0=x, r2=R2, up=up)
-                elif s['mnemonic'] == 'k/y':
+                elif s['mnemonic'] == 'ky':
                     surf = surface_composite.YConeOneSided(surface_id=s['id'], y0=x, r2=R2, up=up)
-                elif s['mnemonic'] == 'k/z':
+                elif s['mnemonic'] == 'kz':
                     surf = surface_composite.ZConeOneSided(surface_id=s['id'], z0=x, r2=R2, up=up)
             else:
                 if s['mnemonic'] == 'kx':
