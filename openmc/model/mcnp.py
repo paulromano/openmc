@@ -397,7 +397,8 @@ def get_openmc_universes(cells, surfaces, materials):
         if 'trcl' in c['parameters']:
             trcl = c['parameters']['trcl'].strip()
             if not trcl.startswith('('):
-                raise NotImplementedError('TRn card not supported.')
+                raise NotImplementedError(
+                    'TRn card not supported (cell {}).'.format(c['id']))
 
             # Drop parentheses
             trcl = trcl[1:-1].split()
@@ -413,10 +414,23 @@ def get_openmc_universes(cells, surfaces, materials):
                 if isinstance(surf, CompositeSurface):
                     surfaces.update((-surf).get_surfaces())
 
+    has_cell_complement_ordered = []
+    def add_to_ordered(c):
+        region = c['region']
+        matches = _COMPLEMENT_RE.findall(region)
+        for _, other_id in matches:
+            other_cell = cell_by_id[int(other_id)]
+            if other_cell in has_cell_complement:
+                add_to_ordered(other_cell)
+        if c not in has_cell_complement_ordered:
+            has_cell_complement_ordered.append(c)
+    for c in has_cell_complement:
+        add_to_ordered(c)
+
     # Now that all cells without cell-complements have been handled, we loop
     # over the remaining ones and convert any cell-complement expressions by
     # using str(region)
-    for c in has_cell_complement:
+    for c in has_cell_complement_ordered:
         # Replace cell-complement with regular complement
         region = c['region']
         matches = _COMPLEMENT_RE.findall(region)
@@ -441,7 +455,6 @@ def get_openmc_universes(cells, surfaces, materials):
 
         # assume these cells are not translated themselves
         assert 'trcl' not in c['parameters']
-
 
     # Now that all cell regions have been converted, the next loop is to create
     # actual Cell/Universe/Lattice objects
