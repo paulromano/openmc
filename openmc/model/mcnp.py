@@ -218,6 +218,25 @@ def get_openmc_surfaces(surfaces, data):
                 p2 = [float_(x) for x in coeffs[3:6]]
                 p3 = [float_(x) for x in coeffs[6:]]
                 surf = openmc.Plane.from_points(p1, p2, p3, surface_id=s['id'])
+
+                # Helper function to flip signs on plane coefficients
+                def flip_sense(surf):
+                    surf.a = -surf.a
+                    surf.b = -surf.b
+                    surf.c = -surf.c
+                    surf.d = -surf.d
+
+                # Enforce MCNP sense requirements
+                if surf.d != 0.0 and surf.d > 0.0:
+                    flip_sense(surf)
+                elif surf.c != 0.0 and surf.c < 0.0:
+                    flip_sense(surf)
+                elif surf.b != 0.0 and surf.b < 0.0:
+                    flip_sense(surf)
+                elif surf.a != 0.0 and surf.a < 0.0:
+                    flip_sense(surf)
+                else:
+                    raise ValueError("Plane appears to be a line?")
             else:
                 A, B, C, D = map(float_, coeffs)
                 surf = openmc.Plane(surface_id=s['id'], a=A, b=B, c=C, d=D)
