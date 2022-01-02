@@ -331,6 +331,31 @@ def get_openmc_surfaces(surfaces, data):
         elif s['mnemonic'] == 'tz':
             x0, y0, z0, a, b, c = map(float_, s['coefficients'].split())
             surf = openmc.ZTorus(surface_id=s['id'], x0=x0, y0=y0, z0=z0, a=a, b=b, c=c)
+        elif s['mnemonic'] in ('x', 'y', 'z'):
+            coeffs = [float_(x) for x in s['coefficients'].split()]
+            axis = s['mnemonic'].upper()
+            cls_plane = getattr(openmc, f'{axis}Plane')
+            cls_cylinder = getattr(openmc, f'{axis}Cylinder')
+            cls_cone = getattr(surface_composite, f'{axis}ConeOneSided')
+            if len(coeffs) == 4:
+                x1, r1, x2, r2 = coeffs
+                if x1 == x2:
+                    surf = cls_plane(x1, surface_id=s['id'])
+                elif r1 == r2:
+                    surf = cls_cylinder(r=r1, surface_id=s['id'])
+                else:
+                    dr = r2 - r1
+                    dx = x2 - x1
+                    grad = dx/dr
+                    offset = x2 - grad*r2
+                    angle = (-1/grad)**2
+
+                    # decide if we want the up or down part of the
+                    # cone since one sheet is used
+                    up = grad >= 0
+                    surf = cls_cone(z0=offset, r2=angle, up=up)
+            else:
+                raise NotImplementedError(f"{s['mnemonic']} surface with {len(coeffs)} parameters")
         elif s['mnemonic'] == 'rcc':
             vx, vy, vz, hx, hy, hz, r = map(float_, s['coefficients'].split())
             if hx == 0.0 and hy == 0.0:
