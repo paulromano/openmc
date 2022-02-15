@@ -438,19 +438,39 @@ def get_openmc_universes(cells, surfaces, materials, data):
             raise ValueError('Could not parse region for cell (ID={}): {}'
                              .format(c['id'], region))
 
-        if 'trcl' in c['parameters']:
-            trcl = c['parameters']['trcl'].strip()
+        if 'trcl' in c['parameters'] or '*trcl' in c['parameters']:
+            if 'trcl' in c['parameters']:
+                trcl = c['parameters']['trcl'].strip()
+                use_degrees = False
+            else:
+                trcl = c['parameters']['*trcl'].strip()
+                use_degrees = True
+
+            # Apply transformation to fill
+            if 'fill' in c['parameters']:
+                fill = c['parameters']['fill']
+                if use_degrees:
+                    c['parameters']['*fill'] = f'{fill} {trcl}'
+                    c['parameters'].pop('fill')
+                else:
+                    c['parameters']['fill'] = f'{fill} {trcl}'
+
             if not trcl.startswith('('):
                 raise NotImplementedError(
                     'TRn card not supported (cell {}).'.format(c['id']))
 
             # Drop parentheses
             trcl = trcl[1:-1].split()
-            if len(trcl) > 3:
-                raise NotImplementedError('Cell rotation not supported.')
-            assert len(trcl) == 3
-            vector = tuple(float(x) for x in trcl)
+
+            vector = tuple(float(c) for c in trcl[:3])
             c['_region'] = c['_region'].translate(vector, translate_memo)
+
+            if len(trcl) > 3:
+                rotation_matrix = np.array([float(x) for x in trcl[3:]]).reshape((3, 3))
+                if use_degrees:
+                    rotation_matrix = np.cos(rotation_matrix * pi/180.0)
+                print(rotation_matrix)
+                c['_region'] = c['_region'].rotate(rotation_matrix)
 
             # Update surfaces dictionary with new surfaces
             for surf_id, surf in c['_region'].get_surfaces().items():
