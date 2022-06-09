@@ -101,7 +101,7 @@ def parse_data(section):
             g = _MATERIAL_RE.match(line).groups()
             spec = g[1].split()
             try:
-                nuclides = zip(spec[::2], map(float_, spec[1::2]))
+                nuclides = list(zip(spec[::2], map(float_, spec[1::2])))
             except Exception:
                 raise ValueError('Invalid material specification?')
             uid = int(g[0])
