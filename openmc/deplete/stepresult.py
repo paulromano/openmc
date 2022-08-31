@@ -198,6 +198,24 @@ class StepResult:
         new.rates = [r[ranges] for r in self.rates]
         return new
 
+    def get_atoms(self, mat):
+        atoms = {}
+        for nuc, _ in sorted(self.index_nuc.items(), key=lambda x: x[1]):
+            atoms[nuc] = self[0, mat, nuc]
+        return atoms
+
+    def get_material(self, mat_id):
+        material = openmc.Material()
+        vol = self.volume[mat_id]
+        for nuc, _ in sorted(self.index_nuc.items(), key=lambda x: x[1]):
+            atoms = self[0, mat_id, nuc]
+            if atoms < 0.0:
+                continue
+            atom_per_bcm = atoms / vol * 1e-24
+            material.add_nuclide(nuc, atom_per_bcm)
+        material.volume = vol
+        return material
+
     def export_to_hdf5(self, filename, step):
         """Export results to an HDF5 file
 
