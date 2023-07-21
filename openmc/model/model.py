@@ -2,6 +2,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from contextlib import contextmanager
 from functools import lru_cache
+from io import StringIO
 import os
 from pathlib import Path
 from numbers import Integral
@@ -495,6 +496,25 @@ class Model:
         elif not xml_path.parent.exists():
             os.mkdir(xml_path.parent)
 
+        with open(xml_path, 'w', encoding='utf-8', errors='xmlcharrefreplace') as fh:
+            self._export_to_model_xml_internal(fh, remove_surfs)
+
+
+    def _export_to_model_xml_internal(self, fh, remove_surfs=False):
+        """Export model to XML representation (generic file-like object)
+
+        .. versionadded:: 0.13.3
+
+        Parameters
+        ----------
+        fh : file-like
+            File-like object
+        remove_surfs : bool
+            Whether or not to remove redundant surfaces from the geometry when
+            exporting.
+
+        """
+
         if remove_surfs:
             warnings.warn("remove_surfs kwarg will be deprecated soon, please "
                           "set the Geometry.merge_surfaces attribute instead.")
@@ -519,26 +539,25 @@ class Model:
             materials = openmc.Materials(self.geometry.get_all_materials()
                                          .values())
 
-        with open(xml_path, 'w', encoding='utf-8', errors='xmlcharrefreplace') as fh:
-            # write the XML header
-            fh.write("<?xml version='1.0' encoding='utf-8'?>\n")
-            fh.write("<model>\n")
-            # Write the materials collection to the open XML file first.
-            # This will write the XML header also
-            materials._write_xml(fh, False, level=1)
-            # Write remaining elements as a tree
-            fh.write(ET.tostring(geometry_element, encoding="unicode"))
-            fh.write(ET.tostring(settings_element, encoding="unicode"))
+        # write the XML header
+        fh.write("<?xml version='1.0' encoding='utf-8'?>\n")
+        fh.write("<model>\n")
+        # Write the materials collection to the open XML file first.
+        # This will write the XML header also
+        materials._write_xml(fh, False, level=1)
+        # Write remaining elements as a tree
+        fh.write(ET.tostring(geometry_element, encoding="unicode"))
+        fh.write(ET.tostring(settings_element, encoding="unicode"))
 
-            if self.tallies:
-                tallies_element = self.tallies.to_xml_element(mesh_memo)
-                xml.clean_indentation(tallies_element, level=1, trailing_indent=self.plots)
-                fh.write(ET.tostring(tallies_element, encoding="unicode"))
-            if self.plots:
-                plots_element = self.plots.to_xml_element()
-                xml.clean_indentation(plots_element, level=1, trailing_indent=False)
-                fh.write(ET.tostring(plots_element, encoding="unicode"))
-            fh.write("</model>\n")
+        if self.tallies:
+            tallies_element = self.tallies.to_xml_element(mesh_memo)
+            xml.clean_indentation(tallies_element, level=1, trailing_indent=self.plots)
+            fh.write(ET.tostring(tallies_element, encoding="unicode"))
+        if self.plots:
+            plots_element = self.plots.to_xml_element()
+            xml.clean_indentation(plots_element, level=1, trailing_indent=False)
+            fh.write(ET.tostring(plots_element, encoding="unicode"))
+        fh.write("</model>\n")
 
     def import_properties(self, filename):
         """Import physical properties
@@ -600,6 +619,18 @@ class Model:
                 if self.is_initialized:
                     C_mat = openmc.lib.materials[mat_id]
                     C_mat.set_density(atom_density, 'atom/b-cm')
+
+    def run_direct(self):
+        import openmc.lib
+        with StringIO() as fh:
+            self._export_to_model_xml_internal(fh)
+            fh.seek(0)
+            input_xml = fh.read()
+
+        args = ['--input', input_xml]
+        openmc.lib.init(args)
+        openmc.lib.run()
+        openmc.lib.finalize()
 
     def run(self, particles=None, threads=None, geometry_debug=False,
             restart_file=None, tracks=False, output=True, cwd='.',

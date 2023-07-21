@@ -15,7 +15,7 @@ void initialize_mpi(MPI_Comm intracomm);
 #endif
 
 //! Read material, geometry, settings, and tallies from a single XML file
-bool read_model_xml();
+bool read_model_xml(std::string input);
 //! Read inputs from separate XML files
 void read_separate_xml_files();
 //! Write some output that occurs right after initialization

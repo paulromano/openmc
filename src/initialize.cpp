@@ -106,8 +106,18 @@ int openmc_init(int argc, char* argv[], const void* intracomm)
   // will be re-initialized later
   openmc::openmc_set_seed(DEFAULT_SEED);
 
+  // Check for direct input
+  std::string input;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg {argv[i]};
+    if (arg == "-i" || arg == "--input") {
+      input = std::string(argv[i + 1]);
+      break;
+    }
+  }
+
   // Read XML input files
-  if (!read_model_xml())
+  if (!read_model_xml(input))
     read_separate_xml_files();
 
   // Write some initial output under the header if needed
@@ -271,6 +281,8 @@ int parse_command_line(int argc, char* argv[])
       } else if (arg == "-t" || arg == "--track") {
         settings::write_all_tracks = true;
 
+      } else if (arg == "-i" || arg == "--input") {
+        i += 1;
       } else {
         fmt::print(stderr, "Unknown option: {}\n", argv[i]);
         print_usage();
@@ -302,30 +314,38 @@ int parse_command_line(int argc, char* argv[])
   return 0;
 }
 
-bool read_model_xml()
+bool read_model_xml(std::string input)
 {
-  std::string model_filename =
-    settings::path_input.empty() ? "." : settings::path_input;
-
-  // some string cleanup
-  // a trailing "/" is applied to path_input if it's specified,
-  // remove it for the first attempt at reading the input file
-  if (ends_with(model_filename, "/"))
-    model_filename.pop_back();
-
-  // if the current filename is a directory, append the default model filename
-  if (dir_exists(model_filename))
-    model_filename += "/model.xml";
-
-  // if this file doesn't exist, stop here
-  if (!file_exists(model_filename))
-    return false;
-
-  // try to process the path input as an XML file
+  std::cout << input << std::endl;
   pugi::xml_document doc;
-  if (!doc.load_file(model_filename.c_str())) {
-    fatal_error(fmt::format(
-      "Error reading from single XML input file '{}'", model_filename));
+  std::string model_filename;
+  if (input.empty()) {
+    model_filename = settings::path_input.empty() ? "." : settings::path_input;
+
+    // some string cleanup
+    // a trailing "/" is applied to path_input if it's specified,
+    // remove it for the first attempt at reading the input file
+    if (ends_with(model_filename, "/"))
+      model_filename.pop_back();
+
+    // if the current filename is a directory, append the default model filename
+    if (dir_exists(model_filename))
+      model_filename += "/model.xml";
+
+    // if this file doesn't exist, stop here
+    if (!file_exists(model_filename))
+      return false;
+
+    // try to process the path input as an XML file
+    pugi::xml_document doc;
+    if (!doc.load_file(model_filename.c_str())) {
+      fatal_error(fmt::format(
+        "Error reading from single XML input file '{}'", model_filename));
+    }
+  } else {
+    if (!doc.load_string(input.c_str())) {
+      fatal_error(fmt::format("Error reading model from direct input"));
+    }
   }
 
   pugi::xml_node root = doc.document_element();
