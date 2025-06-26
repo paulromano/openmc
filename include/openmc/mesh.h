@@ -132,6 +132,7 @@ public:
   // Constructors and destructor
   Mesh() = default;
   Mesh(pugi::xml_node node);
+  Mesh(hid_t group);
   virtual ~Mesh() = default;
 
   // Methods
@@ -193,6 +194,11 @@ public:
   //
   //! \param[in] group HDF5 group
   virtual void to_hdf5_inner(hid_t group) const = 0;
+
+  //! Create a mesh instance by reading data from an HDF5 group
+  //! \param[in] group HDF5 group that contains mesh information
+  //! \return A unique_ptr to the newly created Mesh
+  static std::unique_ptr<Mesh> create(hid_t group);
 
   //! Find the mesh lines that intersect an axis-aligned slice plot
   //
@@ -258,6 +264,7 @@ class StructuredMesh : public Mesh {
 public:
   StructuredMesh() = default;
   StructuredMesh(pugi::xml_node node) : Mesh {node} {};
+  StructuredMesh(hid_t group) : Mesh {group} {};
   virtual ~StructuredMesh() = default;
 
   using MeshIndex = std::array<int, 3>;
@@ -423,6 +430,7 @@ class PeriodicStructuredMesh : public StructuredMesh {
 public:
   PeriodicStructuredMesh() = default;
   PeriodicStructuredMesh(pugi::xml_node node) : StructuredMesh {node} {};
+  PeriodicStructuredMesh(hid_t group) : StructuredMesh {group} {};
 
   Position local_coords(const Position& r) const override
   {
@@ -442,6 +450,9 @@ public:
   // Constructors
   RegularMesh() = default;
   RegularMesh(pugi::xml_node node);
+  RegularMesh(hid_t group);
+
+  void init();
 
   // Overridden methods
   int get_index_in_direction(double r, int i) const override;
@@ -492,6 +503,7 @@ public:
   // Constructors
   RectilinearMesh() = default;
   RectilinearMesh(pugi::xml_node node);
+  RectilinearMesh(hid_t group);
 
   // Overridden methods
   int get_index_in_direction(double r, int i) const override;
@@ -534,6 +546,7 @@ public:
   // Constructors
   CylindricalMesh() = default;
   CylindricalMesh(pugi::xml_node node);
+  CylindricalMesh(hid_t group);
 
   // Overridden methods
   virtual MeshIndex get_indices(Position r, bool& in_mesh) const override;
@@ -598,6 +611,7 @@ public:
   // Constructors
   SphericalMesh() = default;
   SphericalMesh(pugi::xml_node node);
+  SphericalMesh(hid_t group);
 
   // Overridden methods
   virtual MeshIndex get_indices(Position r, bool& in_mesh) const override;
@@ -668,6 +682,7 @@ public:
   // Constructors
   UnstructuredMesh() {};
   UnstructuredMesh(pugi::xml_node node);
+  UnstructuredMesh(hid_t group);
   UnstructuredMesh(const std::string& filename);
 
   static const std::string mesh_type;

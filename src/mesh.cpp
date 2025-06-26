@@ -238,6 +238,15 @@ Mesh::Mesh(pugi::xml_node node)
     name_ = get_node_value(node, "name");
 }
 
+Mesh::Mesh(hid_t group)
+{
+  // Read the mesh name and ID
+  read_attribute(group, "id", id_);
+  if (object_exists(group, "name")) {
+    read_dataset(group, "name", name_);
+  }
+}
+
 void Mesh::set_id(int32_t id)
 {
   assert(id >= 0 || id == C_NONE);
@@ -543,6 +552,34 @@ void Mesh::to_hdf5(hid_t group) const
   close_group(mesh_group);
 }
 
+std::unique_ptr<Mesh> Mesh::create(hid_t group)
+{
+  // Determine the type of the mesh
+  std::string mesh_type;
+  read_dataset(group, "type", mesh_type);
+
+  // Create a mesh instance based on the type
+  if (mesh_type == RegularMesh::mesh_type) {
+    return std::make_unique<RegularMesh>(group);
+  } else if (mesh_type == RectilinearMesh::mesh_type) {
+    return std::make_unique<RectilinearMesh>(group);
+  } else if (mesh_type == CylindricalMesh::mesh_type) {
+    return std::make_unique<CylindricalMesh>(group);
+  } else if (mesh_type == SphericalMesh::mesh_type) {
+    return std::make_unique<SphericalMesh>(group);
+#ifdef DAGMC
+  } else if (mesh_type == MOABMesh::mesh_lib_type) {
+    return std::make_unique<MOABMesh>(group);
+#endif
+#ifdef LIBMESH
+  } else if (mesh_type == LibMesh::mesh_lib_type) {
+    return std::make_unique<LibMesh>(group);
+#endif
+  } else {
+    fatal_error(fmt::format("Unknown mesh type '{}' encountered", mesh_type));
+  }
+}
+
 //==============================================================================
 // Structured Mesh implementation
 //==============================================================================
@@ -622,6 +659,19 @@ UnstructuredMesh::UnstructuredMesh(pugi::xml_node node) : Mesh(node)
   // statepoint files
   if (check_for_node(node, "output")) {
     output_ = get_node_value_bool(node, "output");
+  }
+}
+
+UnstructuredMesh::UnstructuredMesh(hid_t group) : Mesh(group)
+{
+  read_dataset(group, "filename", filename_);
+
+  if (object_exists(group, "length_multiplier")) {
+    read_dataset(group, "length_multiplier", length_multiplier_);
+  }
+
+  if (object_exists(group, "options")) {
+    read_dataset(group, "options", options_);
   }
 }
 
@@ -1163,8 +1213,31 @@ RegularMesh::RegularMesh(pugi::xml_node node) : StructuredMesh {node}
     fatal_error("Must specify either <upper_right> or <width> on a mesh.");
   }
 
+  // Finish initialization
+  this->init();
+}
+
+RegularMesh::RegularMesh(hid_t group) : StructuredMesh {group}
+{
+  read_dataset(group, "lower_left", lower_left_);
+  read_dataset(group, "upper_right", upper_right_);
+  read_dataset(group, "width", width_);
+
+  // Determine dimension of the mesh
+  xt::xtensor<int, 1> shape;
+  read_dataset(group, "dimension", shape);
+  fmt::print("shape size: {}\n", shape.size());
+  std::copy(shape.begin(), shape.end(), shape_.begin());
+  n_dimension_ = shape.size();
+
+  // Finish initialization
+  this->init();
+}
+
+void RegularMesh::init()
+{
   // Set material volumes
-  volume_frac_ = 1.0 / xt::prod(shape)();
+  volume_frac_ = 1.0 / this->n_bins();
 
   element_volume_ = 1.0;
   for (int i = 0; i < n_dimension_; i++) {
@@ -1341,6 +1414,19 @@ RectilinearMesh::RectilinearMesh(pugi::xml_node node) : StructuredMesh {node}
   }
 }
 
+RectilinearMesh::RectilinearMesh(hid_t group) : StructuredMesh {group}
+{
+  n_dimension_ = 3;
+
+  read_dataset(group, "x_grid", grid_[0]);
+  read_dataset(group, "y_grid", grid_[1]);
+  read_dataset(group, "z_grid", grid_[2]);
+
+  if (int err = set_grid()) {
+    fatal_error(openmc_err_msg);
+  }
+}
+
 const std::string RectilinearMesh::mesh_type = "rectilinear";
 
 std::string RectilinearMesh::get_mesh_type() const
@@ -1470,6 +1556,18 @@ CylindricalMesh::CylindricalMesh(pugi::xml_node node)
   grid_[1] = get_node_array<double>(node, "phi_grid");
   grid_[2] = get_node_array<double>(node, "z_grid");
   origin_ = get_node_position(node, "origin");
+
+  if (int err = set_grid()) {
+    fatal_error(openmc_err_msg);
+  }
+}
+
+CylindricalMesh::CylindricalMesh(hid_t group) : PeriodicStructuredMesh {group}
+{
+  read_dataset(group, "r_grid", grid_[0]);
+  read_dataset(group, "phi_grid", grid_[1]);
+  read_dataset(group, "z_grid", grid_[2]);
+  read_dataset(group, "origin", origin_);
 
   if (int err = set_grid()) {
     fatal_error(openmc_err_msg);
@@ -1748,6 +1846,18 @@ SphericalMesh::SphericalMesh(pugi::xml_node node)
   grid_[1] = get_node_array<double>(node, "theta_grid");
   grid_[2] = get_node_array<double>(node, "phi_grid");
   origin_ = get_node_position(node, "origin");
+
+  if (int err = set_grid()) {
+    fatal_error(openmc_err_msg);
+  }
+}
+
+SphericalMesh::SphericalMesh(hid_t group) : PeriodicStructuredMesh {group}
+{
+  read_dataset(group, "r_grid", grid_[0]);
+  read_dataset(group, "theta_grid", grid_[1]);
+  read_dataset(group, "phi_grid", grid_[2]);
+  read_dataset(group, "origin", origin_);
 
   if (int err = set_grid()) {
     fatal_error(openmc_err_msg);
@@ -2389,15 +2499,7 @@ extern "C" int openmc_regular_mesh_set_params(
   }
 
   // Set material volumes
-
-  // TODO: incorporate this into method in RegularMesh that can be called from
-  // here and from constructor
-  m->volume_frac_ = 1.0 / xt::prod(m->get_x_shape())();
-  m->element_volume_ = 1.0;
-  for (int i = 0; i < m->n_dimension_; i++) {
-    m->element_volume_ *= m->width_[i];
-  }
-
+  m->init();
   return 0;
 }
 
@@ -2514,6 +2616,11 @@ extern "C" int openmc_spherical_mesh_set_grid(int32_t index,
 const std::string MOABMesh::mesh_lib_type = "moab";
 
 MOABMesh::MOABMesh(pugi::xml_node node) : UnstructuredMesh(node)
+{
+  initialize();
+}
+
+MOABMesh::MOABMesh(hid_t group) : UnstructuredMesh(group)
 {
   initialize();
 }
@@ -3216,6 +3323,15 @@ void MOABMesh::write(const std::string& base_filename) const
 const std::string LibMesh::mesh_lib_type = "libmesh";
 
 LibMesh::LibMesh(pugi::xml_node node) : UnstructuredMesh(node), adaptive_(false)
+{
+  // filename_ and length_multiplier_ will already be set by the
+  // UnstructuredMesh constructor
+  set_mesh_pointer_from_filename(filename_);
+  set_length_multiplier(length_multiplier_);
+  initialize();
+}
+
+LibMesh::LibMesh(hid_t group) : UnstructuredMesh(group), adaptive_(false)
 {
   // filename_ and length_multiplier_ will already be set by the
   // UnstructuredMesh constructor

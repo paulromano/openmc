@@ -101,6 +101,14 @@ _dll.openmc_weight_windows_set_max_split.argtypes = [c_int32, c_int]
 _dll.openmc_weight_windows_set_max_split.restype = c_int
 _dll.openmc_weight_windows_set_max_split.errcheck = _error_handler
 
+_dll.openmc_weight_windows_export.argtypes = [c_char_p]
+_dll.openmc_weight_windows_export.restype = c_int
+_dll.openmc_weight_windows_export.errcheck = _error_handler
+
+_dll.openmc_weight_windows_import.argtypes = [c_char_p]
+_dll.openmc_weight_windows_import.restype = c_int
+_dll.openmc_weight_windows_import.errcheck = _error_handler
+
 
 class WeightWindows(_FortranObjectWithID):
     """WeightWindows stored internally.
@@ -368,6 +376,34 @@ class WeightWindows(_FortranObjectWithID):
             out.energy_bounds = energy_filter.bins
 
         return out
+
+
+def export_weight_windows(filename):
+    """Export weight windows to an HDF5 file.
+
+    .. versionadded:: 0.15.3
+
+    Parameters
+    ----------
+    filename : str
+        Filename to export properties to
+
+    """
+    _dll.openmc_weight_windows_export(filename.encode())
+
+
+def import_weight_windows(filename):
+    """Import weight windows from an HDF5 file.
+
+    .. versionadded:: 0.15.3
+
+    Parameters
+    ----------
+    filename : str
+        Filename to import properties from
+
+    """
+    _dll.openmc_weight_windows_import(filename.encode())
 
 
 class _WeightWindowsMapping(Mapping):

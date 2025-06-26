@@ -1326,6 +1326,26 @@ extern "C" int openmc_weight_windows_import(const char* filename)
     return OPENMC_E_INVALID_ARGUMENT;
   }
 
+  // Open the meshes group
+  hid_t meshes_group = open_group(ww_file, "meshes");
+
+  // Read the list of mesh IDs
+  std::vector<int32_t> mesh_ids;
+  read_attribute(meshes_group, "ids", mesh_ids);
+
+  // For each mesh in the group, if it has not already been loaded, read it.
+  for (auto mesh_id : mesh_ids) {
+    std::string group_name = fmt::format("mesh {}", mesh_id);
+    if (model::mesh_map.find(mesh_id) == model::mesh_map.end()) {
+      hid_t mesh_group = open_group(meshes_group, group_name);
+      model::meshes.push_back(Mesh::create(mesh_group));
+      model::mesh_map[mesh_id] = model::meshes.size() - 1;
+      close_group(mesh_group);
+    }
+  }
+
+  close_group(meshes_group);
+
   hid_t weight_windows_group = open_group(ww_file, "weight_windows");
 
   std::vector<std::string> names = group_names(weight_windows_group);
