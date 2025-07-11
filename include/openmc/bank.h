@@ -3,6 +3,7 @@
 
 #include <cstdint>
 
+#include "openmc/circular_buffer.h"
 #include "openmc/particle.h"
 #include "openmc/position.h"
 #include "openmc/shared_array.h"
@@ -22,13 +23,13 @@ extern SharedArray<SourceSite> surf_source_bank;
 
 extern SharedArray<SourceSite> fission_bank;
 
-extern vector<vector<int>> ifp_source_delayed_group_bank;
+extern vector<CircularBuffer<int>> ifp_source_delayed_group_bank;
 
-extern vector<vector<double>> ifp_source_lifetime_bank;
+extern vector<CircularBuffer<double>> ifp_source_lifetime_bank;
 
-extern vector<vector<int>> ifp_fission_delayed_group_bank;
+extern vector<CircularBuffer<int>> ifp_fission_delayed_group_bank;
 
-extern vector<vector<double>> ifp_fission_lifetime_bank;
+extern vector<CircularBuffer<double>> ifp_fission_lifetime_bank;
 
 extern vector<int64_t> progeny_per_particle;
 

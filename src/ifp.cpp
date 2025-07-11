@@ -55,18 +55,21 @@ void copy_ifp_data_from_fission_banks(
   int i_bank, vector<int>& delayed_groups, vector<double>& lifetimes)
 {
   if (is_beta_effective_or_both()) {
-    delayed_groups = simulation::ifp_fission_delayed_group_bank[i_bank];
+    // Convert CircularBuffer to vector
+    delayed_groups =
+      simulation::ifp_fission_delayed_group_bank[i_bank].to_vector();
   }
   if (is_generation_time_or_both()) {
-    lifetimes = simulation::ifp_fission_lifetime_bank[i_bank];
+    // Convert CircularBuffer to vector
+    lifetimes = simulation::ifp_fission_lifetime_bank[i_bank].to_vector();
   }
 }
 
 #ifdef OPENMC_MPI
 
 void broadcast_ifp_n_generation(int& n_generation,
-  const vector<vector<int>>& delayed_groups,
-  const vector<vector<double>>& lifetimes)
+  const vector<CircularBuffer<int>>& delayed_groups,
+  const vector<CircularBuffer<double>>& lifetimes)
 {
   if (mpi::rank == 0) {
     if (is_beta_effective_or_both()) {
@@ -79,19 +82,25 @@ void broadcast_ifp_n_generation(int& n_generation,
 }
 
 void send_ifp_info(int64_t idx, int64_t n, int n_generation, int neighbor,
-  vector<MPI_Request>& requests, const vector<vector<int>>& delayed_groups,
-  vector<int>& send_delayed_groups, const vector<vector<double>>& lifetimes,
+  vector<MPI_Request>& requests,
+  const vector<CircularBuffer<int>>& delayed_groups,
+  vector<int>& send_delayed_groups,
+  const vector<CircularBuffer<double>>& lifetimes,
   vector<double>& send_lifetimes)
 {
   // Copy data in send buffers
   for (int i = idx; i < idx + n; i++) {
     if (is_beta_effective_or_both()) {
-      std::copy(delayed_groups[i].begin(), delayed_groups[i].end(),
+      // Convert CircularBuffer to vector and then copy
+      vector<int> temp = delayed_groups[i].to_vector();
+      std::copy(temp.begin(), temp.end(),
         send_delayed_groups.begin() + i * n_generation);
     }
     if (is_generation_time_or_both()) {
-      std::copy(lifetimes[i].begin(), lifetimes[i].end(),
-        send_lifetimes.begin() + i * n_generation);
+      // Convert CircularBuffer to vector and then copy
+      vector<double> temp = lifetimes[i].to_vector();
+      std::copy(
+        temp.begin(), temp.end(), send_lifetimes.begin() + i * n_generation);
     }
   }
   // Send delayed groups
@@ -180,11 +189,11 @@ void copy_complete_ifp_data_to_source_banks(
   if (is_beta_effective_or_both()) {
     std::copy(delayed_groups.data(),
       delayed_groups.data() + settings::n_particles,
-      simulation::ifp_source_delayed_group_bank.begin());
+      simulation::ifp_source_delayed_group_bank.data());
   }
   if (is_generation_time_or_both()) {
     std::copy(lifetimes.data(), lifetimes.data() + settings::n_particles,
-      simulation::ifp_source_lifetime_bank.begin());
+      simulation::ifp_source_lifetime_bank.data());
   }
 }
 

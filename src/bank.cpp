@@ -27,13 +27,13 @@ SharedArray<SourceSite> surf_source_bank;
 // function.
 SharedArray<SourceSite> fission_bank;
 
-vector<vector<int>> ifp_source_delayed_group_bank;
+vector<CircularBuffer<int>> ifp_source_delayed_group_bank;
 
-vector<vector<double>> ifp_source_lifetime_bank;
+vector<CircularBuffer<double>> ifp_source_lifetime_bank;
 
-vector<vector<int>> ifp_fission_delayed_group_bank;
+vector<CircularBuffer<int>> ifp_fission_delayed_group_bank;
 
-vector<vector<double>> ifp_fission_lifetime_bank;
+vector<CircularBuffer<double>> ifp_fission_lifetime_bank;
 
 // Each entry in this vector corresponds to the number of progeny produced
 // this generation for the particle located at that index. This vector is

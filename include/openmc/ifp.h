@@ -1,6 +1,9 @@
 #ifndef OPENMC_IFP_H
 #define OPENMC_IFP_H
 
+#include <type_traits>
+
+#include "openmc/circular_buffer.h"
 #include "openmc/message_passing.h"
 #include "openmc/particle.h"
 #include "openmc/particle_data.h"
@@ -28,40 +31,60 @@ void resize_ifp_data(vector<T>& delayed_groups, vector<U>& lifetimes, int64_t n)
 {
   if (is_beta_effective_or_both()) {
     delayed_groups.resize(n);
+
+    // Initialize CircularBuffers if T is a CircularBuffer type
+    if constexpr (std::is_same_v<T, CircularBuffer<int>>) {
+      for (auto& buffer : delayed_groups) {
+        if (buffer.capacity() == 0) {
+          buffer = CircularBuffer<int>(settings::ifp_n_generation);
+        }
+      }
+    }
   }
   if (is_generation_time_or_both()) {
     lifetimes.resize(n);
+
+    // Initialize CircularBuffers if U is a CircularBuffer type
+    if constexpr (std::is_same_v<U, CircularBuffer<double>>) {
+      for (auto& buffer : lifetimes) {
+        if (buffer.capacity() == 0) {
+          buffer = CircularBuffer<double>(settings::ifp_n_generation);
+        }
+      }
+    }
   }
 }
 
-//! Update a list of values by adding a new value if the size
-//! of the list can accomodate the new value or by shifting all
-//! values to the left (removing the first value of the list
-//! and adding the new value at the end of the list).
+//! Update a list of values by adding a new value using a circular buffer.
+//! This automatically handles shifting elements when the buffer is full.
 //!
 //! \param[in] value Value to add to the list
 //! \param[in] data Initial version of the list
 //! \return Updated list
 template<typename T>
-vector<T> _ifp(const T& value, const vector<T>& data)
+CircularBuffer<T> _ifp(const T& value, const CircularBuffer<T>& data)
 {
-  vector<T> updated;
-  size_t source_idx = data.size();
+  // Create a copy of the buffer
+  CircularBuffer<T> buffer(data);
 
-  if (source_idx < settings::ifp_n_generation) {
-    updated.resize(source_idx + 1);
-    for (size_t i = 0; i < source_idx; i++) {
-      updated[i] = data[i];
-    }
-    updated[source_idx] = value;
-  } else if (source_idx == settings::ifp_n_generation) {
-    updated.resize(source_idx);
-    for (size_t i = 0; i < source_idx - 1; i++) {
-      updated[i] = data[i + 1];
-    }
-    updated[source_idx - 1] = value;
-  }
-  return updated;
+  // Add the new value (automatically handles the circular behavior)
+  buffer.push_back(value);
+
+  return buffer;
+}
+
+// Overload for vector input to maintain compatibility during transition
+template<typename T>
+CircularBuffer<T> _ifp(const T& value, const vector<T>& data)
+{
+  // Create a circular buffer with the right capacity and use the assignment
+  // operator
+  CircularBuffer<T> buffer(data);
+
+  // Add the new value (automatically handles the circular behavior)
+  buffer.push_back(value);
+
+  return buffer;
 }
 
 //! \brief Iterated Fission Probability (IFP) method.
@@ -104,8 +127,8 @@ struct DeserializationInfo {
 //! \param[in] delayed_groups List of delayed group numbers lists
 //! \param[in] lifetimes List of lifetimes lists
 void broadcast_ifp_n_generation(int& n_generation,
-  const vector<vector<int>>& delayed_groups,
-  const vector<vector<double>>& lifetimes);
+  const vector<CircularBuffer<int>>& delayed_groups,
+  const vector<CircularBuffer<double>>& lifetimes);
 
 //! Send IFP data using MPI.
 //!
@@ -119,8 +142,10 @@ void broadcast_ifp_n_generation(int& n_generation,
 //! \param[in] lifetimes List of lifetimes lists
 //! \param[out] send_lifetimes Lifetimes buffer
 void send_ifp_info(int64_t idx, int64_t n, int n_generation, int neighbor,
-  vector<MPI_Request>& requests, const vector<vector<int>>& delayed_groups,
-  vector<int>& send_delayed_groups, const vector<vector<double>>& lifetimes,
+  vector<MPI_Request>& requests,
+  const vector<CircularBuffer<int>>& delayed_groups,
+  vector<int>& send_delayed_groups,
+  const vector<CircularBuffer<double>>& lifetimes,
   vector<double>& send_lifetimes);
 
 //! Receive IFP data using MPI.
