@@ -286,7 +286,7 @@ class R2SManager:
 
         step_name = 'step1_neutron_transport'
         step_start = perf_counter()
-        output_dir = Path(output_dir)
+        output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if self.method == 'mesh-based':
