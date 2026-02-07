@@ -61,7 +61,8 @@ void collision(Particle& p)
     sample_positron_reaction(p);
     break;
   default:
-    fatal_error("Unsupported particle PDG for collision sampling.");
+    sample_other_reaction(p);
+    break;
   }
 
   if (settings::weight_windows_on) {
@@ -78,7 +79,7 @@ void collision(Particle& p)
 
   // Kill particle if energy falls below cutoff
   int type = p.type().transport_index();
-  if (type != C_NONE && p.E() < settings::energy_cutoff[type]) {
+  if (type == C_NONE || p.E() < settings::energy_cutoff[type]) {
     p.wgt() = 0.0;
   }
 
@@ -525,6 +526,14 @@ void sample_positron_reaction(Particle& p)
   p.event() = TallyEvent::ABSORB;
 }
 
+void sample_other_reaction(Particle& p)
+{
+  // For particles we don't handle, just kill the particle
+  p.E() = 0.0;
+  p.wgt() = 0.0;
+  p.event() = TallyEvent::ABSORB;
+}
+
 int sample_nuclide(Particle& p)
 {
   // Sample cumulative distribution function
@@ -834,6 +843,7 @@ void elastic_scatter(int i_nuclide, const Reaction& rx, double kT, Particle& p)
   // Transform back to LAB frame
   v_n += v_cm;
 
+  double E_in = p.E();
   p.E() = v_n.dot(v_n);
   vel = std::sqrt(p.E());
 
@@ -849,6 +859,13 @@ void elastic_scatter(int i_nuclide, const Reaction& rx, double kT, Particle& p)
   // -1 or 1
   if (std::abs(p.mu()) > 1.0)
     p.mu() = std::copysign(1.0, p.mu());
+
+  // Generate recoil
+  if (settings::recoil_production) {
+    double E_recoil = E_in - p.E();
+    Direction u_recoil = isotropic_direction(p.current_seed());
+    p.create_secondary(p.wgt(), u_recoil, E_recoil, nuc->particle_type());
+  }
 }
 
 void sab_scatter(int i_nuclide, int i_sab, Particle& p)

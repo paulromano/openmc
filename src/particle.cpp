@@ -84,10 +84,10 @@ bool Particle::create_secondary(
   // If energy is below cutoff for this particle, don't create secondary
   // particle
   int idx = type.transport_index();
-  if (idx == C_NONE) {
+  if (idx == C_NONE && !settings::recoil_production) {
     return false;
   }
-  if (E < settings::energy_cutoff[idx]) {
+  if (idx != C_NONE && E < settings::energy_cutoff[idx]) {
     return false;
   }
 
@@ -276,7 +276,7 @@ void Particle::event_advance()
 
   // Sample a distance to collision
   if (type() == ParticleType::electron() ||
-      type() == ParticleType::positron()) {
+      type() == ParticleType::positron() || type().is_nucleus()) {
     collision_distance() = material() == MATERIAL_VOID ? INFINITY : 0.0;
   } else if (macro_xs().total == 0.0) {
     collision_distance() = INFINITY;

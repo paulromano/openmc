@@ -58,6 +58,7 @@ namespace settings {
 
 // Boolean flags
 extern bool assume_separate;      //!< assume tallies are spatially separate?
+extern bool atomic_relaxation;    //!< atomic relaxation enabled?
 extern bool check_overlaps;       //!< check overlaps in geometry?
 extern bool collision_track;      //!< flag to use collision track feature?
 extern bool confidence_intervals; //!< use confidence intervals for results?
@@ -77,7 +78,7 @@ extern "C" bool output_summary;      //!< write summary.h5?
 extern bool output_tallies;          //!< write tallies.out?
 extern bool particle_restart_run;    //!< particle restart run?
 extern "C" bool photon_transport;    //!< photon transport turned on?
-extern bool atomic_relaxation;       //!< atomic relaxation enabled?
+extern bool recoil_production;       //!< produce recoil nuclei?
 extern "C" bool reduce_tallies;      //!< reduce tallies at end of batch?
 extern bool res_scat_on;             //!< use resonance upscattering method?
 extern "C" bool restart_run;         //!< restart run?

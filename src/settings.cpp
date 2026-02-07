@@ -46,6 +46,7 @@ namespace settings {
 
 // Default values for boolean flags
 bool assume_separate {false};
+bool atomic_relaxation {true};
 bool check_overlaps {false};
 bool collision_track {false};
 bool cmfd_run {false};
@@ -62,7 +63,7 @@ bool output_summary {true};
 bool output_tallies {true};
 bool particle_restart_run {false};
 bool photon_transport {false};
-bool atomic_relaxation {true};
+bool recoil_production {false};
 bool reduce_tallies {true};
 bool res_scat_on {false};
 bool restart_run {false};
