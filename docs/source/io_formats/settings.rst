@@ -671,6 +671,16 @@ found in the :ref:`random ray user guide <random_ray>`.
 
     *Default*: 1.0
 
+-------------------------------
+``<recoil_production>`` Element
+-------------------------------
+
+The ``<recoil_production>`` element has no attributes and has an accepted value
+of "true" or "false". If set to "true", recoil nuclei produced from nuclear
+reactions will be tracked as secondary particles during transport.
+
+  *Default*: false
+
 ----------------------------------
 ``<resonance_scattering>`` Element
 ----------------------------------
@@ -1415,7 +1425,6 @@ The ``<surface_grazing_ratio>`` element specifies the surface flux cosine
 substitution ratio.
 
   *Default*: 0.5
-
 ------------------------------
 ``<survival_biasing>`` Element
 ------------------------------

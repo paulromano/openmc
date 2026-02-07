@@ -245,6 +245,11 @@ class Settings:
             function.
 
         .. versionadded:: 0.15.0
+    recoil_production : bool
+        Indicate whether recoil nuclei produced from nuclear reactions should
+        be tracked.
+
+        .. versionadded:: 0.15.4
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
         (bool), 'method' (str), 'energy_min' (float), 'energy_max' (float), and
@@ -431,6 +436,7 @@ class Settings:
         self._surface_grazing_cutoff = None
         self._surface_grazing_ratio = None
         self._survival_biasing = None
+        self._recoil_production = None
         self._free_gas_threshold = None
 
         # Shannon entropy mesh
@@ -730,6 +736,15 @@ class Settings:
         cv.check_type('random plot color seed', seed, Integral)
         cv.check_greater_than('random plot color seed', seed, 0)
         self._plot_seed = seed
+
+    @property
+    def recoil_production(self) -> bool:
+        return self._recoil_production
+
+    @recoil_production.setter
+    def recoil_production(self, recoil_production: bool):
+        cv.check_type('recoil production', recoil_production, bool)
+        self._recoil_production = recoil_production
 
     @property
     def seed(self) -> int:
@@ -1736,6 +1751,11 @@ class Settings:
             element = ET.SubElement(root, "survival_biasing")
             element.text = str(self._survival_biasing).lower()
 
+    def _create_recoil_production_subelement(self, root):
+        if self._recoil_production is not None:
+            element = ET.SubElement(root, "recoil_production")
+            element.text = str(self._recoil_production).lower()
+
     def _create_cutoff_subelement(self, root):
         if self._cutoff is not None:
             element = ET.SubElement(root, "cutoff")
@@ -2278,6 +2298,11 @@ class Settings:
         if text is not None:
             self.survival_biasing = text in ('true', '1')
 
+    def _recoil_production_from_xml_element(self, root):
+        text = get_text(root, 'recoil_production')
+        if text is not None:
+            self.recoil_production = text in ('true', '1')
+
     def _cutoff_from_xml_element(self, root):
         elem = root.find('cutoff')
         if elem is not None:
@@ -2601,6 +2626,7 @@ class Settings:
         self._create_surface_grazing_cutoff_subelement(element)
         self._create_surface_grazing_ratio_subelement(element)
         self._create_survival_biasing_subelement(element)
+        self._create_recoil_production_subelement(element)
         self._create_cutoff_subelement(element)
         self._create_entropy_mesh_subelement(element, mesh_memo)
         self._create_trigger_subelement(element)
@@ -2720,6 +2746,7 @@ class Settings:
         settings._surface_grazing_cutoff_from_xml_element(elem)
         settings._surface_grazing_ratio_from_xml_element(elem)
         settings._survival_biasing_from_xml_element(elem)
+        settings._recoil_production_from_xml_element(elem)
         settings._cutoff_from_xml_element(elem)
         settings._entropy_mesh_from_xml_element(elem, meshes)
         settings._trigger_from_xml_element(elem)

@@ -710,6 +710,11 @@ void read_settings_xml(pugi::xml_node root)
     survival_biasing = get_node_value_bool(root, "survival_biasing");
   }
 
+  // Recoil production
+  if (check_for_node(root, "recoil_production")) {
+    recoil_production = get_node_value_bool(root, "recoil_production");
+  }
+
   // Probability tables
   if (check_for_node(root, "ptables")) {
     urr_ptables_on = get_node_value_bool(root, "ptables");
