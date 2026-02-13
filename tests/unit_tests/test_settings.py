@@ -36,6 +36,18 @@ def test_export_to_xml(run_in_tmpdir):
     s.ptables = True
     s.plot_seed = 100
     s.survival_biasing = True
+    s.recoil_production = True
+    s.recoil = {
+        'direction': 'momentum',
+        'multi_neutron_mode': 'independent_sampling',
+        'missing_products': 'neutron_only',
+        'capture_photons': 'phantom',
+        'include_photon_momentum': 'capture_only',
+        'bank_residual': True,
+        'bank_emitted_ions': False,
+        'q_sanity_check': True,
+        'fail_on_nonphysical': False,
+    }
     s.cutoff = {'weight': 0.25, 'weight_avg': 0.5, 'energy_neutron': 1.0e-5,
                 'survival_normalization': True,
                 'energy_photon': 1000.0, 'energy_electron': 1.0e-5,
@@ -128,6 +140,18 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.plot_seed == 100
     assert s.seed == 17
     assert s.survival_biasing
+    assert s.recoil_production
+    assert s.recoil == {
+        'direction': 'momentum',
+        'multi_neutron_mode': 'independent_sampling',
+        'missing_products': 'neutron_only',
+        'capture_photons': 'phantom',
+        'include_photon_momentum': 'capture_only',
+        'bank_residual': True,
+        'bank_emitted_ions': False,
+        'q_sanity_check': True,
+        'fail_on_nonphysical': False,
+    }
     assert s.cutoff == {'weight': 0.25, 'weight_avg': 0.5,
                         'survival_normalization': True,
                         'energy_neutron': 1.0e-5, 'energy_photon': 1000.0,
@@ -246,3 +270,24 @@ def test_properties_file_load(tmp_path, mpi_intracomm):
             assert mat.get_density('atom/b-cm') == pytest.approx(
                 orig_density * density_factor, rel=1e-5
             )
+
+
+def test_recoil_setting_validation():
+    s = openmc.Settings()
+
+    s.recoil = {'direction': 'momentum', 'bank_residual': True}
+    assert s.recoil == {'direction': 'momentum', 'bank_residual': True}
+
+    try:
+        s.recoil = {'direction': 'invalid'}
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError for invalid recoil direction")
+
+    try:
+        s.recoil = {'bad_key': True}
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError for unknown recoil key")

@@ -30,6 +30,24 @@ class RunMode(Enum):
 
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
 
+_RECOIL_OPTION_VALUES = {
+    'direction': {'momentum', 'isotropic'},
+    'multi_neutron_mode': {
+        'duplicate_as_transport', 'independent_sampling', 'one_particle'
+    },
+    'missing_products': {'neutron_only', 'phase_space', 'mf6'},
+    'capture_photons': {'phantom', 'banked'},
+    'include_photon_momentum': {'capture_only', 'all', 'none'},
+    'photon_multiplicity': {'per_interaction'},
+}
+
+_RECOIL_BOOL_OPTIONS = {
+    'bank_residual', 'bank_emitted_ions', 'q_sanity_check',
+    'fail_on_nonphysical'
+}
+
+_RECOIL_OPTIONS = set(_RECOIL_OPTION_VALUES) | _RECOIL_BOOL_OPTIONS
+
 
 class Settings:
     """Settings used for an OpenMC simulation.
@@ -250,6 +268,21 @@ class Settings:
         be tracked.
 
         .. versionadded:: 0.15.4
+    recoil : dict
+        Recoil model settings. Accepted keys are:
+
+        :direction: {'momentum', 'isotropic'}
+        :multi_neutron_mode: {'duplicate_as_transport', 'independent_sampling', 'one_particle'}
+        :missing_products: {'neutron_only', 'phase_space', 'mf6'}
+        :capture_photons: {'phantom', 'banked'}
+        :include_photon_momentum: {'capture_only', 'all', 'none'}
+        :photon_multiplicity: {'per_interaction'}
+        :bank_residual: bool
+        :bank_emitted_ions: bool
+        :q_sanity_check: bool
+        :fail_on_nonphysical: bool
+
+        .. versionadded:: 0.15.4
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
         (bool), 'method' (str), 'energy_min' (float), 'energy_max' (float), and
@@ -437,6 +470,7 @@ class Settings:
         self._surface_grazing_ratio = None
         self._survival_biasing = None
         self._recoil_production = None
+        self._recoil = {}
         self._free_gas_threshold = None
 
         # Shannon entropy mesh
@@ -786,6 +820,33 @@ class Settings:
         cv.check_type('surface grazing ratio', surface_grazing_ratio, float)
         cv.check_greater_than('surface grazing ratio', surface_grazing_ratio, 0.0)
         self._surface_grazing_ratio = surface_grazing_ratio
+
+    @property
+    def recoil(self) -> dict:
+        return self._recoil
+
+    @recoil.setter
+    def recoil(self, recoil: dict):
+        cv.check_type('recoil settings', recoil, Mapping)
+        unknown = set(recoil) - _RECOIL_OPTIONS
+        if unknown:
+            raise ValueError(f'Unrecognized recoil setting(s): {sorted(unknown)}')
+
+        validated = {}
+        for key, allowed in _RECOIL_OPTION_VALUES.items():
+            if key in recoil:
+                value = recoil[key]
+                cv.check_type(f'recoil setting "{key}"', value, str)
+                cv.check_value(f'recoil setting "{key}"', value, allowed)
+                validated[key] = value
+
+        for key in _RECOIL_BOOL_OPTIONS:
+            if key in recoil:
+                value = recoil[key]
+                cv.check_type(f'recoil setting "{key}"', value, bool)
+                validated[key] = value
+
+        self._recoil = validated
 
     @property
     def survival_biasing(self) -> bool:
@@ -1756,6 +1817,20 @@ class Settings:
             element = ET.SubElement(root, "recoil_production")
             element.text = str(self._recoil_production).lower()
 
+    def _create_recoil_subelement(self, root):
+        if self._recoil:
+            element = ET.SubElement(root, "recoil")
+            for key in ('direction', 'multi_neutron_mode', 'missing_products',
+                        'capture_photons', 'include_photon_momentum',
+                        'photon_multiplicity',
+                        'bank_residual', 'bank_emitted_ions',
+                        'q_sanity_check', 'fail_on_nonphysical'):
+                if key in self._recoil:
+                    subelement = ET.SubElement(element, key)
+                    value = self._recoil[key]
+                    subelement.text = str(value).lower() if isinstance(value, bool) \
+                        else str(value)
+
     def _create_cutoff_subelement(self, root):
         if self._cutoff is not None:
             element = ET.SubElement(root, "cutoff")
@@ -2303,6 +2378,20 @@ class Settings:
         if text is not None:
             self.recoil_production = text in ('true', '1')
 
+    def _recoil_from_xml_element(self, root):
+        elem = root.find('recoil')
+        if elem is not None:
+            recoil = {}
+            for key in _RECOIL_OPTION_VALUES:
+                value = get_text(elem, key)
+                if value is not None:
+                    recoil[key] = value
+            for key in _RECOIL_BOOL_OPTIONS:
+                value = get_text(elem, key)
+                if value is not None:
+                    recoil[key] = value in ('true', '1')
+            self.recoil = recoil
+
     def _cutoff_from_xml_element(self, root):
         elem = root.find('cutoff')
         if elem is not None:
@@ -2627,6 +2716,7 @@ class Settings:
         self._create_surface_grazing_ratio_subelement(element)
         self._create_survival_biasing_subelement(element)
         self._create_recoil_production_subelement(element)
+        self._create_recoil_subelement(element)
         self._create_cutoff_subelement(element)
         self._create_entropy_mesh_subelement(element, mesh_memo)
         self._create_trigger_subelement(element)
@@ -2747,6 +2837,7 @@ class Settings:
         settings._surface_grazing_ratio_from_xml_element(elem)
         settings._survival_biasing_from_xml_element(elem)
         settings._recoil_production_from_xml_element(elem)
+        settings._recoil_from_xml_element(elem)
         settings._cutoff_from_xml_element(elem)
         settings._entropy_mesh_from_xml_element(elem, meshes)
         settings._trigger_from_xml_element(elem)

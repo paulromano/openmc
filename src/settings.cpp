@@ -64,6 +64,7 @@ bool output_tallies {true};
 bool particle_restart_run {false};
 bool photon_transport {false};
 bool recoil_production {false};
+RecoilSettings recoil {};
 bool reduce_tallies {true};
 bool res_scat_on {false};
 bool restart_run {false};
@@ -713,6 +714,99 @@ void read_settings_xml(pugi::xml_node root)
   // Recoil production
   if (check_for_node(root, "recoil_production")) {
     recoil_production = get_node_value_bool(root, "recoil_production");
+  }
+  if (check_for_node(root, "recoil")) {
+    xml_node node_recoil = root.child("recoil");
+    if (check_for_node(node_recoil, "direction")) {
+      auto value = get_node_value(node_recoil, "direction", true, true);
+      if (value == "momentum") {
+        recoil.direction = RecoilDirection::momentum;
+      } else if (value == "isotropic") {
+        recoil.direction = RecoilDirection::isotropic;
+      } else {
+        fatal_error("Unrecognized recoil direction setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "multi_neutron_mode")) {
+      auto value =
+        get_node_value(node_recoil, "multi_neutron_mode", true, true);
+      if (value == "duplicate_as_transport") {
+        recoil.multi_neutron_mode =
+          RecoilMultiNeutronMode::duplicate_as_transport;
+      } else if (value == "independent_sampling") {
+        recoil.multi_neutron_mode =
+          RecoilMultiNeutronMode::independent_sampling;
+      } else if (value == "one_particle") {
+        recoil.multi_neutron_mode = RecoilMultiNeutronMode::one_particle;
+      } else {
+        fatal_error(
+          "Unrecognized recoil multi_neutron_mode setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "missing_products")) {
+      auto value = get_node_value(node_recoil, "missing_products", true, true);
+      if (value == "neutron_only") {
+        recoil.missing_products = RecoilMissingProducts::neutron_only;
+      } else if (value == "phase_space") {
+        recoil.missing_products = RecoilMissingProducts::phase_space;
+      } else if (value == "mf6") {
+        recoil.missing_products = RecoilMissingProducts::mf6;
+      } else {
+        fatal_error(
+          "Unrecognized recoil missing_products setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "capture_photons")) {
+      auto value = get_node_value(node_recoil, "capture_photons", true, true);
+      if (value == "phantom") {
+        recoil.capture_photons = RecoilCapturePhotons::phantom;
+      } else if (value == "banked") {
+        recoil.capture_photons = RecoilCapturePhotons::banked;
+      } else {
+        fatal_error(
+          "Unrecognized recoil capture_photons setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "include_photon_momentum")) {
+      auto value =
+        get_node_value(node_recoil, "include_photon_momentum", true, true);
+      if (value == "capture_only") {
+        recoil.include_photon_momentum =
+          RecoilIncludePhotonMomentum::capture_only;
+      } else if (value == "all") {
+        recoil.include_photon_momentum = RecoilIncludePhotonMomentum::all;
+      } else if (value == "none") {
+        recoil.include_photon_momentum = RecoilIncludePhotonMomentum::none;
+      } else {
+        fatal_error("Unrecognized recoil include_photon_momentum setting \"" +
+                    value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "photon_multiplicity")) {
+      auto value =
+        get_node_value(node_recoil, "photon_multiplicity", true, true);
+      if (value == "per_interaction") {
+        recoil.photon_multiplicity = RecoilPhotonMultiplicity::per_interaction;
+      } else {
+        fatal_error(
+          "Unrecognized recoil photon_multiplicity setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "bank_residual")) {
+      recoil.bank_residual = get_node_value_bool(node_recoil, "bank_residual");
+    }
+    if (check_for_node(node_recoil, "bank_emitted_ions")) {
+      recoil.bank_emitted_ions =
+        get_node_value_bool(node_recoil, "bank_emitted_ions");
+    }
+    if (check_for_node(node_recoil, "q_sanity_check")) {
+      recoil.q_sanity_check =
+        get_node_value_bool(node_recoil, "q_sanity_check");
+    }
+    if (check_for_node(node_recoil, "fail_on_nonphysical")) {
+      recoil.fail_on_nonphysical =
+        get_node_value_bool(node_recoil, "fail_on_nonphysical");
+    }
   }
 
   // Probability tables

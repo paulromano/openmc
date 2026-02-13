@@ -32,9 +32,524 @@
 
 #include "openmc/tensor.h"
 #include <algorithm> // for max, min, max_element
+#include <cctype>    // for tolower, isdigit
 #include <cmath>     // for sqrt, exp, log, abs, copysign
 
 namespace openmc {
+
+namespace {
+
+double particle_mass_ev(ParticleType type)
+{
+  switch (type.pdg_number()) {
+  case PDG_NEUTRON:
+  case PDG_PROTON:
+    return MASS_NEUTRON_EV;
+  case PDG_DEUTERON:
+    return 2.0 * MASS_NEUTRON_EV;
+  case PDG_TRITON:
+    return 3.0 * MASS_NEUTRON_EV;
+  case PDG_ALPHA:
+    return 4.0 * MASS_NEUTRON_EV;
+  case PDG_PHOTON:
+    return 0.0;
+  default:
+    if (type.is_nucleus()) {
+      int A = (type.pdg_number() / 10) % 1000;
+      if (A > 0) {
+        return A * MASS_NEUTRON_EV;
+      }
+    }
+    return MASS_NEUTRON_EV;
+  }
+}
+
+Direction momentum_from_kinetic_energy(double mass, double E, Direction u)
+{
+  if (mass <= 0.0 || E <= 0.0) {
+    return {};
+  }
+  return std::sqrt(2.0 * mass * E) * u;
+}
+
+Direction neutron_momentum(double E, Direction u)
+{
+  return momentum_from_kinetic_energy(MASS_NEUTRON_EV, E, u);
+}
+
+Direction photon_momentum(double E, Direction u)
+{
+  if (E <= 0.0) {
+    return {};
+  }
+  return E * u;
+}
+
+struct PhotonMomentumInfo {
+  Direction momentum {};
+  double energy {0.0};
+};
+
+bool parse_emitted_particles_from_channel(std::string channel, int& n_neutron,
+  int& n_proton, int& n_deuteron, int& n_triton, int& n_he3, int& n_alpha)
+{
+  n_neutron = 0;
+  n_proton = 0;
+  n_deuteron = 0;
+  n_triton = 0;
+  n_he3 = 0;
+  n_alpha = 0;
+
+  for (auto& c : channel) {
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  }
+
+  if (channel == "gamma") {
+    return true;
+  }
+
+  int i = 0;
+  while (i < channel.size()) {
+    int multiplicity = 0;
+    while (i < channel.size() &&
+           std::isdigit(static_cast<unsigned char>(channel[i]))) {
+      multiplicity = 10 * multiplicity + (channel[i] - '0');
+      ++i;
+    }
+    if (multiplicity == 0) {
+      multiplicity = 1;
+    }
+    if (i >= channel.size()) {
+      return false;
+    }
+
+    if (i + 2 < channel.size() && channel.substr(i, 3) == "3he") {
+      n_he3 += multiplicity;
+      i += 3;
+      continue;
+    }
+    if (i + 4 < channel.size() && channel.substr(i, 5) == "gamma") {
+      i += 5;
+      continue;
+    }
+
+    switch (channel[i]) {
+    case 'n':
+      n_neutron += multiplicity;
+      ++i;
+      break;
+    case 'p':
+      n_proton += multiplicity;
+      ++i;
+      break;
+    case 'd':
+      n_deuteron += multiplicity;
+      ++i;
+      break;
+    case 't':
+      n_triton += multiplicity;
+      ++i;
+      break;
+    case 'a':
+      n_alpha += multiplicity;
+      ++i;
+      break;
+    default:
+      return false;
+    }
+  }
+  return true;
+}
+
+bool emitted_particle_counts(int mt, int& n_neutron, int& n_proton,
+  int& n_deuteron, int& n_triton, int& n_he3, int& n_alpha)
+{
+  n_neutron = 0;
+  n_proton = 0;
+  n_deuteron = 0;
+  n_triton = 0;
+  n_he3 = 0;
+  n_alpha = 0;
+
+  if (mt == ELASTIC || (mt >= N_N1 && mt <= N_NC)) {
+    n_neutron = 1;
+    return true;
+  }
+  if (mt >= N_P0 && mt <= N_PC) {
+    n_proton = 1;
+    return true;
+  }
+  if (mt >= N_D0 && mt <= N_DC) {
+    n_deuteron = 1;
+    return true;
+  }
+  if (mt >= N_T0 && mt <= N_TC) {
+    n_triton = 1;
+    return true;
+  }
+  if (mt >= N_3HE0 && mt <= N_3HEC) {
+    n_he3 = 1;
+    return true;
+  }
+  if (mt >= N_A0 && mt <= N_AC) {
+    n_alpha = 1;
+    return true;
+  }
+  if (mt >= N_2N0 && mt <= N_2NC) {
+    n_neutron = 2;
+    return true;
+  }
+
+  std::string name = reaction_name(mt);
+  if (name.size() < 5 || name[0] != '(' || name[1] != 'n' || name[2] != ',') {
+    return false;
+  }
+  if (name.back() != ')') {
+    return false;
+  }
+
+  std::string channel = name.substr(3, name.size() - 4);
+  return parse_emitted_particles_from_channel(
+    channel, n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha);
+}
+
+ParticleType residual_particle_type(const Nuclide& nuc, int mt)
+{
+  int n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha;
+  if (!emitted_particle_counts(
+        mt, n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha)) {
+    return nuc.particle_type();
+  }
+
+  int emitted_A = n_neutron + n_proton + 2 * n_deuteron + 3 * n_triton +
+                  3 * n_he3 + 4 * n_alpha;
+  int emitted_Z = n_proton + n_deuteron + n_triton + 2 * n_he3 + 2 * n_alpha;
+
+  int Z_res = nuc.Z_ - emitted_Z;
+  int A_res = nuc.A_ + 1 - emitted_A;
+  if (Z_res <= 0 || A_res <= 0) {
+    return nuc.particle_type();
+  }
+  return ParticleType {Z_res, A_res, 0};
+}
+
+bool create_recoil_secondary(Particle& p, const Nuclide& nuc, double weight,
+  Direction p_recoil, ParticleType type)
+{
+  if (!settings::recoil_production || !settings::recoil.bank_residual ||
+      weight <= 0.0) {
+    return false;
+  }
+
+  double p2 = p_recoil.dot(p_recoil);
+  if (!std::isfinite(p2) || p2 <= 0.0) {
+    return false;
+  }
+
+  double mass = particle_mass_ev(type);
+  if (mass <= 0.0 || !std::isfinite(mass)) {
+    mass = nuc.awr_ * MASS_NEUTRON_EV;
+  }
+  if (mass <= 0.0 || !std::isfinite(mass)) {
+    return false;
+  }
+
+  double E_recoil = p2 / (2.0 * mass);
+  if (!std::isfinite(E_recoil) || E_recoil <= 0.0) {
+    return false;
+  }
+
+  Direction u_recoil;
+  if (settings::recoil.direction == RecoilDirection::momentum) {
+    u_recoil = p_recoil / std::sqrt(p2);
+  } else {
+    u_recoil = isotropic_direction(p.current_seed());
+  }
+
+  return p.create_secondary(weight, u_recoil, E_recoil, type);
+}
+
+void check_recoil_sanity(
+  const Nuclide& nuc, const Reaction& rx, double E_in, double emitted_kinetic)
+{
+  if (!settings::recoil.q_sanity_check) {
+    return;
+  }
+
+  double available = E_in + rx.q_value_;
+  if (!std::isfinite(available) || available <= 0.0) {
+    return;
+  }
+
+  if (emitted_kinetic > available * (1.0 + 1e-6)) {
+    static int n_warnings = 0;
+    if (n_warnings < 10) {
+      warning(fmt::format(
+        "Recoil Q check: emitted kinetic energy exceeds E + Q for {} MT={} "
+        "(E={} eV, Q={} eV, emitted={} eV).",
+        nuc.name_, rx.mt_, E_in, rx.q_value_, emitted_kinetic));
+      ++n_warnings;
+    }
+    if (settings::recoil.fail_on_nonphysical) {
+      fatal_error(
+        "Recoil nonphysical kinematics encountered with fail_on_nonphysical.");
+    }
+  }
+}
+
+const Reaction* sample_disappearance_reaction(int i_nuclide, Particle& p)
+{
+  const auto& nuc {data::nuclides[i_nuclide]};
+  const auto& micro {p.neutron_xs(i_nuclide)};
+
+  double total = 0.0;
+  for (const auto& rx : nuc->reactions_) {
+    if (rx->redundant_) {
+      continue;
+    }
+    if (!is_disappearance(rx->mt_) || is_fission(rx->mt_)) {
+      continue;
+    }
+    total += rx->xs(micro);
+  }
+  if (total <= 0.0) {
+    return nullptr;
+  }
+
+  double cutoff = prn(p.current_seed()) * total;
+  double prob = 0.0;
+  for (const auto& rx : nuc->reactions_) {
+    if (rx->redundant_) {
+      continue;
+    }
+    if (!is_disappearance(rx->mt_) || is_fission(rx->mt_)) {
+      continue;
+    }
+    prob += rx->xs(micro);
+    if (prob > cutoff) {
+      return rx.get();
+    }
+  }
+
+  return nullptr;
+}
+
+bool choose_charged_absorption_product(
+  int mt, ParticleType& emitted_type, bool& has_multiple_products)
+{
+  int n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha;
+  has_multiple_products = false;
+  if (!emitted_particle_counts(
+        mt, n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha)) {
+    return false;
+  }
+  if (n_neutron != 0) {
+    return false;
+  }
+
+  int n_charged = n_proton + n_deuteron + n_triton + n_he3 + n_alpha;
+  if (n_charged == 0) {
+    return false;
+  }
+  if (n_charged != 1) {
+    has_multiple_products = true;
+    return false;
+  }
+
+  if (n_proton == 1) {
+    emitted_type = ParticleType::proton();
+  } else if (n_deuteron == 1) {
+    emitted_type = ParticleType::deuteron();
+  } else if (n_triton == 1) {
+    emitted_type = ParticleType::triton();
+  } else if (n_he3 == 1) {
+    emitted_type = ParticleType {2, 3, 0};
+  } else if (n_alpha == 1) {
+    emitted_type = ParticleType::alpha();
+  } else {
+    return false;
+  }
+  return true;
+}
+
+bool sample_two_body_charged_product(const Nuclide& nuc, const Reaction& rx,
+  ParticleType emitted_type, double E_in, Direction u_in, uint64_t* seed,
+  Direction& p_emitted, double& E_emitted, Direction& u_emitted)
+{
+  double m_n = MASS_NEUTRON_EV;
+  double m_target = nuc.awr_ * MASS_NEUTRON_EV;
+  double m_emitted = particle_mass_ev(emitted_type);
+  double m_residual = particle_mass_ev(residual_particle_type(nuc, rx.mt_));
+
+  if (m_target <= 0.0 || m_emitted <= 0.0 || m_residual <= 0.0) {
+    return false;
+  }
+
+  double E_cm = E_in * m_target / (m_n + m_target);
+  double available = E_cm + rx.q_value_;
+  if (available <= 0.0) {
+    return false;
+  }
+
+  double mu_final = m_emitted * m_residual / (m_emitted + m_residual);
+  double p_cm = std::sqrt(2.0 * mu_final * available);
+  Direction u_cm = isotropic_direction(seed);
+
+  Direction p_in = neutron_momentum(E_in, u_in);
+  Direction v_cm = p_in / (m_n + m_target);
+  Direction v_emitted = v_cm + (p_cm / m_emitted) * u_cm;
+  p_emitted = m_emitted * v_emitted;
+
+  double p2 = p_emitted.dot(p_emitted);
+  if (p2 <= 0.0) {
+    return false;
+  }
+  E_emitted = p2 / (2.0 * m_emitted);
+  if (!std::isfinite(E_emitted) || E_emitted <= 0.0) {
+    return false;
+  }
+
+  u_emitted = p_emitted / std::sqrt(p2);
+  return true;
+}
+
+bool recoil_includes_photon_momentum(int mt)
+{
+  switch (settings::recoil.include_photon_momentum) {
+  case RecoilIncludePhotonMomentum::none:
+    return false;
+  case RecoilIncludePhotonMomentum::all:
+    return true;
+  case RecoilIncludePhotonMomentum::capture_only:
+    return mt == N_GAMMA;
+  }
+  return false;
+}
+
+PhotonMomentumInfo sample_capture_photon_momentum(
+  const Reaction& rx, double E_in, Direction u_in, uint64_t* seed)
+{
+  PhotonMomentumInfo info;
+  for (const auto& product : rx.products_) {
+    if (!product.particle_.is_photon()) {
+      continue;
+    }
+
+    double y = (*product.yield_)(E_in);
+    if (y <= 0.0) {
+      continue;
+    }
+
+    int n = static_cast<int>(y);
+    if (prn(seed) < y - n) {
+      ++n;
+    }
+
+    for (int i = 0; i < n; ++i) {
+      double E_gamma;
+      double mu_gamma;
+      product.sample(E_in, E_gamma, mu_gamma, seed);
+      Direction u_gamma = rotate_angle(u_in, mu_gamma, nullptr, seed);
+      info.momentum += photon_momentum(E_gamma, u_gamma);
+      info.energy += E_gamma;
+    }
+  }
+  return info;
+}
+
+PhotonMomentumInfo banked_capture_photon_momentum(
+  const Particle& p, double wgt_in)
+{
+  PhotonMomentumInfo info;
+  int start = p.secondary_bank_index();
+  int end = start + p.n_secondaries();
+
+  for (int i = start; i < end; ++i) {
+    const auto& site = p.secondary_bank(i);
+    if (!site.particle.is_photon()) {
+      continue;
+    }
+
+    double multiplicity = 1.0;
+    if (wgt_in > 0.0) {
+      multiplicity = site.wgt / wgt_in;
+      if (settings::run_mode == RunMode::EIGENVALUE && simulation::keff > 0.0) {
+        multiplicity /= simulation::keff;
+      }
+    }
+    multiplicity = std::max(0.0, multiplicity);
+    info.momentum += multiplicity * photon_momentum(site.E, site.u);
+    info.energy += multiplicity * site.E;
+  }
+  return info;
+}
+
+void create_absorption_recoil(Particle& p, int i_nuclide, double recoil_weight,
+  double E_in, Direction u_in, double incident_wgt, const Reaction* rx)
+{
+  if (!settings::recoil_production || recoil_weight <= 0.0) {
+    return;
+  }
+
+  const auto& nuc {data::nuclides[i_nuclide]};
+  if (!rx) {
+    rx = sample_disappearance_reaction(i_nuclide, p);
+  }
+  if (!rx) {
+    return;
+  }
+
+  Direction p_in = neutron_momentum(E_in, u_in);
+  Direction p_recoil = p_in;
+  double emitted_kinetic = 0.0;
+  ParticleType recoil_type = residual_particle_type(*nuc, rx->mt_);
+
+  if (rx->mt_ == N_GAMMA) {
+    if (recoil_includes_photon_momentum(rx->mt_)) {
+      PhotonMomentumInfo gamma_info;
+      if (settings::recoil.capture_photons == RecoilCapturePhotons::phantom) {
+        gamma_info =
+          sample_capture_photon_momentum(*rx, E_in, u_in, p.current_seed());
+      } else {
+        gamma_info = banked_capture_photon_momentum(p, incident_wgt);
+      }
+      p_recoil -= gamma_info.momentum;
+      emitted_kinetic = gamma_info.energy;
+    }
+  } else {
+    ParticleType emitted_type;
+    bool has_multiple_products = false;
+    if (choose_charged_absorption_product(
+          rx->mt_, emitted_type, has_multiple_products)) {
+      Direction p_emitted;
+      Direction u_emitted;
+      double E_emitted;
+      if (sample_two_body_charged_product(*nuc, *rx, emitted_type, E_in, u_in,
+            p.current_seed(), p_emitted, E_emitted, u_emitted)) {
+        p_recoil -= p_emitted;
+        emitted_kinetic = E_emitted;
+        if (settings::recoil.bank_emitted_ions) {
+          p.create_secondary(recoil_weight, u_emitted, E_emitted, emitted_type);
+        }
+      } else if (settings::recoil.fail_on_nonphysical) {
+        fatal_error(
+          "Failed to sample two-body charged absorption recoil kinematics.");
+      }
+    } else if (has_multiple_products) {
+      static bool warned_multicharged_absorption {false};
+      if (!warned_multicharged_absorption) {
+        warning("Multi-particle charged absorption recoil fallback: using "
+                "compound recoil from incident neutron momentum only.");
+        warned_multicharged_absorption = true;
+      }
+    }
+  }
+
+  check_recoil_sanity(*nuc, *rx, E_in, emitted_kinetic);
+  create_recoil_secondary(p, *nuc, recoil_weight, p_recoil, recoil_type);
+}
+
+} // namespace
 
 //==============================================================================
 // Non-member functions
@@ -680,10 +1195,25 @@ void sample_photon_product(
 
 void absorption(Particle& p, int i_nuclide)
 {
+  double E_in = p.E();
+  Direction u_in = p.u();
+  double wgt_in = p.wgt();
+  const Reaction* absorption_rx = nullptr;
+
   if (settings::survival_biasing) {
     // Determine weight absorbed in survival biasing
     const double wgt_absorb = p.wgt() * p.neutron_xs(i_nuclide).absorption /
                               p.neutron_xs(i_nuclide).total;
+
+    if (wgt_absorb > 0.0) {
+      absorption_rx = sample_disappearance_reaction(i_nuclide, p);
+    }
+
+    // Generate recoil with absorbed weight in survival biasing mode
+    if (wgt_absorb > 0.0 && !p.fission()) {
+      create_absorption_recoil(
+        p, i_nuclide, wgt_absorb, E_in, u_in, wgt_in, absorption_rx);
+    }
 
     // Adjust weight of particle by probability of absorption
     p.wgt() -= wgt_absorb;
@@ -698,6 +1228,17 @@ void absorption(Particle& p, int i_nuclide)
     // See if disappearance reaction happens
     if (p.neutron_xs(i_nuclide).absorption >
         prn(p.current_seed()) * p.neutron_xs(i_nuclide).total) {
+      absorption_rx = sample_disappearance_reaction(i_nuclide, p);
+      if (!p.fission() && absorption_rx) {
+        p.event_mt() = absorption_rx->mt_;
+      }
+
+      // Generate recoil for explicit absorption event
+      if (!p.fission()) {
+        create_absorption_recoil(
+          p, i_nuclide, p.wgt(), E_in, u_in, wgt_in, absorption_rx);
+      }
+
       // Score absorption estimate of keff
       if (settings::run_mode == RunMode::EIGENVALUE) {
         p.keff_tally_absorption() += p.wgt() *
@@ -707,7 +1248,7 @@ void absorption(Particle& p, int i_nuclide)
 
       p.wgt() = 0.0;
       p.event() = TallyEvent::ABSORB;
-      if (!p.fission()) {
+      if (!p.fission() && !absorption_rx) {
         p.event_mt() = N_DISAPPEAR;
       }
     }
@@ -798,6 +1339,7 @@ void elastic_scatter(int i_nuclide, const Reaction& rx, double kT, Particle& p)
 {
   // get pointer to nuclide
   const auto& nuc {data::nuclides[i_nuclide]};
+  Direction u_in = p.u();
 
   double vel = std::sqrt(p.E());
   double awr = nuc->awr_;
@@ -862,9 +1404,9 @@ void elastic_scatter(int i_nuclide, const Reaction& rx, double kT, Particle& p)
 
   // Generate recoil
   if (settings::recoil_production) {
-    double E_recoil = E_in - p.E();
-    Direction u_recoil = isotropic_direction(p.current_seed());
-    p.create_secondary(p.wgt(), u_recoil, E_recoil, nuc->particle_type());
+    Direction p_recoil =
+      neutron_momentum(E_in, u_in) - neutron_momentum(p.E(), p.u());
+    create_recoil_secondary(p, *nuc, p.wgt(), p_recoil, nuc->particle_type());
   }
 }
 
@@ -1169,40 +1711,38 @@ void sample_fission_neutron(
 
 void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)
 {
-  // copy energy of neutron
+  Direction u_in = p.u();
   double E_in = p.E();
 
-  // sample outgoing energy and scattering cosine
-  double E;
-  double mu;
-  rx.products_[0].sample(E_in, E, mu, p.current_seed());
+  auto sample_neutron_out = [&](
+                              double& E_out, double& mu_out, Direction& u_out) {
+    rx.products_[0].sample(E_in, E_out, mu_out, p.current_seed());
 
-  // if scattering system is in center-of-mass, transfer cosine of scattering
-  // angle and outgoing energy from CM to LAB
-  if (rx.scatter_in_cm_) {
-    double E_cm = E;
-
-    // determine outgoing energy in lab
-    double A = nuc.awr_;
-    E = E_cm + (E_in + 2.0 * mu * (A + 1.0) * std::sqrt(E_in * E_cm)) /
+    if (rx.scatter_in_cm_) {
+      double E_cm = E_out;
+      double A = nuc.awr_;
+      E_out =
+        E_cm + (E_in + 2.0 * mu_out * (A + 1.0) * std::sqrt(E_in * E_cm)) /
                  ((A + 1.0) * (A + 1.0));
+      mu_out = mu_out * std::sqrt(E_cm / E_out) +
+               1.0 / (A + 1.0) * std::sqrt(E_in / E_out);
+    }
 
-    // determine outgoing angle in lab
-    mu = mu * std::sqrt(E_cm / E) + 1.0 / (A + 1.0) * std::sqrt(E_in / E);
-  }
+    if (std::abs(mu_out) > 1.0) {
+      mu_out = std::copysign(1.0, mu_out);
+    }
 
-  // Because of floating-point roundoff, it may be possible for mu to be
-  // outside of the range [-1,1). In these cases, we just set mu to exactly -1
-  // or 1
-  if (std::abs(mu) > 1.0)
-    mu = std::copysign(1.0, mu);
+    u_out = rotate_angle(u_in, mu_out, nullptr, p.current_seed());
+  };
 
-  // Set outgoing energy and scattering angle
-  p.E() = E;
-  p.mu() = mu;
+  double E_out;
+  double mu_out;
+  Direction u_out;
+  sample_neutron_out(E_out, mu_out, u_out);
 
-  // change direction of particle
-  p.u() = rotate_angle(p.u(), mu, nullptr, p.current_seed());
+  p.E() = E_out;
+  p.mu() = mu_out;
+  p.u() = u_out;
 
   // evaluate yield
   double yield = (*rx.products_[0].yield_)(E_in);
@@ -1215,6 +1755,68 @@ void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)
     // Otherwise, change weight of particle based on yield
     p.wgt() *= yield;
   }
+
+  if (!settings::recoil_production) {
+    return;
+  }
+
+  Direction p_recoil = neutron_momentum(E_in, u_in);
+  double emitted_kinetic = 0.0;
+
+  int n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha;
+  bool have_counts = emitted_particle_counts(
+    rx.mt_, n_neutron, n_proton, n_deuteron, n_triton, n_he3, n_alpha);
+
+  bool has_unmodeled_charged_products =
+    have_counts && n_neutron > 0 &&
+    (n_proton + n_deuteron + n_triton + n_he3 + n_alpha > 0);
+  if (has_unmodeled_charged_products && settings::recoil.missing_products !=
+                                          RecoilMissingProducts::neutron_only) {
+    static bool warned_missing_products {false};
+    if (!warned_missing_products) {
+      warning("Recoil setting missing_products mode is not implemented for "
+              "charged-particle channels without MF=6 in this build; "
+              "falling back to neutron_only.");
+      warned_missing_products = true;
+    }
+  }
+
+  if (settings::recoil.multi_neutron_mode ==
+      RecoilMultiNeutronMode::one_particle) {
+    p_recoil -= neutron_momentum(E_out, u_out);
+    emitted_kinetic += E_out;
+  } else if (settings::recoil.multi_neutron_mode ==
+             RecoilMultiNeutronMode::duplicate_as_transport) {
+    double multiplicity = std::max(0.0, yield);
+    p_recoil -= multiplicity * neutron_momentum(E_out, u_out);
+    emitted_kinetic += multiplicity * E_out;
+  } else {
+    int n_secondary = 0;
+    if (std::floor(yield) == yield && yield > 0.0) {
+      n_secondary = static_cast<int>(std::round(yield)) - 1;
+    }
+    p_recoil -= neutron_momentum(E_out, u_out);
+    emitted_kinetic += E_out;
+
+    if (n_secondary > 0) {
+      for (int i = 0; i < n_secondary; ++i) {
+        double E_extra;
+        double mu_extra;
+        Direction u_extra;
+        sample_neutron_out(E_extra, mu_extra, u_extra);
+        p_recoil -= neutron_momentum(E_extra, u_extra);
+        emitted_kinetic += E_extra;
+      }
+    } else if (yield > 1.0) {
+      double extra = yield - 1.0;
+      p_recoil -= extra * neutron_momentum(E_out, u_out);
+      emitted_kinetic += extra * E_out;
+    }
+  }
+
+  check_recoil_sanity(nuc, rx, E_in, emitted_kinetic);
+  create_recoil_secondary(
+    p, nuc, p.wgt(), p_recoil, residual_particle_type(nuc, rx.mt_));
 }
 
 void sample_secondary_photons(Particle& p, int i_nuclide)

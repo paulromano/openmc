@@ -32,6 +32,54 @@ enum class IFPParameter {
   GenerationTime,
 };
 
+enum class RecoilDirection {
+  momentum,
+  isotropic,
+};
+
+enum class RecoilMultiNeutronMode {
+  duplicate_as_transport,
+  independent_sampling,
+  one_particle,
+};
+
+enum class RecoilMissingProducts {
+  neutron_only,
+  phase_space,
+  mf6,
+};
+
+enum class RecoilCapturePhotons {
+  phantom,
+  banked,
+};
+
+enum class RecoilIncludePhotonMomentum {
+  capture_only,
+  all,
+  none,
+};
+
+enum class RecoilPhotonMultiplicity {
+  per_interaction,
+};
+
+struct RecoilSettings {
+  RecoilDirection direction {RecoilDirection::momentum};
+  RecoilMultiNeutronMode multi_neutron_mode {
+    RecoilMultiNeutronMode::duplicate_as_transport};
+  RecoilMissingProducts missing_products {RecoilMissingProducts::neutron_only};
+  RecoilCapturePhotons capture_photons {RecoilCapturePhotons::phantom};
+  RecoilIncludePhotonMomentum include_photon_momentum {
+    RecoilIncludePhotonMomentum::capture_only};
+  RecoilPhotonMultiplicity photon_multiplicity {
+    RecoilPhotonMultiplicity::per_interaction};
+  bool bank_residual {true};
+  bool bank_emitted_ions {false};
+  bool q_sanity_check {true};
+  bool fail_on_nonphysical {false};
+};
+
 struct CollisionTrackConfig {
   bool mcpl_write {false}; //!< Write collision tracks using MCPL?
   std::unordered_set<int>
@@ -79,6 +127,7 @@ extern bool output_tallies;          //!< write tallies.out?
 extern bool particle_restart_run;    //!< particle restart run?
 extern "C" bool photon_transport;    //!< photon transport turned on?
 extern bool recoil_production;       //!< produce recoil nuclei?
+extern RecoilSettings recoil;        //!< recoil modeling options
 extern "C" bool reduce_tallies;      //!< reduce tallies at end of batch?
 extern bool res_scat_on;             //!< use resonance upscattering method?
 extern "C" bool restart_run;         //!< restart run?
