@@ -1425,6 +1425,7 @@ The ``<surface_grazing_ratio>`` element specifies the surface flux cosine
 substitution ratio.
 
   *Default*: 0.5
+
 ------------------------------
 ``<survival_biasing>`` Element
 ------------------------------
