@@ -465,7 +465,7 @@ PhotonMomentumInfo banked_capture_photon_momentum(
   int end = start + p.n_secondaries();
 
   for (int i = start; i < end; ++i) {
-    const auto& site = p.secondary_bank(i);
+    const auto& site = p.local_secondary_bank(i);
     if (!site.particle.is_photon()) {
       continue;
     }
