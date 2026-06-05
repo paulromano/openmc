@@ -40,7 +40,8 @@ def test_export_to_xml(run_in_tmpdir):
     s.recoil = {
         'direction': 'momentum',
         'multi_neutron_mode': 'independent_sampling',
-        'missing_products': 'neutron_only',
+        'missing_products': 'statistical',
+        'charged_particle_model': 'evaporation_preeq',
         'capture_photons': 'phantom',
         'include_photon_momentum': 'capture_only',
         'bank_residual': True,
@@ -144,7 +145,8 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.recoil == {
         'direction': 'momentum',
         'multi_neutron_mode': 'independent_sampling',
-        'missing_products': 'neutron_only',
+        'missing_products': 'statistical',
+        'charged_particle_model': 'evaporation_preeq',
         'capture_photons': 'phantom',
         'include_photon_momentum': 'capture_only',
         'bank_residual': True,
@@ -278,12 +280,28 @@ def test_recoil_setting_validation():
     s.recoil = {'direction': 'momentum', 'bank_residual': True}
     assert s.recoil == {'direction': 'momentum', 'bank_residual': True}
 
+    s.recoil = {
+        'missing_products': 'statistical',
+        'charged_particle_model': 'evaporation',
+    }
+    assert s.recoil == {
+        'missing_products': 'statistical',
+        'charged_particle_model': 'evaporation',
+    }
+
     try:
         s.recoil = {'direction': 'invalid'}
     except ValueError:
         pass
     else:
         raise AssertionError("Expected ValueError for invalid recoil direction")
+
+    try:
+        s.recoil = {'charged_particle_model': 'invalid'}
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Expected ValueError for invalid charged particle model")
 
     try:
         s.recoil = {'bad_key': True}

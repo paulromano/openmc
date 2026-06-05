@@ -35,7 +35,10 @@ _RECOIL_OPTION_VALUES = {
     'multi_neutron_mode': {
         'duplicate_as_transport', 'independent_sampling', 'one_particle'
     },
-    'missing_products': {'neutron_only', 'phase_space', 'mf6'},
+    'missing_products': {'neutron_only', 'statistical', 'phase_space', 'mf6'},
+    'charged_particle_model': {
+        'two_body', 'evaporation', 'evaporation_preeq'
+    },
     'capture_photons': {'phantom', 'banked'},
     'include_photon_momentum': {'capture_only', 'all', 'none'},
     'photon_multiplicity': {'per_interaction'},
@@ -273,7 +276,8 @@ class Settings:
 
         :direction: {'momentum', 'isotropic'}
         :multi_neutron_mode: {'duplicate_as_transport', 'independent_sampling', 'one_particle'}
-        :missing_products: {'neutron_only', 'phase_space', 'mf6'}
+        :missing_products: {'neutron_only', 'statistical', 'phase_space', 'mf6'}
+        :charged_particle_model: {'two_body', 'evaporation', 'evaporation_preeq'}
         :capture_photons: {'phantom', 'banked'}
         :include_photon_momentum: {'capture_only', 'all', 'none'}
         :photon_multiplicity: {'per_interaction'}
@@ -1821,6 +1825,7 @@ class Settings:
         if self._recoil:
             element = ET.SubElement(root, "recoil")
             for key in ('direction', 'multi_neutron_mode', 'missing_products',
+                        'charged_particle_model',
                         'capture_photons', 'include_photon_momentum',
                         'photon_multiplicity',
                         'bank_residual', 'bank_emitted_ions',

@@ -45,8 +45,15 @@ enum class RecoilMultiNeutronMode {
 
 enum class RecoilMissingProducts {
   neutron_only,
+  statistical,
   phase_space,
   mf6,
+};
+
+enum class RecoilChargedParticleModel {
+  two_body,
+  evaporation,
+  evaporation_preeq,
 };
 
 enum class RecoilCapturePhotons {
@@ -68,7 +75,9 @@ struct RecoilSettings {
   RecoilDirection direction {RecoilDirection::momentum};
   RecoilMultiNeutronMode multi_neutron_mode {
     RecoilMultiNeutronMode::duplicate_as_transport};
-  RecoilMissingProducts missing_products {RecoilMissingProducts::neutron_only};
+  RecoilMissingProducts missing_products {RecoilMissingProducts::statistical};
+  RecoilChargedParticleModel charged_particle_model {
+    RecoilChargedParticleModel::evaporation_preeq};
   RecoilCapturePhotons capture_photons {RecoilCapturePhotons::phantom};
   RecoilIncludePhotonMomentum include_photon_momentum {
     RecoilIncludePhotonMomentum::capture_only};

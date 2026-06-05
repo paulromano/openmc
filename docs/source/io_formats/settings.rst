@@ -681,6 +681,82 @@ reactions will be tracked as secondary particles during transport.
 
   *Default*: false
 
+--------------------
+``<recoil>`` Element
+--------------------
+
+The ``<recoil>`` element contains recoil-modeling options used when
+``<recoil_production>`` is set to "true".
+
+  :direction:
+    Recoil direction model. Accepted values are "momentum" and "isotropic".
+
+    *Default*: "momentum"
+
+  :multi_neutron_mode:
+    Momentum model for reactions with multiple outgoing neutrons. Accepted
+    values are "duplicate_as_transport", "independent_sampling", and
+    "one_particle".
+
+    *Default*: "duplicate_as_transport"
+
+  :missing_products:
+    Treatment for products that are not sampled by the neutron transport model.
+    Accepted values are "neutron_only", "statistical", "phase_space", and
+    "mf6". The "statistical" option samples missing charged particles from the
+    model selected by ``charged_particle_model``. The "phase_space" and "mf6"
+    options are reserved for future charged-particle product data treatments and
+    currently fall back to "neutron_only" where unsupported.
+
+    *Default*: "statistical"
+
+  :charged_particle_model:
+    Approximation used for charged particles that are not available from product
+    distributions. Accepted values are "two_body", "evaporation", and
+    "evaporation_preeq". Discrete charged-particle level reactions use two-body
+    kinematics regardless of this setting.
+
+    *Default*: "evaporation_preeq"
+
+  :capture_photons:
+    Photon source used for capture recoil. Accepted values are "phantom" and
+    "banked".
+
+    *Default*: "phantom"
+
+  :include_photon_momentum:
+    Reactions for which photon momentum is included in recoil kinematics.
+    Accepted values are "capture_only", "all", and "none".
+
+    *Default*: "capture_only"
+
+  :photon_multiplicity:
+    Multiplicity convention used when photon momentum is included. The only
+    accepted value is "per_interaction".
+
+    *Default*: "per_interaction"
+
+  :bank_residual:
+    Whether residual recoil nuclei are banked as secondary particles.
+
+    *Default*: true
+
+  :bank_emitted_ions:
+    Whether synthesized emitted ions are banked as secondary particles.
+
+    *Default*: false
+
+  :q_sanity_check:
+    Whether to warn when sampled emitted kinetic energy exceeds ``E + Q``.
+
+    *Default*: true
+
+  :fail_on_nonphysical:
+    Whether to terminate instead of falling back when recoil kinematics are
+    nonphysical.
+
+    *Default*: false
+
 ----------------------------------
 ``<resonance_scattering>`` Element
 ----------------------------------

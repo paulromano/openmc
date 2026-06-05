@@ -747,6 +747,8 @@ void read_settings_xml(pugi::xml_node root)
       auto value = get_node_value(node_recoil, "missing_products", true, true);
       if (value == "neutron_only") {
         recoil.missing_products = RecoilMissingProducts::neutron_only;
+      } else if (value == "statistical") {
+        recoil.missing_products = RecoilMissingProducts::statistical;
       } else if (value == "phase_space") {
         recoil.missing_products = RecoilMissingProducts::phase_space;
       } else if (value == "mf6") {
@@ -754,6 +756,21 @@ void read_settings_xml(pugi::xml_node root)
       } else {
         fatal_error(
           "Unrecognized recoil missing_products setting \"" + value + "\".");
+      }
+    }
+    if (check_for_node(node_recoil, "charged_particle_model")) {
+      auto value =
+        get_node_value(node_recoil, "charged_particle_model", true, true);
+      if (value == "two_body") {
+        recoil.charged_particle_model = RecoilChargedParticleModel::two_body;
+      } else if (value == "evaporation") {
+        recoil.charged_particle_model = RecoilChargedParticleModel::evaporation;
+      } else if (value == "evaporation_preeq") {
+        recoil.charged_particle_model =
+          RecoilChargedParticleModel::evaporation_preeq;
+      } else {
+        fatal_error("Unrecognized recoil charged_particle_model setting \"" +
+                    value + "\".");
       }
     }
     if (check_for_node(node_recoil, "capture_photons")) {
