@@ -43,9 +43,6 @@ void sample_positron_reaction(Particle& p);
 void process_charged_secondary(
   Particle& p, Direction u, double E, ParticleType type);
 
-//! Samples a reaction for particles we don't handle and
-void sample_other_reaction(Particle& p);
-
 //! Sample a nuclide based on their total cross sections and densities within
 //! the current material
 //!

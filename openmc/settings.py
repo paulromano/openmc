@@ -31,23 +31,10 @@ class RunMode(Enum):
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
 
 _RECOIL_OPTION_VALUES = {
-    'direction': {'momentum', 'isotropic'},
-    'multi_neutron_mode': {
-        'duplicate_as_transport', 'independent_sampling', 'one_particle'
-    },
-    'missing_products': {'neutron_only', 'statistical', 'phase_space', 'mf6'},
-    'charged_particle_model': {
-        'two_body', 'evaporation', 'evaporation_preeq'
-    },
-    'capture_photons': {'phantom', 'banked'},
-    'include_photon_momentum': {'capture_only', 'all', 'none'},
-    'photon_multiplicity': {'per_interaction'},
+    'light_ion_model': {'statistical', 'none'},
 }
 
-_RECOIL_BOOL_OPTIONS = {
-    'bank_residual', 'bank_emitted_ions', 'q_sanity_check',
-    'fail_on_nonphysical'
-}
+_RECOIL_BOOL_OPTIONS = {'emitted_ions'}
 
 _RECOIL_OPTIONS = set(_RECOIL_OPTION_VALUES) | _RECOIL_BOOL_OPTIONS
 
@@ -267,24 +254,28 @@ class Settings:
 
         .. versionadded:: 0.15.0
     recoil_production : bool
-        Indicate whether recoil nuclei produced from nuclear reactions should
-        be tracked.
+        Whether each neutron collision should produce a record of the recoiling
+        residual nucleus (the primary knock-on atom) and the light ions emitted
+        by the reaction. The records are added to the secondary bank so that
+        :class:`openmc.ParticleProductionFilter` can score them; they are not
+        transported.
 
         .. versionadded:: 0.15.4
     recoil : dict
         Recoil model settings. Accepted keys are:
 
-        :direction: {'momentum', 'isotropic'}
-        :multi_neutron_mode: {'duplicate_as_transport', 'independent_sampling', 'one_particle'}
-        :missing_products: {'neutron_only', 'statistical', 'phase_space', 'mf6'}
-        :charged_particle_model: {'two_body', 'evaporation', 'evaporation_preeq'}
-        :capture_photons: {'phantom', 'banked'}
-        :include_photon_momentum: {'capture_only', 'all', 'none'}
-        :photon_multiplicity: {'per_interaction'}
-        :bank_residual: bool
-        :bank_emitted_ions: bool
-        :q_sanity_check: bool
-        :fail_on_nonphysical: bool
+        :light_ion_model:
+            How to treat light charged particles (p, d, t, 3He, alpha) for
+            which the nuclear data library carries no distribution, which is
+            the case for all ACE-derived libraries. ``'statistical'`` (default)
+            models them with an evaporation spectrum and a Coulomb barrier
+            constrained by the event's energy and momentum budget;
+            ``'none'`` ignores them, so the residual of a charged-particle
+            channel recoils against the incident neutron alone.
+        :emitted_ions:
+            Whether to also add the emitted light ions to the secondary bank
+            (bool, default ``True``). Turning this off keeps only the heavy
+            residual, which is all that a PKA or damage-energy tally needs.
 
         .. versionadded:: 0.15.4
     resonance_scattering : dict
@@ -1824,12 +1815,7 @@ class Settings:
     def _create_recoil_subelement(self, root):
         if self._recoil:
             element = ET.SubElement(root, "recoil")
-            for key in ('direction', 'multi_neutron_mode', 'missing_products',
-                        'charged_particle_model',
-                        'capture_photons', 'include_photon_momentum',
-                        'photon_multiplicity',
-                        'bank_residual', 'bank_emitted_ions',
-                        'q_sanity_check', 'fail_on_nonphysical'):
+            for key in ('light_ion_model', 'emitted_ions'):
                 if key in self._recoil:
                     subelement = ET.SubElement(element, key)
                     value = self._recoil[key]

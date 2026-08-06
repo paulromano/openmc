@@ -32,61 +32,18 @@ enum class IFPParameter {
   GenerationTime,
 };
 
-enum class RecoilDirection {
-  momentum,
-  isotropic,
-};
-
-enum class RecoilMultiNeutronMode {
-  duplicate_as_transport,
-  independent_sampling,
-  one_particle,
-};
-
-enum class RecoilMissingProducts {
-  neutron_only,
-  statistical,
-  phase_space,
-  mf6,
-};
-
-enum class RecoilChargedParticleModel {
-  two_body,
-  evaporation,
-  evaporation_preeq,
-};
-
-enum class RecoilCapturePhotons {
-  phantom,
-  banked,
-};
-
-enum class RecoilIncludePhotonMomentum {
-  capture_only,
-  all,
-  none,
-};
-
-enum class RecoilPhotonMultiplicity {
-  per_interaction,
+//! How to treat light charged particles that the nuclear data library does not
+//! describe. ACE-derived libraries carry only neutron and photon products, so
+//! the proton, deuteron, triton, helium-3, and alpha ions of channels such as
+//! (n,p), (n,alpha), and (n,np) have to be modelled or ignored.
+enum class RecoilLightIonModel {
+  statistical, //!< empirical evaporation spectrum with a Coulomb barrier
+  none,        //!< ignore them; the residual recoils against the neutrons only
 };
 
 struct RecoilSettings {
-  RecoilDirection direction {RecoilDirection::momentum};
-  RecoilMultiNeutronMode multi_neutron_mode {
-    RecoilMultiNeutronMode::duplicate_as_transport};
-  RecoilMissingProducts missing_products {RecoilMissingProducts::statistical};
-  RecoilChargedParticleModel charged_particle_model {
-    RecoilChargedParticleModel::evaporation_preeq};
-  RecoilCapturePhotons capture_photons {RecoilCapturePhotons::phantom};
-  RecoilIncludePhotonMomentum include_photon_momentum {
-    RecoilIncludePhotonMomentum::capture_only};
-  RecoilPhotonMultiplicity photon_multiplicity {
-    RecoilPhotonMultiplicity::per_interaction};
-  bool bank_residual {true};
-  bool bank_emitted_ions {false};
-  bool q_sanity_check {true};
-  bool fail_on_nonphysical {false};
+  RecoilLightIonModel light_ion_model {RecoilLightIonModel::statistical};
+  bool emitted_ions {true}; //!< also bank the emitted light ions?
 };
 
 struct CollisionTrackConfig {

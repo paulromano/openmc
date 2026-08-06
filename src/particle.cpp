@@ -81,13 +81,18 @@ double Particle::mass() const
 bool Particle::create_secondary(
   double wgt, Direction u, double E, ParticleType type)
 {
-  // If energy is below cutoff for this particle, don't create secondary
-  // particle
+  // Recoil production creates records for nuclei that OpenMC cannot transport.
+  // They exist only so that ParticleProductionFilter can score them and are
+  // removed from the secondary bank at the end of the collision.
   int idx = type.transport_index();
-  if (idx == C_NONE && !settings::recoil_production) {
+  bool production_only = (idx == C_NONE);
+  if (production_only && !(settings::recoil_production && type.is_nucleus())) {
     return false;
   }
-  if (idx != C_NONE && E < settings::energy_cutoff[idx]) {
+
+  // If energy is below cutoff for this particle, don't create secondary
+  // particle
+  if (!production_only && E < settings::energy_cutoff[idx]) {
     return false;
   }
 
@@ -103,7 +108,7 @@ bool Particle::create_secondary(
   bank.time = time();
   bank_second_E() += bank.E;
   bank.parent_id = current_work();
-  if (settings::use_shared_secondary_bank) {
+  if (settings::use_shared_secondary_bank && !production_only) {
     bank.progeny_id = n_progeny()++;
   }
   bank.wgt_born = wgt_born();
@@ -276,13 +281,8 @@ void Particle::event_advance()
 
   // Sample a distance to collision
   if (type() == ParticleType::electron() ||
-      type() == ParticleType::positron() || type().is_nucleus()) {
-    if (material() == MATERIAL_VOID) {
-      collision_distance() = INFINITY;
-    } else {
-      collision_distance() = 0.0;
-      return;
-    }
+      type() == ParticleType::positron()) {
+    collision_distance() = material() == MATERIAL_VOID ? INFINITY : 0.0;
   } else if (macro_xs().total == 0.0) {
     collision_distance() = INFINITY;
   } else {
@@ -454,6 +454,19 @@ void Particle::event_collide()
   // Clear number of secondaries in this collision. This is
   // distinct from the number of created neutrons n_bank() above!
   n_secondaries() = 0;
+
+  // Recoil production records have now been scored by any
+  // ParticleProductionFilter, so discard them: OpenMC has no transport model
+  // for heavy ions and reviving them would only waste an event apiece.
+  if (settings::recoil_production) {
+    auto& bank = local_secondary_bank();
+    auto first = bank.begin() + secondary_bank_index();
+    bank.erase(std::remove_if(first, bank.end(),
+                 [](const SourceSite& site) {
+                   return !site.particle.is_transportable();
+                 }),
+      bank.end());
+  }
 
   zero_delayed_bank();
 

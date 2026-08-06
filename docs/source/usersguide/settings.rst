@@ -879,6 +879,57 @@ The full list of fields is as follows:
   :parent_id: Source particle ID
   :progeny_id: Progeny ID
 
+.. _usersguide_recoil:
+
+-----------------
+Recoil Production
+-----------------
+
+Setting :attr:`Settings.recoil_production` makes every continuous-energy neutron
+collision record the recoiling residual nucleus -- the primary knock-on atom --
+and the light ions the reaction emits. The records are added to the secondary
+bank so that a :class:`openmc.ParticleProductionFilter` can score them; they are
+not transported.
+
+.. code-block:: python
+
+    settings.recoil_production = True
+
+    tally = openmc.Tally()
+    tally.filters = [
+        openmc.ReactionFilter(['(n,elastic)', '(n,2n)', '(n,a)']),
+        openmc.ParticleProductionFilter(['Fe56', 'Fe55', 'Cr53', 'He4'],
+                                        np.logspace(0, 7, 200)),
+    ]
+    tally.scores = ['events']
+
+The ``'events'`` score is required: the production filter applies the *secondary
+particle's* weight rather than the colliding particle's. Combining it with a
+:class:`openmc.ReactionFilter` gives reaction-resolved PKA spectra, which needs
+analog absorption (``settings.survival_biasing = False``) for the absorption
+channels to be tagged with the right MT.
+
+Two options control the model:
+
+.. code-block:: python
+
+    settings.recoil = {
+        'light_ion_model': 'statistical',   # or 'none'
+        'emitted_ions': True,
+    }
+
+``light_ion_model`` decides how to treat protons, deuterons, tritons, helium-3
+nuclei, and alphas, which ACE-derived libraries do not describe. The default
+``'statistical'`` models them with an evaporation spectrum and a Coulomb
+barrier, constrained by the energy and momentum available in the event;
+``'none'`` ignores them, so the residual of a charged-particle channel recoils
+against the incident neutron alone. ``emitted_ions`` decides whether those ions
+are banked alongside the heavy residual; a PKA or damage-energy tally needs only
+the residual, while a helium- or hydrogen-production tally needs the ions.
+
+See :ref:`methods_recoil` for the models and for a comparison against NJOY
+group-wise recoil matrices.
+
 -----------------------
 Restarting a Simulation
 -----------------------

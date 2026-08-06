@@ -19,6 +19,7 @@ Theory and Methodology
     eigenvalue
     depletion
     energy_deposition
+    recoil
     parallelization
     cmfd
     variance_reduction

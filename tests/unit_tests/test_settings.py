@@ -37,18 +37,7 @@ def test_export_to_xml(run_in_tmpdir):
     s.plot_seed = 100
     s.survival_biasing = True
     s.recoil_production = True
-    s.recoil = {
-        'direction': 'momentum',
-        'multi_neutron_mode': 'independent_sampling',
-        'missing_products': 'statistical',
-        'charged_particle_model': 'evaporation_preeq',
-        'capture_photons': 'phantom',
-        'include_photon_momentum': 'capture_only',
-        'bank_residual': True,
-        'bank_emitted_ions': False,
-        'q_sanity_check': True,
-        'fail_on_nonphysical': False,
-    }
+    s.recoil = {'light_ion_model': 'statistical', 'emitted_ions': False}
     s.cutoff = {'weight': 0.25, 'weight_avg': 0.5, 'energy_neutron': 1.0e-5,
                 'survival_normalization': True,
                 'energy_photon': 1000.0, 'energy_electron': 1.0e-5,
@@ -142,18 +131,7 @@ def test_export_to_xml(run_in_tmpdir):
     assert s.seed == 17
     assert s.survival_biasing
     assert s.recoil_production
-    assert s.recoil == {
-        'direction': 'momentum',
-        'multi_neutron_mode': 'independent_sampling',
-        'missing_products': 'statistical',
-        'charged_particle_model': 'evaporation_preeq',
-        'capture_photons': 'phantom',
-        'include_photon_momentum': 'capture_only',
-        'bank_residual': True,
-        'bank_emitted_ions': False,
-        'q_sanity_check': True,
-        'fail_on_nonphysical': False,
-    }
+    assert s.recoil == {'light_ion_model': 'statistical', 'emitted_ions': False}
     assert s.cutoff == {'weight': 0.25, 'weight_avg': 0.5,
                         'survival_normalization': True,
                         'energy_neutron': 1.0e-5, 'energy_photon': 1000.0,
@@ -277,35 +255,20 @@ def test_properties_file_load(tmp_path, mpi_intracomm):
 def test_recoil_setting_validation():
     s = openmc.Settings()
 
-    s.recoil = {'direction': 'momentum', 'bank_residual': True}
-    assert s.recoil == {'direction': 'momentum', 'bank_residual': True}
+    s.recoil = {'light_ion_model': 'statistical', 'emitted_ions': True}
+    assert s.recoil == {'light_ion_model': 'statistical', 'emitted_ions': True}
 
-    s.recoil = {
-        'missing_products': 'statistical',
-        'charged_particle_model': 'evaporation',
-    }
-    assert s.recoil == {
-        'missing_products': 'statistical',
-        'charged_particle_model': 'evaporation',
-    }
+    s.recoil = {'light_ion_model': 'none'}
+    assert s.recoil == {'light_ion_model': 'none'}
 
-    try:
-        s.recoil = {'direction': 'invalid'}
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Expected ValueError for invalid recoil direction")
+    with pytest.raises(ValueError):
+        s.recoil = {'light_ion_model': 'invalid'}
 
-    try:
-        s.recoil = {'charged_particle_model': 'invalid'}
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Expected ValueError for invalid charged particle model")
+    with pytest.raises(ValueError):
+        s.recoil = {'not_a_recoil_option': True}
 
-    try:
-        s.recoil = {'bad_key': True}
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("Expected ValueError for unknown recoil key")
+    with pytest.raises(TypeError):
+        s.recoil = {'emitted_ions': 'yes'}
+
+    with pytest.raises(TypeError):
+        s.recoil = {'light_ion_model': 1}

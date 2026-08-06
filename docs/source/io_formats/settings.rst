@@ -676,8 +676,10 @@ found in the :ref:`random ray user guide <random_ray>`.
 -------------------------------
 
 The ``<recoil_production>`` element has no attributes and has an accepted value
-of "true" or "false". If set to "true", recoil nuclei produced from nuclear
-reactions will be tracked as secondary particles during transport.
+of "true" or "false". If set to "true", every continuous-energy neutron
+collision adds records of the recoiling residual nucleus and, optionally, the
+light ions emitted by the reaction to the secondary bank. These records are
+scored by :ref:`particle production filters <filter>`; they are not transported.
 
   *Default*: false
 
@@ -688,74 +690,23 @@ reactions will be tracked as secondary particles during transport.
 The ``<recoil>`` element contains recoil-modeling options used when
 ``<recoil_production>`` is set to "true".
 
-  :direction:
-    Recoil direction model. Accepted values are "momentum" and "isotropic".
-
-    *Default*: "momentum"
-
-  :multi_neutron_mode:
-    Momentum model for reactions with multiple outgoing neutrons. Accepted
-    values are "duplicate_as_transport", "independent_sampling", and
-    "one_particle".
-
-    *Default*: "duplicate_as_transport"
-
-  :missing_products:
-    Treatment for products that are not sampled by the neutron transport model.
-    Accepted values are "neutron_only", "statistical", "phase_space", and
-    "mf6". The "statistical" option samples missing charged particles from the
-    model selected by ``charged_particle_model``. The "phase_space" and "mf6"
-    options are reserved for future charged-particle product data treatments and
-    currently fall back to "neutron_only" where unsupported.
+  :light_ion_model:
+    How to treat light charged particles (p, d, t, 3He, alpha) for which the
+    nuclear data library provides no distribution, which is the case for all
+    ACE-derived libraries. Accepted values are "statistical" and "none". The
+    "statistical" option emits them sequentially with an evaporation spectrum
+    and a Coulomb barrier, constrained by the energy and momentum available in
+    the event. The "none" option ignores them, so the residual of a
+    charged-particle channel recoils against the incident neutron alone.
 
     *Default*: "statistical"
 
-  :charged_particle_model:
-    Approximation used for charged particles that are not available from product
-    distributions. Accepted values are "two_body", "evaporation", and
-    "evaporation_preeq". Discrete charged-particle level reactions use two-body
-    kinematics regardless of this setting.
-
-    *Default*: "evaporation_preeq"
-
-  :capture_photons:
-    Photon source used for capture recoil. Accepted values are "phantom" and
-    "banked".
-
-    *Default*: "phantom"
-
-  :include_photon_momentum:
-    Reactions for which photon momentum is included in recoil kinematics.
-    Accepted values are "capture_only", "all", and "none".
-
-    *Default*: "capture_only"
-
-  :photon_multiplicity:
-    Multiplicity convention used when photon momentum is included. The only
-    accepted value is "per_interaction".
-
-    *Default*: "per_interaction"
-
-  :bank_residual:
-    Whether residual recoil nuclei are banked as secondary particles.
+  :emitted_ions:
+    Whether the emitted light ions are added to the secondary bank in addition
+    to the heavy residual. Accepted values are "true" and "false". A PKA or
+    damage-energy tally needs only the residual.
 
     *Default*: true
-
-  :bank_emitted_ions:
-    Whether synthesized emitted ions are banked as secondary particles.
-
-    *Default*: false
-
-  :q_sanity_check:
-    Whether to warn when sampled emitted kinetic energy exceeds ``E + Q``.
-
-    *Default*: true
-
-  :fail_on_nonphysical:
-    Whether to terminate instead of falling back when recoil kinematics are
-    nonphysical.
-
-    *Default*: false
 
 ----------------------------------
 ``<resonance_scattering>`` Element

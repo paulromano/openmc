@@ -416,6 +416,7 @@ list(APPEND libopenmc_SOURCES
   src/particle_type.cpp
   src/photon.cpp
   src/physics.cpp
+  src/recoil.cpp
   src/physics_common.cpp
   src/physics_mg.cpp
   src/plot.cpp
