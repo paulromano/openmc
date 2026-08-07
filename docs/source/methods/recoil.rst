@@ -85,10 +85,11 @@ Discrete inelastic scattering
 For MT = 51-90 the outgoing neutron determines the residual completely, so
 subtracting the sampled neutron momentum is exact for the two-body level
 transition described by the evaluated angular distribution. Momentum carried by
-the de-excitation photons is neglected; for a residual of mass :math:`M_R` the
-photons change the mean recoil energy by
-:math:`\overline{|\sum_k \mathbf{p}_{\gamma,k}|^2} / 2M_R`, which is well under
-1 keV for structural nuclides.
+the de-excitation photons is neglected; for a residual of mass :math:`M_R` and
+uncorrelated photon directions they add
+:math:`\overline{\sum_k E_{\gamma,k}^2} / 2 M_R c^2` to the mean recoil energy,
+which for the Fe-56 continuum inelastic channel at 14 MeV — 3.7 photons
+averaging 1.3 MeV — is of order 100 eV.
 
 Continuum inelastic scattering
 ------------------------------
@@ -143,8 +144,8 @@ average kick
     \overline{E_R} = \frac{E}{A+1}
       + \frac{\overline{\sum_k E_{\gamma,k}^2}}{2 (A+1) m_n c^2}
 
-that NJOY's HEATR module uses when explicit recoil data are absent. The two
-agree in the mean but not in shape.
+that NJOY's HEATR module [MacFarlane2016]_ uses when explicit recoil data are
+absent. The two agree in the mean but not in shape.
 
 .. _methods_recoil_light_ions:
 
@@ -164,27 +165,74 @@ For a parent of mass :math:`M` with internal energy :math:`U` emitting ion
 
     E_b^\text{max} = U \frac{M_D}{m_b + M_D} ,
 
-and the emission removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from :math:`U`.
-Emission order is randomized so no ion is systematically favoured.
+and the emission removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from :math:`U`, so
+the daughter is left with excitation
+:math:`E_x = U\left(1 - E_b^\text{cm}/E_b^\text{max}\right)`. Emission order is
+randomized so no ion is systematically favoured.
 
-The centre-of-mass energy is sampled from
+Energy
+~~~~~~
+
+The centre-of-mass energy follows the Weisskopf-Ewing form for statistical
+particle emission [Weisskopf1940]_,
+
+.. math::
+    :label: recoil-weisskopf
+
+    P(E) \propto E\, \sigma_\text{inv}(E)\, \rho_D(E_x) ,
+
+where the leading :math:`E` comes from detailed balance and phase space,
+:math:`\sigma_\text{inv}` is the cross section of the inverse reaction
+:math:`b + D \rightarrow` parent, and :math:`\rho_D` is the level density of the
+daughter. OpenMC evaluates it as
 
 .. math::
     :label: recoil-light-ion
 
-    P(E) \propto E\, T_C(E) \sqrt{1 - E/E_b^\text{max}} , \qquad
+    P(E) \propto E\, T_C(E) \sqrt{1 - E/E_b^\text{max}} .
+
+*Inverse cross section.* For a charged ejectile :math:`\sigma_\text{inv}` is
+governed almost entirely by the Coulomb barrier, so it is replaced by a barrier
+transmission coefficient,
+
+.. math::
+    :label: recoil-barrier
+
     T_C(E) = \left[1 + e^{(V_C - E)/\Delta}\right]^{-1} , \qquad
     V_C = \frac{1.44\ \text{MeV fm}\ Z_b Z_D}{r_0 (A_b^{1/3} + A_D^{1/3})} .
 
-The factor :math:`E\,T_C(E)` stands in for the inverse-reaction cross section of
-a Weisskopf-Ewing evaporation spectrum, and the square root for the level
-density of the residual. The effective barrier radius :math:`r_0 = 1.8` fm and
-diffuseness :math:`\Delta = 0.8` MeV are *not* optical-model quantities: the
-radius is larger and the barrier softer than a geometric one so that the single
-smooth transmission factor also absorbs sub-barrier tunnelling. They were
-calibrated by matching the mean centre-of-mass ejectile energy of
-:eq:`recoil-light-ion` against the evaluated ENDF MF=6 spectra of MT = 103-107
-for thirteen nuclides between beryllium and tantalum from 5 to 20 MeV.
+This is the Hill-Wheeler transmission through a parabolic barrier
+[HillWheeler1953]_, for which the diffuseness is set by the barrier curvature,
+:math:`\Delta = \hbar\omega / 2\pi`. The value used, :math:`\Delta = 0.8` MeV,
+corresponds to :math:`\hbar\omega = 5.0` MeV, at the permeable end of the usual
+few-MeV range. The reduced radius :math:`r_0 = 1.8` fm is larger than a
+geometric touching radius of about 1.4 fm and therefore lowers :math:`V_C` by a
+uniform factor of 0.78 — from 5.35 to 4.16 MeV for p + Mn-55, and from 9.24 to
+7.19 MeV for :math:`\alpha` + Cr-53. That is the same kind of empirical barrier
+reduction as the :math:`k_j` factors of the Dostrovsky inverse-cross-section
+parameterization used in evaporation codes [Dostrovsky1959]_, which are likewise
+below unity and typically of order 0.7-0.9 for medium-mass nuclei. Here it came
+out of the fit described below rather than being imposed.
+
+*Level density.* The square root is **not** a nuclear level density, which would
+rise roughly exponentially with :math:`E_x`. Charged-particle spectra in
+TALYS-based evaluations [Koning2012]_ mix compound-nucleus evaporation with much
+harder pre-equilibrium and direct emission, and applying a compound level
+density to the whole spectrum makes it far too soft. The weakly rising
+:math:`\sqrt{E_x}` factor is an empirical compromise between the two components.
+
+Three numbers were fitted: the barrier radius :math:`r_0`, the diffuseness
+:math:`\Delta`, and the exponent of the :math:`E_x` factor. They were obtained
+by matching the mean centre-of-mass ejectile energy of :eq:`recoil-light-ion`
+against the evaluated ENDF MF=6 spectra of MT = 103-107 in TENDL, for thirteen
+nuclides between beryllium and tantalum from 5 to 20 MeV. Equation
+:eq:`recoil-light-ion` should therefore be read as a calibrated surrogate whose
+*form* is borrowed from statistical-model theory and whose *parameters* come
+from evaluated data — not as an implementation of any published
+nuclear-reaction model.
+
+Endpoint and direction
+~~~~~~~~~~~~~~~~~~~~~~
 
 The endpoint :math:`E_b^\text{max}` used in :eq:`recoil-light-ion` is the one
 belonging to the channel that emits this ion *alone* — for a proton, the Q value
@@ -202,10 +250,12 @@ The direction uses the Kalbach-Mann form of evaluated MF=6 LANG=2 data,
     f(\mu) = \frac{a}{2 \sinh a}
              \left[\cosh(a\mu) + r \sinh(a\mu)\right] ,
 
-with the slope :math:`a` from Kalbach's systematics and the pre-equilibrium
-fraction taken as :math:`r = E_b^\text{cm} / E_b^\text{max}`. That reproduces
-the qualitative behaviour of evaluated :math:`r` values, which rise from nearly
-zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
+with the slope :math:`a` from Kalbach's systematics [Kalbach1988]_ — the same
+expression the evaluations themselves use — and the pre-equilibrium fraction
+taken as :math:`r = E_b^\text{cm} / E_b^\text{max}`. The systematics for
+:math:`a` are used as published; only :math:`r` is a substitution, and it
+reproduces the qualitative behaviour of evaluated :math:`r` values, which rise
+from nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
 
 Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
 case the residual of a charged-particle channel recoils against the incident
@@ -223,9 +273,9 @@ Comparison With NJOY Group Data
 --------------------------------
 
 The usual reference for PKA spectra is a group-wise recoil matrix produced by
-NJOY, as consumed by codes such as SPECTRA-PKA. OpenMC agrees closely with those
-matrices where both sides derive the recoil from the same two-body kinematics,
-and differs in three understood places.
+NJOY, as consumed by codes such as SPECTRA-PKA [Gilbert2015]_. OpenMC agrees
+closely with those matrices where both sides derive the recoil from the same
+two-body kinematics, and differs in three understood places.
 
 **Two-body channels agree.** For elastic scattering and for the discrete
 inelastic levels MT = 51-90, NJOY computes the recoil from the evaluated MF=4
@@ -238,7 +288,7 @@ six decades, including the diffraction structure near the endpoint.
 ACE-derived library and NJOY's ENDF MF=4 Legendre coefficients do not describe
 the same forward-peaked angular distribution to better than a few percent. For
 Fe-56 at 13.9 MeV the mean cosine is 0.8535 from the ACE-derived tabulated
-distribution and 0.8473 as implied by the NJOY recoil matrix built from the same
+distribution and 0.8462 as implied by the NJOY recoil matrix built from the same
 evaluation, a 4% difference in :math:`1 - \bar\mu` and therefore in the mean
 elastic recoil energy. This is a data-processing difference upstream of the
 transport code, not a difference between the recoil models.
@@ -262,7 +312,10 @@ rather than evaluated data, agreement for the charged-particle channels should
 be treated as approximate. Across the calibration set the mean ejectile energy
 reproduces the evaluated value with a root-mean-square scatter of about 12% and
 no significant bias, but individual nuclide-energy-channel combinations can
-differ by 20% or more, and near threshold by considerably more.
+differ by 20% or more, and near threshold by considerably more. Note also that
+the calibration and the comparison draw on the same family of evaluations, so
+this is a measure of consistency with TENDL rather than of accuracy against
+measured spectra.
 
 -----------
 Limitations
@@ -274,6 +327,13 @@ Limitations
   energy is subtracted.
 - De-excitation photon momentum is neglected for every reaction except capture.
 - Fission fragments are not produced.
+- Reactions whose exit channel cannot be determined from the MT number produce
+  no record at all. In practice this means MT = 5, the ENDF catch-all, which
+  carries inclusive product yields rather than a single residual. Some
+  evaluations put a substantial part of the charged-particle production there:
+  ENDF/B-VIII.1 Fe-56 has 0.073 b in MT = 5 at 14 MeV against 0.114 b in (n,p),
+  and its (n,alpha) cross section is a tenth of the value other libraries give
+  because the rest of that channel sits in MT = 5.
 - Multi-neutron final states are sampled independently rather than from a
   correlated joint distribution.
 - The light-ion model omits optical-model transmission coefficients, explicit
@@ -285,6 +345,41 @@ Limitations
   recoil energy by roughly :math:`E / 2 m_n c^2` — under 1% at 14 MeV.
 - Atomic masses are used as a proxy for nuclear masses.
 - Only the continuous-energy transport mode produces recoils.
+
+----------
+References
+----------
+
+.. [Weisskopf1940] V. F. Weisskopf and D. H. Ewing, "On the Yield of Nuclear
+   Reactions with Heavy Elements," *Physical Review* **57**, 472-485 (1940).
+   `<https://doi.org/10.1103/PhysRev.57.472>`_
+
+.. [HillWheeler1953] D. L. Hill and J. A. Wheeler, "Nuclear Constitution and
+   the Interpretation of Fission Phenomena," *Physical Review* **89**,
+   1102-1145 (1953). `<https://doi.org/10.1103/PhysRev.89.1102>`_
+
+.. [Dostrovsky1959] I. Dostrovsky, Z. Fraenkel, and G. Friedlander, "Monte Carlo
+   Calculations of Nuclear Evaporation Processes. III. Applications to
+   Low-Energy Reactions," *Physical Review* **116**, 683-702 (1959).
+   `<https://doi.org/10.1103/PhysRev.116.683>`_
+
+.. [Kalbach1988] C. Kalbach, "Systematics of continuum angular distributions:
+   Extensions to higher energies," *Physical Review C* **37**, 2350-2370 (1988).
+   `<https://doi.org/10.1103/PhysRevC.37.2350>`_
+
+.. [Koning2012] A. J. Koning and D. Rochman, "Modern Nuclear Data Evaluation
+   with the TALYS Code System," *Nuclear Data Sheets* **113**, 2841-2934 (2012).
+   `<https://doi.org/10.1016/j.nds.2012.11.002>`_
+
+.. [Gilbert2015] M. R. Gilbert, J. Marian, and J.-Ch. Sublet, "Energy spectra of
+   primary knock-on atoms under neutron irradiation," *Journal of Nuclear
+   Materials* **467**, 121-134 (2015).
+   `<https://doi.org/10.1016/j.jnucmat.2015.09.023>`_
+
+.. [MacFarlane2016] R. E. MacFarlane, D. W. Muir, R. M. Boicourt, A. C. Kahler,
+   and J. L. Conlin, "The NJOY Nuclear Data Processing System, Version 2016,"
+   Los Alamos National Laboratory report LA-UR-17-20093 (2016).
+   `<https://doi.org/10.2172/1338791>`_
 
 With survival biasing, the implicit absorption recoil is created with the
 absorbed weight but the neutron then continues to a scattering event, so
