@@ -101,6 +101,16 @@ bool parse_channel(std::string channel, EmittedParticles& out)
 
   size_t i = 0;
   while (i < channel.size()) {
+    // "3he" has to be recognized before the multiplicity digits, or the
+    // leading 3 of helium-3 is consumed as a multiplicity and the rest of the
+    // channel no longer parses. Helium-3 never appears with a multiplicity
+    // above one in the ENDF reaction names.
+    if (channel.compare(i, 3, "3he") == 0) {
+      ++out.he3;
+      i += 3;
+      continue;
+    }
+
     int multiplicity = 0;
     while (i < channel.size() &&
            std::isdigit(static_cast<unsigned char>(channel[i]))) {
@@ -737,13 +747,20 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     return;
 
   EmittedParticles emitted;
-  bool known_channel = emitted_particles(rx.mt_, emitted);
+  if (!emitted_particles(rx.mt_, emitted)) {
+    // The exit channel cannot be determined from the MT number, so neither can
+    // the identity of the residual. MT=5 (n,misc) is the case that matters: it
+    // is a catch-all with inclusive product yields and no single residual, and
+    // some evaluations put a substantial part of the charged-particle
+    // production there. Producing nothing is better than producing a record
+    // labelled with the wrong nuclide.
+    return;
+  }
 
   ParticleType residual = residual_particle_type(nuc, rx.mt_);
 
   ChargedProducts ions;
-  if (known_channel)
-    ions.fill(emitted);
+  ions.fill(emitted);
 
   // Start from the compound system and remove the transported neutron
   EmissionState state;
@@ -766,7 +783,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   // event's energy budget; that keeps every event kinematically possible while
   // leaving the marginal spectrum close to the evaluated one.
   int n_extra = 0;
-  if (known_channel && emitted.neutron > 1) {
+  if (emitted.neutron > 1) {
     n_extra = emitted.neutron - 1;
   } else if (yield > 1.0 && std::floor(yield) == yield) {
     n_extra = static_cast<int>(std::round(yield)) - 1;
@@ -809,7 +826,9 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   const auto& nuc {data::nuclides[i_nuclide]};
 
   EmittedParticles emitted;
-  bool known_channel = emitted_particles(rx->mt_, emitted);
+  if (!emitted_particles(rx->mt_, emitted)) {
+    return; // unknown exit channel; see the note in from_inelastic()
+  }
   ParticleType residual = residual_particle_type(*nuc, rx->mt_);
 
   EmissionState state;
@@ -829,8 +848,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   }
 
   ChargedProducts ions;
-  if (known_channel)
-    ions.fill(emitted);
+  ions.fill(emitted);
 
   state.internal =
     internal_energy(budget - state.emitted_kin, state.momentum, state.mass);
