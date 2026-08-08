@@ -85,12 +85,6 @@ struct EmittedParticles {
   int alpha {0};
 };
 
-//! Charge and mass number of a nuclide or light ion
-struct AtomicNumbers {
-  int Z {0};
-  int A {0};
-};
-
 bool parse_channel(std::string channel, EmittedParticles& out)
 {
   for (auto& c : channel) {
@@ -338,49 +332,7 @@ double separation_energy(
 }
 
 //! Kalbach angular-distribution slope parameter
-double kalbach_slope(
-  double E_in, double E_cm, AtomicNumbers emitted, const Nuclide& nuc)
-{
-  AtomicNumbers target {nuc.Z_, nuc.A_};
-  AtomicNumbers compound {target.Z, target.A + 1};
-  AtomicNumbers residual {compound.Z - emitted.Z, compound.A - emitted.A};
-  if (residual.Z < 0 || residual.A <= 0 || residual.Z > residual.A)
-    return 0.0;
 
-  double epsilon_a = E_in * target.A / (target.A + 1.0) / 1.0e6;
-  double epsilon_b = E_cm * (residual.A + emitted.A) / (residual.A * 1.0e6);
-  double e_a = epsilon_a + separation_energy(compound, target, {0, 1});
-  double e_b = epsilon_b + separation_energy(compound, residual, emitted);
-  if (e_a <= 0.0 || e_b <= 0.0 || !std::isfinite(e_a) || !std::isfinite(e_b))
-    return 0.0;
-
-  double r_1 = std::min(e_a, 130.0);
-  double r_3 = std::min(e_a, 41.0);
-  double x_1 = r_1 * e_b / e_a;
-  double x_3 = r_3 * e_b / e_a;
-  double m = (emitted.Z == 2 && emitted.A == 4) ? 2.0 : 1.0;
-  return std::max(0.0,
-    0.04 * x_1 + 1.8e-6 * x_1 * x_1 * x_1 + 6.7e-7 * m * x_3 * x_3 * x_3 * x_3);
-}
-
-//! Sample the Kalbach-Mann angular distribution
-double sample_kalbach_mu(double slope, double r, uint64_t* seed)
-{
-  if (slope <= 1.0e-8)
-    return uniform_distribution(-1.0, 1.0, seed);
-
-  double xi = prn(seed);
-  if (prn(seed) < r) {
-    // forward component proportional to exp(a mu)
-    double exp_neg_2a = slope < 350.0 ? std::exp(-2.0 * slope) : 0.0;
-    double mu = 1.0 + std::log(xi + (1.0 - xi) * exp_neg_2a) / slope;
-    return std::min(1.0, std::max(-1.0, mu));
-  }
-  // symmetric component proportional to cosh(a mu)
-  double t = (2.0 * xi - 1.0) * std::sinh(slope);
-  double mu = std::log(t + std::sqrt(t * t + 1.0)) / slope;
-  return std::min(1.0, std::max(-1.0, mu));
-}
 
 //==============================================================================
 // Emission bookkeeping for one collision
@@ -429,6 +381,57 @@ double internal_energy(double budget, Direction momentum, double mass)
 // Public helpers
 //==============================================================================
 
+double kalbach_slope(
+  double E_in, double E_cm, AtomicNumbers emitted, int Z_t, int A_t)
+{
+  AtomicNumbers target {Z_t, A_t};
+  AtomicNumbers compound {target.Z, target.A + 1};
+  AtomicNumbers residual {compound.Z - emitted.Z, compound.A - emitted.A};
+  if (residual.Z < 0 || residual.A <= 0 || residual.Z > residual.A)
+    return 0.0;
+
+  double epsilon_a = E_in * target.A / (target.A + 1.0) / 1.0e6;
+  double epsilon_b = E_cm * (residual.A + emitted.A) / (residual.A * 1.0e6);
+  double e_a = epsilon_a + separation_energy(compound, target, {0, 1});
+  double e_b = epsilon_b + separation_energy(compound, residual, emitted);
+  if (e_a <= 0.0 || e_b <= 0.0 || !std::isfinite(e_a) || !std::isfinite(e_b))
+    return 0.0;
+
+  double r_1 = std::min(e_a, 130.0);
+  double r_3 = std::min(e_a, 41.0);
+  double x_1 = r_1 * e_b / e_a;
+  double x_3 = r_3 * e_b / e_a;
+  double m = (emitted.Z == 2 && emitted.A == 4) ? 2.0 : 1.0;
+  return std::max(0.0,
+    0.04 * x_1 + 1.8e-6 * x_1 * x_1 * x_1 + 6.7e-7 * m * x_3 * x_3 * x_3 * x_3);
+}
+
+double kalbach_slope(
+  double E_in, double E_cm, AtomicNumbers emitted, const Nuclide& nuc)
+{
+  return kalbach_slope(E_in, E_cm, emitted, nuc.Z_, nuc.A_);
+}
+
+//! Sample the Kalbach-Mann angular distribution
+double sample_kalbach_mu(double slope, double r, uint64_t* seed)
+{
+  if (slope <= 1.0e-8)
+    return uniform_distribution(-1.0, 1.0, seed);
+
+  double xi = prn(seed);
+  if (prn(seed) < r) {
+    // forward component proportional to exp(a mu)
+    double exp_neg_2a = slope < 350.0 ? std::exp(-2.0 * slope) : 0.0;
+    double mu = 1.0 + std::log(xi + (1.0 - xi) * exp_neg_2a) / slope;
+    return std::min(1.0, std::max(-1.0, mu));
+  }
+  // symmetric component proportional to cosh(a mu)
+  double t = (2.0 * xi - 1.0) * std::sinh(slope);
+  double mu = std::log(t + std::sqrt(t * t + 1.0)) / slope;
+  return std::min(1.0, std::max(-1.0, mu));
+}
+
+
 double particle_mass_ev(ParticleType type)
 {
   if (type.is_photon())
@@ -460,28 +463,39 @@ ParticleType residual_particle_type(const Nuclide& nuc, int mt)
   return ParticleType {Z_res, A_res, 0};
 }
 
-double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
+double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
+  const LightIonParams& par)
 {
   if (E <= 0.0 || E >= E_max)
     return 0.0;
 
   double transmission = 1.0;
   if (Z_b > 0 && Z_d > 0) {
-    double radius = BARRIER_RADIUS * (std::cbrt(static_cast<double>(A_b)) +
-                                       std::cbrt(static_cast<double>(A_d)));
+    double radius = par.r0 * (std::cbrt(static_cast<double>(A_b)) +
+                               std::cbrt(static_cast<double>(A_d)));
     double barrier = COULOMB_EV_FM * Z_b * Z_d / radius;
-    double arg = (barrier - E) / BARRIER_DIFFUSENESS;
+    double arg = (barrier - E) / par.delta;
     if (arg > 60.0) {
       transmission = std::exp(-arg);
     } else if (arg > -60.0) {
       transmission = 1.0 / (1.0 + std::exp(arg));
     }
   }
-  return E * transmission * std::sqrt(1.0 - E / E_max);
+  double endpoint = 1.0 - E / E_max;
+  // nu = 1/2 is by far the common case and std::sqrt is both faster and more
+  // accurate than std::pow for it
+  double level_density =
+    (par.nu == 0.5) ? std::sqrt(endpoint) : std::pow(endpoint, par.nu);
+  return E * transmission * level_density;
+}
+
+double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
+{
+  return light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, LightIonParams {});
 }
 
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed)
+  int Z_d, int A_d, uint64_t* seed, const LightIonParams& par)
 {
   if (E_max <= 0.0 || !std::isfinite(E_max))
     return 0.0;
@@ -496,7 +510,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   double best = 0.5 * E_limit;
   for (int i = 0; i < N_SCAN; ++i) {
     double E = E_limit * i / (N_SCAN - 1);
-    double pdf = light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d);
+    double pdf = light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par);
     if (pdf > peak) {
       peak = pdf;
       best = E;
@@ -508,11 +522,18 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 
   for (int i = 0; i < MAX_REJECTION; ++i) {
     double E = E_limit * prn(seed);
-    if (prn(seed) * peak <= light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d))
+    if (prn(seed) * peak <= light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par))
       return E;
   }
   // Spectrum too peaked to sample by rejection: use the scan maximum
   return best;
+}
+
+double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
+  int Z_d, int A_d, uint64_t* seed)
+{
+  return sample_light_ion_energy(
+    E_max, E_limit, Z_b, A_b, Z_d, A_d, seed, LightIonParams {});
 }
 
 namespace {
