@@ -8,7 +8,7 @@ Recoil Production
 
 When :attr:`Settings.recoil_production` is enabled, every continuous-energy
 neutron collision creates additional entries in the secondary bank describing
-the *heavy residual nucleus* left by the reaction and, optionally, the light
+the *recoil nucleus* left by the reaction and, optionally, the light
 ions the reaction emits. Scoring those entries with a
 :class:`ParticleProductionFilter` gives the primary knock-on atom (PKA)
 spectrum, which is the starting point for displacement-damage estimates and for
@@ -37,13 +37,13 @@ Masses and energies are in eV and momenta in eV with :math:`c = 1`, so
 Nuclide masses come from the tabulated atomic masses; a nuclide missing from
 that table falls back on :math:`A` atomic mass units.
 
-The identity of the residual follows from the MT number,
+The identity of the recoil follows from the MT number,
 
 .. math::
 
     Z_R = Z_T - \sum_i Z_i , \qquad A_R = A_T + 1 - \sum_i A_i ,
 
-and the residual is always represented in its ground state. Residual excitation
+and the recoil is always represented in its ground state. Recoil excitation
 energy is implicit: it is whatever remains of
 
 .. math::
@@ -82,10 +82,10 @@ distribution slightly past the stationary-target endpoint
 Discrete inelastic scattering
 -----------------------------
 
-For MT = 51-90 the outgoing neutron determines the residual completely, so
+For MT = 51-90 the outgoing neutron determines the recoil completely, so
 subtracting the sampled neutron momentum is exact for the two-body level
 transition described by the evaluated angular distribution. Momentum carried by
-the de-excitation photons is neglected; for a residual of mass :math:`M_R` and
+the de-excitation photons is neglected; for a recoil of mass :math:`M_R` and
 uncorrelated photon directions they add
 :math:`\overline{\sum_k E_{\gamma,k}^2} / 2 M_R c^2` to the mean recoil energy,
 which for the Fe-56 continuum inelastic channel at 14 MeV — 3.7 photons
@@ -94,7 +94,7 @@ averaging 1.3 MeV — is of order 100 eV.
 Continuum inelastic scattering
 ------------------------------
 
-MT = 91 is treated the same way: the residual recoils against the sampled
+MT = 91 is treated the same way: the recoil recoils against the sampled
 outgoing neutron. This is exact given the evaluated neutron energy-angle
 distribution. Note that it can differ substantially from the explicit recoil
 array some evaluations store in MF=6; see :ref:`methods_recoil_validation`.
@@ -129,7 +129,7 @@ against the emitted neutrons.
 Radiative capture
 -----------------
 
-The residual recoils against the emitted photons,
+The recoil recoils against the emitted photons,
 :math:`\mathbf{p}_R = \mathbf{p}_{n,\text{in}} - \sum_k \mathbf{p}_{\gamma,k}`.
 Photon multiplicity and energies are resampled from the capture reaction's own
 photon distribution, and the yield is converted to a stochastic integer
@@ -191,7 +191,7 @@ daughter. OpenMC evaluates it as
 
     P(E) \propto E\, T_C(E) \sqrt{1 - E/E_b^\text{max}} .
 
-*Inverse cross section.* For a charged ejectile :math:`\sigma_\text{inv}` is
+*Inverse cross section.* For a charged light ion :math:`\sigma_\text{inv}` is
 governed almost entirely by the Coulomb barrier, so it is replaced by a barrier
 transmission coefficient,
 
@@ -223,7 +223,7 @@ density to the whole spectrum makes it far too soft. The weakly rising
 
 Three numbers were fitted: the barrier radius :math:`r_0`, the diffuseness
 :math:`\Delta`, and the exponent of the :math:`E_x` factor. They were obtained
-by matching the mean centre-of-mass ejectile energy of :eq:`recoil-light-ion`
+by matching the mean centre-of-mass light-ion energy of :eq:`recoil-light-ion`
 against the evaluated ENDF MF=6 spectra of MT = 103-107 in TENDL, for thirteen
 nuclides between beryllium and tantalum from 5 to 20 MeV. Equation
 :eq:`recoil-light-ion` should therefore be read as a calibrated surrogate whose
@@ -240,7 +240,7 @@ of (n,p) — because in a channel such as (n,np) the charged particle is
 physically emitted first, from the hot compound nucleus, and only then does the
 neutron follow. The sample is then truncated to what this particular event can
 still afford. Discrete charged-particle levels (MT = 600-849) are exactly
-two-body, so their ejectile energy is fixed at :math:`E_b^\text{max}` rather
+two-body, so their light-ion energy is fixed at :math:`E_b^\text{max}` rather
 than sampled.
 
 The direction uses the Kalbach-Mann form of evaluated MF=6 LANG=2 data,
@@ -258,7 +258,7 @@ reproduces the qualitative behaviour of evaluated :math:`r` values, which rise
 from nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
 
 Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
-case the residual of a charged-particle channel recoils against the incident
+case the recoil of a charged-particle channel recoils against the incident
 neutron alone.
 
 Fission
@@ -294,7 +294,7 @@ elastic recoil energy. This is a data-processing difference upstream of the
 transport code, not a difference between the recoil models.
 
 **Some evaluations store recoil arrays that violate momentum conservation.**
-Evaluations generated with TALYS write an explicit heavy-residual subsection in
+Evaluations generated with TALYS write an explicit recoil subsection in
 MF=6, and NJOY uses it in preference to computing the recoil. For MT = 91 in
 TENDL those arrays are tabulated on a coarse grid of about twenty uniform bins
 starting at zero recoil energy, and they are systematically softer than the
@@ -309,7 +309,7 @@ result in both cases.
 
 Because the light-ion model of :eq:`recoil-light-ion` is a calibrated surrogate
 rather than evaluated data, agreement for the charged-particle channels should
-be treated as approximate. Across the calibration set the mean ejectile energy
+be treated as approximate. Across the calibration set the mean light-ion energy
 reproduces the evaluated value with a root-mean-square scatter of about 12% and
 no significant bias, but individual nuclide-energy-channel combinations can
 differ by 20% or more, and near threshold by considerably more. Note also that
@@ -329,7 +329,7 @@ Limitations
 - Fission fragments are not produced.
 - Reactions whose exit channel cannot be determined from the MT number produce
   no record at all. In practice this means MT = 5, the ENDF catch-all, which
-  carries inclusive product yields rather than a single residual. Some
+  carries inclusive product yields rather than a single recoil. Some
   evaluations put a substantial part of the charged-particle production there:
   ENDF/B-VIII.1 Fe-56 has 0.073 b in MT = 5 at 14 MeV against 0.114 b in (n,p),
   and its (n,alpha) cross section is a tenth of the value other libraries give
@@ -339,7 +339,7 @@ Limitations
 - The light-ion model omits optical-model transmission coefficients, explicit
   level densities, channel competition, direct reactions, and evaluated
   sequential decay.
-- Residual excitation, isomeric state, and subsequent gamma recoil are not
+- Recoil excitation, isomeric state, and subsequent gamma recoil are not
   represented.
 - All massive-particle kinematics are nonrelativistic, which understates the
   recoil energy by roughly :math:`E / 2 m_n c^2` — under 1% at 14 MeV.

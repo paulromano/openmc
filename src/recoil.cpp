@@ -29,7 +29,7 @@ namespace {
 // ion. They are not optical-model quantities: the reduced radius is larger and
 // the diffuseness softer than a geometric barrier so that the single smooth
 // transmission factor also stands in for sub-barrier tunnelling. Both were
-// calibrated by matching the mean centre-of-mass ejectile energy of this model
+// calibrated by matching the mean centre-of-mass light-ion energy of this model
 // against the evaluated ENDF MF=6 spectra of MT=103-107 for 13 nuclides from
 // Be-9 to Ta-181 between 5 and 20 MeV.
 //==============================================================================
@@ -385,14 +385,14 @@ double kalbach_slope(
 {
   AtomicNumbers target {Z_t, A_t};
   AtomicNumbers compound {target.Z, target.A + 1};
-  AtomicNumbers residual {compound.Z - emitted.Z, compound.A - emitted.A};
-  if (residual.Z < 0 || residual.A <= 0 || residual.Z > residual.A)
+  AtomicNumbers recoil {compound.Z - emitted.Z, compound.A - emitted.A};
+  if (recoil.Z < 0 || recoil.A <= 0 || recoil.Z > recoil.A)
     return 0.0;
 
   double epsilon_a = E_in * target.A / (target.A + 1.0) / 1.0e6;
-  double epsilon_b = E_cm * (residual.A + emitted.A) / (residual.A * 1.0e6);
+  double epsilon_b = E_cm * (recoil.A + emitted.A) / (recoil.A * 1.0e6);
   double e_a = epsilon_a + separation_energy(compound, target, {0, 1});
-  double e_b = epsilon_b + separation_energy(compound, residual, emitted);
+  double e_b = epsilon_b + separation_energy(compound, recoil, emitted);
   if (e_a <= 0.0 || e_b <= 0.0 || !std::isfinite(e_a) || !std::isfinite(e_b))
     return 0.0;
 
@@ -444,7 +444,7 @@ double particle_mass_ev(ParticleType type)
   return 0.0;
 }
 
-ParticleType residual_particle_type(const Nuclide& nuc, int mt)
+ParticleType recoil_particle_type(const Nuclide& nuc, int mt)
 {
   EmittedParticles e;
   if (!emitted_particles(mt, e))
@@ -551,8 +551,8 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 
 namespace {
 
-//! Create the residual production record
-bool bank_residual(Particle& p, const Nuclide& nuc, double weight,
+//! Create the recoil production record
+bool bank_recoil(Particle& p, const Nuclide& nuc, double weight,
   Direction p_recoil, ParticleType type)
 {
   if (weight <= 0.0)
@@ -627,8 +627,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 
     double E_cm;
     if (is_discrete_charged_level(rx.mt_)) {
-      // MT=600-849 name a single residual level, so the exit channel is exactly
-      // two-body and the ejectile energy is fixed by the reaction Q value.
+      // MT=600-849 name a single recoil level, so the exit channel is exactly
+      // two-body and the light-ion energy is fixed by the reaction Q value.
       E_cm = E_max_event;
     } else {
       E_cm = sample_light_ion_energy(
@@ -639,8 +639,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 
     AngularParams ang {};
     double slope = ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc);
-    double r =
-      kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
+    double r = kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
     double mu = sample_kalbach_mu(slope, r, seed);
     Direction u_cm = rotate_angle(u_in, mu, nullptr, seed);
 
@@ -723,7 +722,7 @@ PhotonKick sample_photon_kick(
 //! Finish an event: model the missing light ions and bank all products
 void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double weight, double E_in, Direction u_in, const ChargedProducts& ions,
-  EmissionState& state, ParticleType residual)
+  EmissionState& state, ParticleType recoil)
 {
   SampledIon sampled[ChargedProducts::MAX];
   int n_sampled = 0;
@@ -747,7 +746,7 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
         weight, sampled[i].direction, sampled[i].energy, sampled[i].type);
     }
   }
-  bank_residual(p, nuc, weight, state.momentum, residual);
+  bank_recoil(p, nuc, weight, state.momentum, recoil);
 }
 
 } // namespace
@@ -772,7 +771,7 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
   // neutron.
   Direction p_recoil =
     neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
-  bank_residual(p, nuc, p.wgt(), p_recoil, nuc.particle_type());
+  bank_recoil(p, nuc, p.wgt(), p_recoil, nuc.particle_type());
 }
 
 void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
@@ -785,15 +784,15 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   EmittedParticles emitted;
   if (!emitted_particles(rx.mt_, emitted)) {
     // The exit channel cannot be determined from the MT number, so neither can
-    // the identity of the residual. MT=5 (n,misc) is the case that matters: it
-    // is a catch-all with inclusive product yields and no single residual, and
+    // the identity of the recoil. MT=5 (n,misc) is the case that matters: it
+    // is a catch-all with inclusive product yields and no single recoil, and
     // some evaluations put a substantial part of the charged-particle
     // production there. Producing nothing is better than producing a record
     // labelled with the wrong nuclide.
     return;
   }
 
-  ParticleType residual = residual_particle_type(nuc, rx.mt_);
+  ParticleType recoil = recoil_particle_type(nuc, rx.mt_);
 
   ChargedProducts ions;
   ions.fill(emitted);
@@ -848,7 +847,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   state.internal =
     internal_energy(budget - state.emitted_kin, state.momentum, state.mass);
 
-  finish_event(p, nuc, rx, wgt, E_in, u_in, ions, state, residual);
+  finish_event(p, nuc, rx, wgt, E_in, u_in, ions, state, recoil);
 }
 
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
@@ -865,7 +864,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   if (!emitted_particles(rx->mt_, emitted)) {
     return; // unknown exit channel; see the note in from_inelastic()
   }
-  ParticleType residual = residual_particle_type(*nuc, rx->mt_);
+  ParticleType recoil = recoil_particle_type(*nuc, rx->mt_);
 
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
@@ -874,7 +873,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   double budget = E_in + rx->q_value_;
 
-  // Radiative capture: the residual is kicked by the emitted photons. Their
+  // Radiative capture: the recoil is kicked by the emitted photons. Their
   // momenta are resampled from this reaction's own photon distribution so that
   // the recoil belongs to the reaction the ReactionFilter reports.
   if (rx->mt_ == N_GAMMA) {
@@ -889,7 +888,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   state.internal =
     internal_energy(budget - state.emitted_kin, state.momentum, state.mass);
 
-  finish_event(p, *nuc, *rx, weight, E_in, u_in, ions, state, residual);
+  finish_event(p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil);
 }
 
 } // namespace recoil
