@@ -40,9 +40,14 @@ TEST_CASE("Light-ion emission spectrum")
   REQUIRE(recoil::light_ion_pdf(2.0e6, E_max, Z_b, A_b, Z_d, A_d) <
           0.01 * recoil::light_ion_pdf(9.0e6, E_max, Z_b, A_b, Z_d, A_d));
 
-  // Neutral ejectiles feel no barrier, so the spectrum is E*sqrt(1 - E/E_max)
+  // Neutral ejectiles feel no barrier, so the spectrum is
+  // E*(1 - E/E_max)^nu with nu the calibrated endpoint exponent. Written
+  // against LightIonParams rather than a hardcoded exponent so that a refit
+  // does not silently break a test whose subject is the barrier, not nu.
+  const recoil::LightIonParams deployed {};
   double neutral = recoil::light_ion_pdf(0.5 * E_max, E_max, 0, 1, Z_d, A_d);
-  REQUIRE(neutral == Approx(0.5 * E_max * std::sqrt(0.5)).epsilon(1e-12));
+  REQUIRE(neutral ==
+          Approx(0.5 * E_max * std::pow(0.5, deployed.nu)).epsilon(1e-12));
 
   SECTION("sampling reproduces the spectrum mean")
   {
@@ -101,8 +106,9 @@ TEST_CASE("Light-ion spectrum: parameterized overload matches the deployed one")
         double E_max = 12.0e6;
         for (double frac : {0.01, 0.1, 0.35, 0.5, 0.75, 0.95, 0.999}) {
           double E = frac * E_max;
-          REQUIRE(recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d) ==
-                  recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed));
+          REQUIRE(
+            recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d) ==
+            recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed));
         }
       }
     }
@@ -163,8 +169,8 @@ TEST_CASE("Light-ion sampler realizes the parameterized spectrum")
     const int n_draw = 200000;
     double acc = 0.0;
     for (int i = 0; i < n_draw; ++i)
-      acc += recoil::sample_light_ion_energy(
-        E_max, E_max, 2, 4, 24, 52, &seed, par);
+      acc +=
+        recoil::sample_light_ion_energy(E_max, E_max, 2, 4, 24, 52, &seed, par);
     REQUIRE(acc / n_draw == Approx(analytic).epsilon(0.02));
   }
 }

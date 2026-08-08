@@ -35,7 +35,7 @@ namespace {
 //==============================================================================
 
 //! Effective barrier reduced radius in [fm]
-constexpr double BARRIER_RADIUS = 1.8;
+constexpr double BARRIER_RADIUS = 1.7537;
 
 //! Effective barrier diffuseness in [eV]
 constexpr double BARRIER_DIFFUSENESS = 0.8e6;
@@ -333,7 +333,6 @@ double separation_energy(
 
 //! Kalbach angular-distribution slope parameter
 
-
 //==============================================================================
 // Emission bookkeeping for one collision
 //==============================================================================
@@ -431,7 +430,6 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed)
   return std::min(1.0, std::max(-1.0, mu));
 }
 
-
 double particle_mass_ev(ParticleType type)
 {
   if (type.is_photon())
@@ -461,6 +459,21 @@ ParticleType residual_particle_type(const Nuclide& nuc, int mt)
   if (Z_res <= 0 || A_res <= 0 || Z_res > A_res)
     return nuc.particle_type();
   return ParticleType {Z_res, A_res, 0};
+}
+
+double kalbach_precompound_fraction(double E_cm, double E_max_shape,
+  double E_in, AtomicNumbers daughter, const AngularParams& par)
+{
+  if (daughter.A <= 0)
+    return 0.0;
+  double x = E_cm / std::max(E_max_shape, 1.0);
+  x = std::min(1.0, std::max(0.0, x));
+  double a_third = std::pow(static_cast<double>(daughter.A), -1.0 / 3.0);
+  double excess = (daughter.A - 2.0 * daughter.Z) / daughter.A;
+  double u = par.c0 + par.c1 * x + par.c2 * std::log1p(E_in / 10.0e6) +
+             par.c3 * a_third + par.c4 * excess;
+  u = std::min(60.0, std::max(-60.0, u));
+  return 1.0 / (1.0 + std::exp(-u));
 }
 
 double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
@@ -624,8 +637,10 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     if (E_cm <= 0.0 || E_cm > E_max_event || !std::isfinite(E_cm))
       return false;
 
-    double slope = kalbach_slope(E_in, E_cm, b, nuc);
-    double r = std::min(1.0, E_cm / std::max(E_max_shape, 1.0));
+    AngularParams ang {};
+    double slope = ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc);
+    double r =
+      kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
     double mu = sample_kalbach_mu(slope, r, seed);
     Direction u_cm = rotate_angle(u_in, mu, nullptr, seed);
 
