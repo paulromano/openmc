@@ -123,8 +123,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 //! Kalbach-Mann slope parameter \f$a\f$ from the 1988 systematics
 //!
 //! Exposed so that angular candidates can be scored through this exact code
-//! path rather than a reimplementation of it. See
-//! `jnm-recoil/cpp/verify_angular.cpp`.
+//! path rather than a reimplementation of it.
 //!
 //! \param[in] E_in     Incident neutron energy in [eV]
 //! \param[in] E_cm     Emitted particle centre-of-mass energy in [eV]
@@ -163,7 +162,8 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //! The transmission is a WKB Coulomb penetrability normalized so that
 //! \f$T_C = 1/2\f$ at the barrier top. Because \f$\eta \propto E^{-1/2}\f$ the
 //! decay constant itself grows as \f$E\f$ falls, which is the widening of the
-//! barrier that a fixed diffuseness cannot reproduce. The effective radius
+//! barrier at lower energy; a transmission with a fixed diffuseness falls at
+//! one rate everywhere and cannot reproduce it. The effective radius
 //! \f$r_0\f$, the WKB strength \f$g\f$ and the exponent \f$\nu\f$ are
 //! calibrated against evaluated ENDF MF=6 charged-particle spectra rather than
 //! derived from an optical model; see the recoil section of the user
@@ -177,54 +177,20 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 double light_ion_pdf(
   double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
 
-//! Calibration parameters of the light-ion spectrum
+//! Calibration constants of the light-ion spectrum
 //!
-//! The deployed values are the defaults. The parameterized overloads below
-//! exist so that a candidate parameter set can be scored against evaluated data
-//! using this exact code path, rather than against a reimplementation of it in
-//! the fitting scripts. See `jnm-recoil/cpp/verify_light_ion.cpp`.
+//! There is one model and these are its parameters; the struct groups them so
+//! that they are documented and tested in one place, and so that a candidate
+//! set can be scored through the overloads below using this exact code path
+//! rather than a reimplementation of it. Nothing in the transport kernel passes
+//! anything but the defaults.
 struct LightIonParams {
-  //! Functional form of the Coulomb transmission factor
-  enum class Barrier {
-    hill_wheeler, //!< logistic in (V_C - E) with a fixed diffuseness
-    gamow         //!< logistic in the Sommerfeld parameter difference
-  };
-
-  double r0 {1.52397};  //!< effective barrier radius in [fm]
-  double delta {0.8e6}; //!< barrier diffuseness in [eV], Hill-Wheeler only
-  double nu {1.51700};  //!< endpoint exponent of the level-density factor
-  Barrier barrier {Barrier::gamow};
-  double g {0.51930}; //!< scales the WKB exponent, Gamow only
-
-  //! Exciton relaxation of the endpoint exponent (candidate S2)
-  //!
-  //! When \ref nu_delta is nonzero the exponent is taken as
-  //! \f$\nu = n_\text{eff} - 2\f$ with
-  //! \f$n_\text{eff} = 3 + \delta_n e^{-E_\text{in}/E_\text{eq}}\f$, so that
-  //! \ref nu is ignored and \ref light_ion_nu() supplies it instead.
-  double nu_delta {0.0};
-  double e_eq {10.0e6}; //!< exciton relaxation scale in [eV]
+  double r0 {1.52397}; //!< effective barrier radius in [fm]
+  double g {0.51930};  //!< scales the WKB barrier exponent
+  double nu {1.51700}; //!< endpoint exponent of the level-density factor
 };
 
-//! Endpoint exponent at a given incident energy
-//!
-//! Returns `par.nu` unchanged unless the exciton relaxation is active.
-//!
-//! \param[in] E_in incident neutron energy in [eV]
-//! \param[in] par  calibration parameters
-//! \return endpoint exponent to use in \ref light_ion_pdf()
-double light_ion_nu(double E_in, const LightIonParams& par);
-
-//! Light-ion parameters selected by the OPENMC_LIGHT_ION_MODEL environment
-//! variable
-//!
-//! Returns the deployed calibration unless the variable names a candidate.
-//! This exists so that a single build can score competing calibrations through
-//! the production transport kernel; see
-//! `jnm-recoil/LIGHT_ION_CANDIDATE_RESULTS.md`.
-const LightIonParams& light_ion_params();
-
-//! Calibration parameters of the light-ion angular distribution
+//! Calibration constants of the light-ion angular distribution
 //!
 //! The pre-equilibrium fraction of the Kalbach form. The deployed prescription
 //! was \f$r = E/E_{\max,\text{shape}}\f$, which is identically 1 at a

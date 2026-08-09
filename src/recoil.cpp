@@ -15,7 +15,6 @@
 #include <algorithm> // for max, min, swap
 #include <cctype>    // for tolower, isdigit
 #include <cmath>     // for sqrt, exp, cbrt, log
-#include <cstdlib>
 #include <string>
 
 namespace openmc {
@@ -30,7 +29,7 @@ namespace {
 // AngularParams, so that a candidate parameter set can be scored through this
 // same code path. It was fitted to 3708 evaluated centre-of-mass spectra drawn
 // from six libraries, 29 nuclides, five light ions and incident energies from
-// 2 to 20 MeV; see jnm-recoil/LIGHT_ION_SURROGATE.md.
+// 2 to 20 MeV.
 //==============================================================================
 
 //! Coulomb constant e^2/(4 pi eps0) in [eV fm]
@@ -499,88 +498,37 @@ double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
     double radius = par.r0 * (std::cbrt(static_cast<double>(A_b)) +
                                std::cbrt(static_cast<double>(A_d)));
     double barrier = COULOMB_EV_FM * Z_b * Z_d / radius;
-    if (par.barrier == LightIonParams::Barrier::gamow) {
-      // Sommerfeld parameter eta = Z_b Z_D alpha sqrt(mu c^2 / 2E). The E^-1/2
-      // inside the exponent makes the decay constant itself grow as E falls,
-      // which is the widening of the barrier that a fixed diffuseness cannot
-      // reproduce. Normalized so that T = 1/2 at E = V_C.
-      //
-      // The exponent is bounded before it is used. Unlike the Hill-Wheeler
-      // argument, which is at most V_C/delta, this one diverges as E -> 0, so
-      // the unbounded form underflows to exactly zero over the whole grid
-      // whenever a channel lies entirely below the barrier and leaves nothing
-      // to normalize. The bound imposes a floor on the transmission instead.
-      double m_b = light_ion_mass_amu(Z_b, A_b);
-      double m_d = A_d * MASS_NEUTRON_EV / AMU_EV;
-      double mu = m_b * m_d / (m_b + m_d);
-      // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
-      double pref = Z_b * Z_d / FINE_STRUCTURE * std::sqrt(0.5 * mu * AMU_EV);
-      double arg =
-        par.g * 2.0 * PI *
-        (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
-      transmission =
-        1.0 / (1.0 + std::exp(std::min(60.0, std::max(-60.0, arg))));
-    } else {
-      double arg = (barrier - E) / par.delta;
-      if (arg > 60.0) {
-        transmission = std::exp(-arg);
-      } else if (arg > -60.0) {
-        transmission = 1.0 / (1.0 + std::exp(arg));
-      }
-    }
+
+    // Sommerfeld parameter eta = Z_b Z_D alpha sqrt(mu c^2 / 2E). The E^-1/2
+    // inside the exponent makes the decay constant itself grow as E falls,
+    // which is the widening of the barrier at lower energy; a transmission
+    // with a fixed diffuseness falls at one rate everywhere and cannot
+    // reproduce it. Normalized so that T = 1/2 at E = V_C.
+    double m_b = light_ion_mass_amu(Z_b, A_b);
+    double m_d = A_d * MASS_NEUTRON_EV / AMU_EV;
+    double mu = m_b * m_d / (m_b + m_d);
+    // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
+    double pref = Z_b * Z_d / FINE_STRUCTURE * std::sqrt(0.5 * mu * AMU_EV);
+    double arg =
+      par.g * 2.0 * PI *
+      (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
+
+    // The exponent is bounded before it is used, and the bound is part of the
+    // model rather than arithmetic hygiene: it diverges as E -> 0, so the
+    // unbounded form underflows to exactly zero over the whole grid whenever a
+    // channel lies entirely below the barrier, leaving nothing to normalize.
+    // The bound floors the transmission instead, and the spectrum there
+    // reduces to E (1 - E/E_max)^nu.
+    transmission = 1.0 / (1.0 + std::exp(std::min(60.0, std::max(-60.0, arg))));
   }
   double endpoint = 1.0 - E / E_max;
-  // nu = 1/2 is by far the common case and std::sqrt is both faster and more
-  // accurate than std::pow for it
-  double level_density =
-    (par.nu == 0.5) ? std::sqrt(endpoint) : std::pow(endpoint, par.nu);
+  double level_density = std::pow(endpoint, par.nu);
   return E * transmission * level_density;
 }
 
 double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
 {
-  return light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, light_ion_params());
-}
-
-double light_ion_nu(double E_in, const LightIonParams& par)
-{
-  if (par.nu_delta == 0.0)
-    return par.nu;
-  double n_eff = 3.0 + par.nu_delta * std::exp(-E_in / std::max(par.e_eq, 1.0));
-  return std::min(8.0, std::max(0.02, n_eff - 2.0));
-}
-
-const LightIonParams& light_ion_params()
-{
-  // Fitted on 3708 evaluated centre-of-mass spectra; see
-  // jnm-recoil/LIGHT_ION_CANDIDATE_RESULTS.md for the selection.
-  static const LightIonParams params = [] {
-    LightIonParams p {};
-    const char* name = std::getenv("OPENMC_LIGHT_ION_MODEL");
-    if (name == nullptr || std::string(name) == "deployed")
-      return p;
-    std::string model {name};
-    if (model == "M0R") {
-      // Superseded Hill-Wheeler calibration, kept selectable so that the
-      // change can be reproduced without rebuilding
-      p.barrier = LightIonParams::Barrier::hill_wheeler;
-      p.r0 = 1.7537;
-      p.delta = 0.8e6;
-      p.nu = 1.2110;
-    } else if (model == "S2") {
-      // Runner-up: adds an incident-energy dependence to the exponent
-      p.barrier = LightIonParams::Barrier::gamow;
-      p.r0 = 1.59992;
-      p.g = 0.67606;
-      p.nu_delta = 2.67207;
-      p.e_eq = 10.0e6;
-    } else {
-      fatal_error("Unknown OPENMC_LIGHT_ION_MODEL '" + model +
-                  "'; expected deployed, M0R or S2.");
-    }
-    return p;
-  }();
-  return params;
+  return light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, LightIonParams {});
 }
 
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
@@ -622,7 +570,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   int Z_d, int A_d, uint64_t* seed)
 {
   return sample_light_ion_energy(
-    E_max, E_limit, Z_b, A_b, Z_d, A_d, seed, light_ion_params());
+    E_max, E_limit, Z_b, A_b, Z_d, A_d, seed, LightIonParams {});
 }
 
 namespace {
@@ -707,10 +655,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
       // two-body and the light-ion energy is fixed by the reaction Q value.
       E_cm = E_max_event;
     } else {
-      LightIonParams par = light_ion_params();
-      par.nu = light_ion_nu(E_in, par);
       E_cm = sample_light_ion_energy(
-        E_max_shape, E_max_event, b.Z, b.A, d.Z, d.A, seed, par);
+        E_max_shape, E_max_event, b.Z, b.A, d.Z, d.A, seed);
     }
     if (E_cm <= 0.0 || E_cm > E_max_event || !std::isfinite(E_cm))
       return false;
