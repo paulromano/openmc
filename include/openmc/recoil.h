@@ -181,12 +181,12 @@ struct LightIonParams {
 //! reaction dynamics. Replaced by a logistic in quantities the transport kernel
 //! already has; see the recoil section of the methods documentation.
 struct AngularParams {
-  double c0 {-9.791989};         //!< constant
-  double c1 {5.03567};           //!< coefficient of E/E_max_shape
-  double c2 {10.919767};         //!< coefficient of log(1 + E_in / 10 MeV)
-  double c3 {-13.055906};        //!< coefficient of A_D^(-1/3)
-  double c4 {16.481198};         //!< coefficient of the daughter neutron excess
-  double slope_scale {0.987938}; //!< multiplies the Kalbach 1988 slope
+  double c0 {-7.72232};         //!< constant
+  double c1 {3.78801};          //!< coefficient of E/E_max_shape
+  double c2 {10.59511};         //!< coefficient of log(1 + E_in / 10 MeV)
+  double c3 {-18.91239};        //!< coefficient of A_D^(-1/3)
+  double c4 {8.76885};          //!< coefficient of the daughter neutron excess
+  double slope_scale {1.01913}; //!< multiplies the Kalbach 1988 slope
 };
 
 //! Pre-equilibrium fraction \f$r\f$ of the Kalbach angular distribution
