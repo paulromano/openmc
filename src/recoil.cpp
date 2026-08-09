@@ -26,20 +26,12 @@ namespace {
 //==============================================================================
 // Tunable constants of the light-ion emission model
 //
-// These two numbers set the effective Coulomb barrier felt by an emitted light
-// ion. They are not optical-model quantities: the reduced radius is larger and
-// the diffuseness softer than a geometric barrier so that the single smooth
-// transmission factor also stands in for sub-barrier tunnelling. Both were
-// calibrated by matching the mean centre-of-mass light-ion energy of this model
-// against the evaluated ENDF MF=6 spectra of MT=103-107 for 13 nuclides from
-// Be-9 to Ta-181 between 5 and 20 MeV.
+// The calibration itself lives in the defaults of LightIonParams and
+// AngularParams, so that a candidate parameter set can be scored through this
+// same code path. It was fitted to 3708 evaluated centre-of-mass spectra drawn
+// from six libraries, 29 nuclides, five light ions and incident energies from
+// 2 to 20 MeV; see jnm-recoil/LIGHT_ION_SURROGATE.md.
 //==============================================================================
-
-//! Effective barrier reduced radius in [fm]
-constexpr double BARRIER_RADIUS = 1.7537;
-
-//! Effective barrier diffuseness in [eV]
-constexpr double BARRIER_DIFFUSENESS = 0.8e6;
 
 //! Coulomb constant e^2/(4 pi eps0) in [eV fm]
 constexpr double COULOMB_EV_FM = 1.44e6;
@@ -523,9 +515,11 @@ double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
       double mu = m_b * m_d / (m_b + m_d);
       // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
       double pref = Z_b * Z_d / FINE_STRUCTURE * std::sqrt(0.5 * mu * AMU_EV);
-      double arg = par.g * 2.0 * PI *
-                   (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
-      transmission = 1.0 / (1.0 + std::exp(std::min(60.0, std::max(-60.0, arg))));
+      double arg =
+        par.g * 2.0 * PI *
+        (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
+      transmission =
+        1.0 / (1.0 + std::exp(std::min(60.0, std::max(-60.0, arg))));
     } else {
       double arg = (barrier - E) / par.delta;
       if (arg > 60.0) {
@@ -552,8 +546,7 @@ double light_ion_nu(double E_in, const LightIonParams& par)
 {
   if (par.nu_delta == 0.0)
     return par.nu;
-  double n_eff =
-    3.0 + par.nu_delta * std::exp(-E_in / std::max(par.e_eq, 1.0));
+  double n_eff = 3.0 + par.nu_delta * std::exp(-E_in / std::max(par.e_eq, 1.0));
   return std::min(8.0, std::max(0.02, n_eff - 2.0));
 }
 
@@ -567,12 +560,15 @@ const LightIonParams& light_ion_params()
     if (name == nullptr || std::string(name) == "deployed")
       return p;
     std::string model {name};
-    if (model == "S1b") {
-      p.barrier = LightIonParams::Barrier::gamow;
-      p.r0 = 1.52397;
-      p.g = 0.51930;
-      p.nu = 1.51700;
+    if (model == "M0R") {
+      // Superseded Hill-Wheeler calibration, kept selectable so that the
+      // change can be reproduced without rebuilding
+      p.barrier = LightIonParams::Barrier::hill_wheeler;
+      p.r0 = 1.7537;
+      p.delta = 0.8e6;
+      p.nu = 1.2110;
     } else if (model == "S2") {
+      // Runner-up: adds an incident-energy dependence to the exponent
       p.barrier = LightIonParams::Barrier::gamow;
       p.r0 = 1.59992;
       p.g = 0.67606;
@@ -580,7 +576,7 @@ const LightIonParams& light_ion_params()
       p.e_eq = 10.0e6;
     } else {
       fatal_error("Unknown OPENMC_LIGHT_ION_MODEL '" + model +
-                  "'; expected deployed, S1b or S2.");
+                  "'; expected deployed, M0R or S2.");
     }
     return p;
   }();

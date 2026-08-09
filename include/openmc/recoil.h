@@ -146,17 +146,34 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 
 //! Unnormalized light-ion emission spectrum
 //!
-//! \f[ P(E) \propto E\, T_C(E) \sqrt{1 - E/E_\text{max}}, \qquad
-//!     T_C(E) = \left[1 + e^{(V_C - E)/\Delta}\right]^{-1}, \qquad
+//! \f[ P(E) \propto E\, T_C(E) \left(1 - E/E_\text{max}\right)^{\nu}, \qquad
+//!     T_C(E) = \left[1 + e^{2\pi g (\eta(E) - \eta(V_C))}\right]^{-1}, \f]
+//!
+//! with the Sommerfeld parameter and Coulomb barrier
+//!
+//! \f[ \eta(E) = \frac{Z_b Z_d}{137.036}\sqrt{\frac{\mu c^2}{2E}}, \qquad
 //!     V_C = \frac{1.44\,\text{MeV fm}\, Z_b Z_d}
 //!                {r_0 (A_b^{1/3} + A_d^{1/3})}. \f]
 //!
 //! The factor \f$E\,T_C(E)\f$ stands in for the inverse-reaction cross section
-//! of a Weisskopf-Ewing evaporation spectrum and \f$\sqrt{1-E/E_\text{max}}\f$
-//! for the level density of the recoil. The effective barrier radius
-//! \f$r_0\f$ and diffuseness \f$\Delta\f$ are calibrated against evaluated
-//! ENDF MF=6 charged-particle spectra rather than derived from an optical
-//! model; see the recoil section of the user documentation.
+//! of a Weisskopf-Ewing evaporation spectrum and
+//! \f$(1-E/E_\text{max})^{\nu}\f$ for the level density of the recoil, with
+//! \f$\nu = n - 2\f$ for an \f$n\f$-exciton state.
+//!
+//! The transmission is a WKB Coulomb penetrability normalized so that
+//! \f$T_C = 1/2\f$ at the barrier top. Because \f$\eta \propto E^{-1/2}\f$ the
+//! decay constant itself grows as \f$E\f$ falls, which is the widening of the
+//! barrier that a fixed diffuseness cannot reproduce. The effective radius
+//! \f$r_0\f$, the WKB strength \f$g\f$ and the exponent \f$\nu\f$ are
+//! calibrated against evaluated ENDF MF=6 charged-particle spectra rather than
+//! derived from an optical model; see the recoil section of the user
+//! documentation.
+//!
+//! \note The exponent is bounded to \f$\pm 60\f$ before it is exponentiated.
+//!       This is part of the model, not just arithmetic protection: where a
+//!       channel lies entirely below the barrier the bound floors the
+//!       transmission and the spectrum reduces to
+//!       \f$E (1-E/E_\text{max})^{\nu}\f$.
 double light_ion_pdf(
   double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
 
@@ -173,11 +190,11 @@ struct LightIonParams {
     gamow         //!< logistic in the Sommerfeld parameter difference
   };
 
-  double r0 {1.7537};   //!< effective barrier radius in [fm]
+  double r0 {1.52397};  //!< effective barrier radius in [fm]
   double delta {0.8e6}; //!< barrier diffuseness in [eV], Hill-Wheeler only
-  double nu {1.2110};   //!< endpoint exponent of the level-density factor
-  Barrier barrier {Barrier::hill_wheeler};
-  double g {1.0}; //!< scales the WKB exponent, Gamow only
+  double nu {1.51700};  //!< endpoint exponent of the level-density factor
+  Barrier barrier {Barrier::gamow};
+  double g {0.51930}; //!< scales the WKB exponent, Gamow only
 
   //! Exciton relaxation of the endpoint exponent (candidate S2)
   //!
@@ -203,7 +220,8 @@ double light_ion_nu(double E_in, const LightIonParams& par);
 //!
 //! Returns the deployed calibration unless the variable names a candidate.
 //! This exists so that a single build can score competing calibrations through
-//! the production transport kernel; see `jnm-recoil/LIGHT_ION_CANDIDATE_RESULTS.md`.
+//! the production transport kernel; see
+//! `jnm-recoil/LIGHT_ION_CANDIDATE_RESULTS.md`.
 const LightIonParams& light_ion_params();
 
 //! Calibration parameters of the light-ion angular distribution
