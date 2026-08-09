@@ -167,10 +167,44 @@ double light_ion_pdf(
 //! using this exact code path, rather than against a reimplementation of it in
 //! the fitting scripts. See `jnm-recoil/cpp/verify_light_ion.cpp`.
 struct LightIonParams {
+  //! Functional form of the Coulomb transmission factor
+  enum class Barrier {
+    hill_wheeler, //!< logistic in (V_C - E) with a fixed diffuseness
+    gamow         //!< logistic in the Sommerfeld parameter difference
+  };
+
   double r0 {1.7537};   //!< effective barrier radius in [fm]
-  double delta {0.8e6}; //!< barrier diffuseness in [eV]
+  double delta {0.8e6}; //!< barrier diffuseness in [eV], Hill-Wheeler only
   double nu {1.2110};   //!< endpoint exponent of the level-density factor
+  Barrier barrier {Barrier::hill_wheeler};
+  double g {1.0}; //!< scales the WKB exponent, Gamow only
+
+  //! Exciton relaxation of the endpoint exponent (candidate S2)
+  //!
+  //! When \ref nu_delta is nonzero the exponent is taken as
+  //! \f$\nu = n_\text{eff} - 2\f$ with
+  //! \f$n_\text{eff} = 3 + \delta_n e^{-E_\text{in}/E_\text{eq}}\f$, so that
+  //! \ref nu is ignored and \ref light_ion_nu() supplies it instead.
+  double nu_delta {0.0};
+  double e_eq {10.0e6}; //!< exciton relaxation scale in [eV]
 };
+
+//! Endpoint exponent at a given incident energy
+//!
+//! Returns `par.nu` unchanged unless the exciton relaxation is active.
+//!
+//! \param[in] E_in incident neutron energy in [eV]
+//! \param[in] par  calibration parameters
+//! \return endpoint exponent to use in \ref light_ion_pdf()
+double light_ion_nu(double E_in, const LightIonParams& par);
+
+//! Light-ion parameters selected by the OPENMC_LIGHT_ION_MODEL environment
+//! variable
+//!
+//! Returns the deployed calibration unless the variable names a candidate.
+//! This exists so that a single build can score competing calibrations through
+//! the production transport kernel; see `jnm-recoil/LIGHT_ION_CANDIDATE_RESULTS.md`.
+const LightIonParams& light_ion_params();
 
 //! Calibration parameters of the light-ion angular distribution
 //!
