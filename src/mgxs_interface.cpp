@@ -218,6 +218,17 @@ void MgxsInterface::read_header(const std::string& path_cross_sections)
     num_delayed_groups_ = 0;
   }
 
+  if (attribute_exists(file_id, "particle_type")) {
+    std::string particle;
+    read_attribute(file_id, "particle_type", particle);
+    particle_type_ = ParticleType(particle);
+    if (!particle_type_.is_neutron() && !particle_type_.is_photon()) {
+      fatal_error("MGXS data must represent neutron or photon transport.");
+    }
+  } else {
+    particle_type_ = ParticleType::neutron();
+  }
+
   ensure_exists(file_id, "group structure", true);
   read_attribute(file_id, "group structure", rev_energy_bins_);
 
@@ -257,9 +268,9 @@ void MgxsInterface::read_header(const std::string& path_cross_sections)
 void put_mgxs_header_data_to_globals()
 {
   // Get the minimum and maximum energies
-  int neutron = ParticleType::neutron().transport_index();
-  data::energy_min[neutron] = data::mg.energy_bins_.back();
-  data::energy_max[neutron] = data::mg.energy_bins_.front();
+  int particle = data::mg.particle_type_.transport_index();
+  data::energy_min[particle] = data::mg.energy_bins_.back();
+  data::energy_max[particle] = data::mg.energy_bins_.front();
 
   // Save available XS names to library list, so that when
   // materials are read, the specified mgxs can be confirmed
