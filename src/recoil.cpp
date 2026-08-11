@@ -715,6 +715,65 @@ struct PhotonKick {
   double energy {0.0};
 };
 
+//! Scale a sampled capture cascade onto its energy budget
+//!
+//! Radiative capture leaves no massive light ion, so the recoil is kicked only
+//! by the photons, and the compound nucleus de-excites all the way to the
+//! ground state. The cascade therefore carries the *whole* excitation energy,
+//!
+//! \f[ \sum_i E_i + E_R = E_\text{in} + Q, \f]
+//!
+//! an equality rather than a bound. The evaluated files supply only an average
+//! photon spectrum and an average multiplicity, never the joint distribution of
+//! a cascade, so photons drawn independently from that spectrum do not obey it:
+//! their sum spans more than an order of magnitude about the budget and exceeds
+//! it in roughly 45% of events at 14 MeV, which inflates the width of the
+//! recoil spectrum by half.
+//!
+//! The cascade is therefore drawn first and then scaled by the single factor
+//! that satisfies the equality. Scaling rather than rejecting keeps the
+//! evaluated multiplicity exactly -- rejecting whole cascades would bias it
+//! low, because one with more photons is likelier to overshoot -- and keeps the
+//! mean photon energy within a couple of percent, where rejection would lose
+//! nearly half of it. What it gives up is the spread of individual photon
+//! energies, which is the right thing to give up here: these photons exist only
+//! to build the recoil momentum, are never transported or tallied, and the
+//! cascade that is actually transported is sampled separately in
+//! sample_secondary_photons().
+//!
+//! \param[in,out] kick    Cascade momentum and energy, scaled in place
+//! \param[in] p_in        Momentum carried into the reaction in [sqrt(amu eV)]
+//! \param[in] mass        Mass of the recoiling compound nucleus in [eV]
+//! \param[in] budget      Energy available to the exit channel in [eV]
+void constrain_photon_kick(
+  PhotonKick& kick, Direction p_in, double mass, double budget)
+{
+  if (kick.energy <= 0.0 || mass <= 0.0 || budget <= 0.0)
+    return;
+
+  // Solve lambda^2 |P|^2/(2m) + lambda (S - p.P/m) + |p|^2/(2m) - budget = 0
+  double a = kick.momentum.dot(kick.momentum) / (2.0 * mass);
+  double b = kick.energy - p_in.dot(kick.momentum) / mass;
+  double c = p_in.dot(p_in) / (2.0 * mass) - budget;
+
+  double lambda;
+  if (a > 0.0) {
+    // The quadratic coefficient is of order the recoil energy and the linear
+    // one of order the cascade energy, so the textbook root formula loses
+    // essentially all of its significant digits here. Use the factored form.
+    double disc = std::max(b * b - 4.0 * a * c, 0.0);
+    double q = -0.5 * (b + std::copysign(std::sqrt(disc), b));
+    lambda = (q != 0.0) ? c / q : 0.0;
+  } else {
+    lambda = (b > 0.0) ? -c / b : 0.0;
+  }
+
+  if (!(lambda > 0.0) || !std::isfinite(lambda))
+    return;
+  kick.momentum *= lambda;
+  kick.energy *= lambda;
+}
+
 PhotonKick sample_photon_kick(
   const Reaction& rx, double E_in, Direction u_in, uint64_t* seed)
 {
@@ -902,6 +961,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   // the recoil belongs to the reaction the ReactionFilter reports.
   if (rx->mt_ == N_GAMMA) {
     PhotonKick kick = sample_photon_kick(*rx, E_in, u_in, p.current_seed());
+    constrain_photon_kick(kick, state.momentum, state.mass, budget);
     state.momentum -= kick.momentum;
     state.emitted_kin += kick.energy;
   }
