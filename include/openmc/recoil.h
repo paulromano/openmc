@@ -185,9 +185,9 @@ double light_ion_pdf(
 //! rather than a reimplementation of it. Nothing in the transport kernel passes
 //! anything but the defaults.
 struct LightIonParams {
-  double r0 {1.52397}; //!< effective barrier radius in [fm]
-  double g {0.51930};  //!< scales the WKB barrier exponent
-  double nu {1.51700}; //!< endpoint exponent of the level-density factor
+  double r0 {1.36093}; //!< effective barrier radius in [fm]
+  double g {0.48566};  //!< scales the WKB barrier exponent
+  double nu {1.18221}; //!< endpoint exponent of the level-density factor
 };
 
 //! Calibration constants of the light-ion angular distribution

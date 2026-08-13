@@ -871,7 +871,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     // is a catch-all with inclusive product yields and no single recoil, and
     // some evaluations put a substantial part of the charged-particle
     // production there. Producing nothing is better than producing a record
-    // labelled with the wrong nuclide.
+    // labeled with the wrong nuclide.
     return;
   }
 
