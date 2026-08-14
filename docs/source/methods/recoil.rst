@@ -34,8 +34,6 @@ Every reaction family uses the same nonrelativistic momentum balance. Writing
 
 Masses and energies are in eV and momenta in eV with :math:`c = 1`, so
 :math:`p = \sqrt{2mE}` for a massive particle and :math:`p = E` for a photon.
-Nuclide masses come from the tabulated atomic masses; a nuclide missing from
-that table falls back on :math:`A` atomic mass units.
 
 The identity of the recoil follows from the MT number,
 
@@ -57,6 +55,83 @@ Products that OpenMC samples from evaluated data are used exactly as sampled.
 Products for which the library carries no distribution are modelled, and the
 model is constrained by :eq:`recoil-budget` so that no event can violate energy
 conservation.
+
+Masses
+------
+
+Masses are **nuclear**, obtained from the tabulated atomic mass as
+:math:`M_\text{nuc}(Z,A) = M_\text{atom}(Z,A) - Z m_e`, with the proton,
+deuteron, triton, helion and alpha taken from their CODATA nuclear values.
+Electron *binding* energy is neglected: it does not cancel exactly in a
+charged-particle Q value, but the residue is 13.6 eV for a proton channel,
+79 eV for an alpha, and a few keV on a heavy target.
+
+Mixing the two conventions is the error worth guarding against. A Q value built
+from atomic targets and nuclear light ions is wrong by :math:`Z_b m_e c^2`,
+which is 1.02 MeV for an alpha channel. A nuclide with no tabulated mass yields
+no budget and therefore no recoil record, rather than a fabricated mass and a Q
+value wrong by tens of MeV.
+
+Energy budget
+-------------
+
+The Q value in :eq:`recoil-budget` is the **rest-mass energy release** of the
+exit channel,
+
+.. math::
+    :label: recoil-qm
+
+    Q_M = \left[M_T + m_n - M_D - \sum_j m_j\right] c^2 ,
+
+computed from mass excesses so that the mass numbers cancel identically rather
+than numerically. It is *not*, in general, the Q value stored in the nuclear
+data library. ENDF MF=3 carries two: ``QM``, the mass-difference Q, and ``QI``,
+the Q of the lowest state the MT represents — or, when the MT names no unique
+state, an effective value chosen to place the threshold correctly. ENDF-102
+warns that such a value cannot be relied on for energy-release calculations,
+and it is ``QI`` that both the ACE and the direct-ENDF readers store in
+:attr:`Reaction.q_value`.
+
+For a lumped channel the two agree. For the continuum member of a split
+representation — MT = 649, 699, 749, 799, 849 — ``QI`` lies below the release by
+a median 3.5 keV and by as much as 7.0 MeV, measured over 190 such channels in
+ENDF/B-VIII.1, JEFF-4.0, JENDL-5 and TENDL-2025. Using it as the budget
+truncates the modelled light-ion spectrum well inside the evaluated one.
+
+OpenMC therefore uses :eq:`recoil-qm` for continuum, lumped and multiparticle
+channels, and the evaluated ``QI`` only for MT numbers that name one residual
+level (MT = 51-90 and the discrete charged-particle bands), where it is the
+level-specific Q and is exactly what a two-body channel needs. A level Q above
+the ground-state release implies a negative excitation; an excess within
+0.25 MeV is absorbed as mass-table disagreement, and a larger one means the
+evaluation cannot be reconciled and the event produces no recoil.
+
+Entrance and exit energetics
+----------------------------
+
+For a stationary target the energy available in the compound system's rest
+frame is
+
+.. math::
+    :label: recoil-u0
+
+    U_0 = E_\text{in} + Q - \frac{|\mathbf{p}_n|^2}{2 (M_T + m_n)}
+        = E_\text{in} \frac{M_T}{M_T + m_n} + Q ,
+
+the subtracted term being the kinetic energy of the centre of mass, which no
+exit channel can spend. Emitting ion :math:`b` from a parent with remaining
+internal energy :math:`U` leaves the daughter recoiling against it, so
+
+.. math::
+    :label: recoil-endpoint
+
+    E_{b,\max} = U \frac{M_D}{m_b + M_D} , \qquad
+    E_x = U - E_b^\text{cm}\left(1 + \frac{m_b}{M_D}\right) \ge 0 ,
+
+with :math:`M_D` the daughter plus any product not yet emitted. These
+expressions are shared with the offline calibration through a checked-in
+fixture of 374 cases, so the distribution the transport kernel samples is the
+one the surrogate was fitted to.
 
 -----------------
 Reaction Families
@@ -158,16 +233,10 @@ deuteron, triton, helium-3, and alpha ions of channels such as (n,p),
 ``light_ion_model`` is ``'statistical'``, OpenMC emits them sequentially in the
 rest frame of the system that has not yet decayed.
 
-For a parent of mass :math:`M` with internal energy :math:`U` emitting ion
-:math:`b` and leaving daughter :math:`D`, the two-body kinematic maximum is
-
-.. math::
-
-    E_b^\text{max} = U \frac{M_D}{m_b + M_D} ,
-
-and the emission removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from :math:`U`, so
-the daughter is left with excitation
-:math:`E_x = U\left(1 - E_b^\text{cm}/E_b^\text{max}\right)`. Emission order is
+Each emission follows :eq:`recoil-endpoint`: the ion can carry at most
+:math:`E_{b,\max}`, and it removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from the
+parent's internal energy, leaving the daughter with
+:math:`E_x = U\left(1 - E_b^\text{cm}/E_{b,\max}\right)`. Emission order is
 randomized so no ion is systematically favoured.
 
 Energy
@@ -234,14 +303,16 @@ nuclear-reaction model.
 Endpoint and direction
 ~~~~~~~~~~~~~~~~~~~~~~
 
-The endpoint :math:`E_b^\text{max}` used in :eq:`recoil-light-ion` is the one
-belonging to the channel that emits this ion *alone* — for a proton, the Q value
-of (n,p) — because in a channel such as (n,np) the charged particle is
-physically emitted first, from the hot compound nucleus, and only then does the
-neutron follow. The sample is then truncated to what this particular event can
-still afford. Discrete charged-particle levels (MT = 600-849) are exactly
-two-body, so their light-ion energy is fixed at :math:`E_b^\text{max}` rather
-than sampled.
+Two endpoints appear in :eq:`recoil-light-ion` and they play different roles.
+The *shape* endpoint is the one belonging to the channel that emits this ion
+**alone**, built from :eq:`recoil-qm` and :eq:`recoil-u0` for that channel and
+not from any evaluated Q; it sets the spectrum's shape, because the endpoint
+factor stands in for the level density of the daughter that ion would leave on
+its own. The *event* endpoint is :eq:`recoil-endpoint` evaluated on whatever
+internal energy this particular event has left, and it truncates the sample.
+The two coincide unless an earlier product has already spent part of the
+budget. Discrete charged-particle levels (MT = 600-849) are exactly two-body,
+so their light-ion energy is fixed at the event endpoint rather than sampled.
 
 The direction uses the Kalbach-Mann form of evaluated MF=6 LANG=2 data,
 
@@ -341,9 +412,10 @@ Limitations
   sequential decay.
 - Recoil excitation, isomeric state, and subsequent gamma recoil are not
   represented.
+- Atomic electron binding energy is neglected in the mass budget, which leaves
+  a few keV unaccounted for in a charged-particle channel on a heavy target.
 - All massive-particle kinematics are nonrelativistic, which understates the
   recoil energy by roughly :math:`E / 2 m_n c^2` — under 1% at 14 MeV.
-- Atomic masses are used as a proxy for nuclear masses.
 - Only the continuous-energy transport mode produces recoils.
 
 ----------

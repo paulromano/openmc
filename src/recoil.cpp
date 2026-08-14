@@ -241,38 +241,23 @@ struct ChargedProducts {
   }
 };
 
-//! Q value of the channel that emits a single ion \p b from \p nuc
+//! Fill \p out with the emitted particles of a channel, light ions and all
 //!
-//! Uses the evaluated Q value of the corresponding pure channel (MT=103-107)
-//! when the library provides it. This is the energy that would be available to
-//! the ion if it were the first particle emitted by the compound nucleus, and
-//! it sets the shape of the modelled spectrum even in channels where other
-//! particles have already taken part of the budget.
-double single_channel_q(const Nuclide& nuc, AtomicNumbers b, double fallback)
+//! The complement of ChargedProducts::fill(), which keeps only the charged
+//! ones. A mass budget needs every particle that leaves.
+int all_products(const EmittedParticles& e, AtomicNumbers* out, int capacity)
 {
-  int mt = 0;
-  if (b.Z == 1 && b.A == 1)
-    mt = N_P;
-  else if (b.Z == 1 && b.A == 2)
-    mt = N_D;
-  else if (b.Z == 1 && b.A == 3)
-    mt = N_T;
-  else if (b.Z == 2 && b.A == 3)
-    mt = N_3HE;
-  else if (b.Z == 2 && b.A == 4)
-    mt = N_A;
-
-  if (mt > 0) {
-    // reaction_index_ is filled with C_NONE, which wraps to a huge value in
-    // its unsigned element type; the bounds check below covers both cases.
-    size_t i = nuc.reaction_index_[mt];
-    if (i < nuc.reactions_.size()) {
-      const auto& rx = nuc.reactions_[i];
-      if (rx && rx->mt_ == mt)
-        return rx->q_value_;
+  const AtomicNumbers kinds[6] = {
+    {0, 1}, {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4}};
+  const int counts[6] = {
+    e.neutron, e.proton, e.deuteron, e.triton, e.he3, e.alpha};
+  int n = 0;
+  for (int k = 0; k < 6; ++k) {
+    for (int i = 0; i < counts[k] && n < capacity; ++i) {
+      out[n++] = kinds[k];
     }
   }
-  return fallback;
+  return n;
 }
 
 //==============================================================================
@@ -358,6 +343,77 @@ bool is_discrete_charged_level(int mt)
          (mt >= N_A0 && mt < N_AC);
 }
 
+//! True for every MT that names one residual level, charged or neutron
+//!
+//! These are the MTs whose evaluated \c QI is a trustworthy energy release,
+//! because the MT identifies the state the residual is left in. For anything
+//! else \c QI is a threshold-setting value; see event_q().
+bool names_one_level(int mt)
+{
+  return (mt >= N_N1 && mt < N_NC) || is_discrete_charged_level(mt);
+}
+
+//! How far an evaluated level Q may sit above the ground-state mass budget
+//!
+//! A level Q above the ground-state budget means a negative excitation, which
+//! is unphysical. Small excesses are mass-table disagreement: across 418
+//! evaluated channels in four libraries, MF=3 \c QM departs from the AME2020
+//! mass difference by at most 90 keV. This threshold is comfortably above that
+//! and far below a real inconsistency, so an excess inside it is absorbed by
+//! capping and an excess beyond it means the evaluation cannot be reconciled.
+constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
+
+//! Rest-mass energy release available to an event, in [eV]
+//!
+//! ENDF stores two Q values and OpenMC keeps only one of them. \c Reaction::
+//! q_value_ is MF=3 \c QI, the Q of the lowest state the MT represents, or an
+//! effective value chosen to put the threshold in the right place when the MT
+//! names no unique state. For a discrete level that is exactly the budget
+//! wanted. For a continuum, level range or summation channel it is not: over
+//! the 190 split-representation channels of the calibration libraries it lies
+//! a median 3.5 keV and up to 7.0 MeV *below* the mass-difference Q, and using
+//! it truncates the modelled spectrum inside the evaluated one.
+//!
+//! \param[in] nuc      Target nuclide
+//! \param[in] rx       Reaction that was sampled
+//! \param[in] emitted  Light particles the exit channel produces
+//! \param[out] ok      False when no trustworthy budget can be formed, in
+//!                     which case the caller must produce nothing rather than
+//!                     bank a recoil built on a budget it does not believe
+double event_q(
+  const Nuclide& nuc, const Reaction& rx, const EmittedParticles& emitted,
+  bool& ok)
+{
+  ok = true;
+  AtomicNumbers target {nuc.Z_, nuc.A_};
+  AtomicNumbers products[ChargedProducts::MAX + 4];
+  int n = all_products(emitted, products, ChargedProducts::MAX + 4);
+
+  bool have_masses = false;
+  double q_mass = mass_difference_q(target, products, n, have_masses);
+
+  if (!names_one_level(rx.mt_)) {
+    if (have_masses)
+      return q_mass;
+    // No tabulated mass for this daughter. QI is then the only budget on
+    // offer; it is the right one for a lumped channel, where QI and QM agree
+    // in every evaluation examined, and too small for a split continuum.
+    return rx.q_value_;
+  }
+
+  // A named level: QI is the level-specific Q, which is what a two-body
+  // channel needs. Check it against the ground-state budget, since the two
+  // must differ by the level excitation and that cannot be negative.
+  if (!have_masses)
+    return rx.q_value_;
+  if (rx.q_value_ <= q_mass)
+    return rx.q_value_;
+  if (rx.q_value_ <= q_mass + Q_LEVEL_TOLERANCE)
+    return q_mass;
+  ok = false;
+  return 0.0;
+}
+
 //! Internal energy of a system with the given lab momentum, mass, and budget
 double internal_energy(double budget, Direction momentum, double mass)
 {
@@ -367,6 +423,114 @@ double internal_energy(double budget, Direction momentum, double mass)
 }
 
 } // namespace
+
+//==============================================================================
+// Kinematic contract
+//
+// Five expressions, documented in recoil.h, mirrored by recoil.kinematics in
+// the analysis repository and checked against a shared fixture.
+//==============================================================================
+
+double nuclear_mass_ev(AtomicNumbers za)
+{
+  // The five light ions come from their CODATA values. Reading them out of
+  // ATOMIC_MASS would work for four of them and quietly fail for the fifth:
+  // that table holds bare nuclear masses for the proton, deuteron, helion and
+  // alpha, which are CODATA particle constants, but the *atomic* H-3 mass at
+  // PDG 1000010030, which is 0.55 mu heavier than the triton.
+  if (za.Z == 0 && za.A == 1)
+    return MASS_NEUTRON * AMU_EV;
+  if (za.Z == 1 && za.A == 1)
+    return MASS_PROTON * AMU_EV;
+  if (za.Z == 1 && za.A == 2)
+    return MASS_DEUTRON * AMU_EV;
+  if (za.Z == 1 && za.A == 3)
+    return 3.01550071621 * AMU_EV; // triton, nuclear
+  if (za.Z == 2 && za.A == 3)
+    return MASS_HELION * AMU_EV;
+  if (za.Z == 2 && za.A == 4)
+    return MASS_ALPHA * AMU_EV;
+
+  if (za.Z < 0 || za.A <= 0 || za.Z > za.A)
+    return 0.0;
+  int32_t pdg = 1000000000 + za.Z * 10000 + za.A * 10;
+  auto it = ATOMIC_MASS.find(pdg);
+  if (it == ATOMIC_MASS.end())
+    return 0.0;
+  // Atomic minus Z electrons. Electron *binding* energy is neglected; it does
+  // not cancel exactly in a charged-particle Q value, but the residue is a few
+  // keV on a mid-mass target against a budget of MeV.
+  return (it->second - za.Z * MASS_ELECTRON) * AMU_EV;
+}
+
+double mass_excess_ev(AtomicNumbers za)
+{
+  double m = nuclear_mass_ev(za);
+  return m <= 0.0 ? 0.0 : m - za.A * AMU_EV;
+}
+
+double mass_difference_q(
+  AtomicNumbers target, const AtomicNumbers* emitted, int n_emitted, bool& ok)
+{
+  ok = false;
+  AtomicNumbers daughter {target.Z, target.A + 1};
+  // Mass excesses rather than masses. A W-184 channel differences four numbers
+  // of order 1.7e11 eV to reach one of order 1e6, and a double carries about
+  // sixteen digits, so the direct subtraction returns a Q good to only ten.
+  // The mass numbers cancel identically because A_T + 1 = A_D + sum A_j, so
+  // working in excesses of order 1e7 eV gives the same Q to fifteen.
+  double exit_excess = 0.0;
+  for (int i = 0; i < n_emitted; ++i) {
+    daughter.Z -= emitted[i].Z;
+    daughter.A -= emitted[i].A;
+    if (nuclear_mass_ev(emitted[i]) <= 0.0)
+      return 0.0;
+    exit_excess += mass_excess_ev(emitted[i]);
+  }
+  if (daughter.Z < 0 || daughter.A <= 0 || daughter.Z > daughter.A)
+    return 0.0;
+  if (nuclear_mass_ev(target) <= 0.0 || nuclear_mass_ev(daughter) <= 0.0)
+    return 0.0;
+
+  ok = true;
+  return mass_excess_ev(target) + mass_excess_ev({0, 1}) -
+         mass_excess_ev(daughter) - exit_excess;
+}
+
+double entrance_internal_energy(double E_in, double m_target, double q)
+{
+  double m_n = MASS_NEUTRON * AMU_EV;
+  if (m_target <= 0.0)
+    return E_in + q;
+  return E_in * m_target / (m_target + m_n) + q;
+}
+
+double two_body_endpoint(double u, double m_b, double m_d)
+{
+  if (u <= 0.0 || m_b <= 0.0 || m_d <= 0.0)
+    return 0.0;
+  return u * m_d / (m_b + m_d);
+}
+
+double residual_excitation(double u, double e_cm, double m_b, double m_d)
+{
+  if (m_d <= 0.0)
+    return u;
+  return u - e_cm * (1.0 + m_b / m_d);
+}
+
+double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
+{
+  bool ok = false;
+  double q = mass_difference_q(target, &ion, 1, ok);
+  if (!ok)
+    return 0.0;
+  AtomicNumbers daughter {
+    target.Z + 0 - ion.Z, target.A + 1 - ion.A};
+  double u = entrance_internal_energy(E_in, nuclear_mass_ev(target), q);
+  return two_body_endpoint(
+    u, nuclear_mass_ev(ion), nuclear_mass_ev(daughter));
+}
 
 //==============================================================================
 // Public helpers
@@ -641,13 +805,18 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
       return false;
 
     // Kinematic endpoint allowed by this event and by the pure channel that
-    // emits this ion alone. The latter sets the spectrum shape.
-    double E_max_event = state.internal * m_d / (m_b + m_d);
+    // emits this ion alone. The latter sets the spectrum shape. Both go
+    // through the kinematic contract, so both remove the translational energy
+    // of the entrance channel; the shape endpoint used to keep it, which made
+    // the distribution the transport kernel sampled differ from the one the
+    // calibration was fitted to.
+    double E_max_event = two_body_endpoint(state.internal, m_b, m_d);
     if (E_max_event <= 0.0 || !std::isfinite(E_max_event))
       return false;
-    double q_single = single_channel_q(nuc, b, rx.q_value_);
-    double E_max_shape =
-      std::max(E_max_event, (E_in + q_single) * m_d / (m_b + m_d));
+    double E_max_shape = shape_endpoint(E_in, {nuc.Z_, nuc.A_}, b);
+    // The single-ion channel has the larger Q, so its endpoint normally
+    // dominates; the guard covers a missing mass, which returns zero.
+    E_max_shape = std::max(E_max_event, E_max_shape);
 
     double E_cm;
     if (is_discrete_charged_level(rx.mt_)) {
@@ -682,8 +851,9 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     state.za = d;
     state.emitted_kin += E_lab;
     // The two-body decay took E_cm from the ion and E_cm*m_b/m_d from the
-    // daughter out of the internal energy budget.
-    state.internal -= E_cm * (1.0 + m_b / m_d);
+    // daughter out of the internal energy budget. E_cm was drawn no larger
+    // than the endpoint, so this cannot go negative by more than rounding.
+    state.internal = residual_excitation(state.internal, E_cm, m_b, m_d);
     if (state.internal < 0.0)
       state.internal = 0.0;
   }
@@ -875,6 +1045,16 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     return;
   }
 
+  bool budget_ok = false;
+  double q = event_q(nuc, rx, emitted, budget_ok);
+  if (!budget_ok) {
+    // The evaluated level Q is above the ground-state mass budget by more than
+    // any mass table disagrees, so the event has no trustworthy energy
+    // release. Producing nothing is better than banking a recoil built on a
+    // budget we do not believe.
+    return;
+  }
+
   ParticleType recoil = recoil_particle_type(nuc, rx.mt_);
 
   ChargedProducts ions;
@@ -887,7 +1067,11 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   state.za = {nuc.Z_, nuc.A_ + 1};
   state.emitted_kin = 0.0;
 
-  double budget = E_in + rx.q_value_;
+  // Lab-frame kinetic energy release. internal_energy() below subtracts the
+  // translational energy of whatever has not decayed, so the first evaluation
+  // of it is exactly the entrance internal energy of the contract,
+  // E_in M_T/(M_T + m_n) + Q.
+  double budget = E_in + q;
 
   state.momentum -= neutron_momentum(E_out, u_out);
   state.mass -= MASS_NEUTRON_EV;
@@ -947,6 +1131,11 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   if (!emitted_particles(rx->mt_, emitted)) {
     return; // unknown exit channel; see the note in from_inelastic()
   }
+  bool budget_ok = false;
+  double q = event_q(*nuc, *rx, emitted, budget_ok);
+  if (!budget_ok)
+    return; // see the note in from_inelastic()
+
   ParticleType recoil = recoil_particle_type(*nuc, rx->mt_);
 
   EmissionState state;
@@ -954,7 +1143,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   state.mass = MASS_NEUTRON_EV + nuc->awr_ * MASS_NEUTRON_EV;
   state.za = {nuc->Z_, nuc->A_ + 1};
 
-  double budget = E_in + rx->q_value_;
+  double budget = E_in + q;
 
   // Radiative capture: the recoil is kicked by the emitted photons. Their
   // momenta are resampled from this reaction's own photon distribution so that

@@ -43,6 +43,92 @@ struct AtomicNumbers {
   int A {0};
 };
 
+//==============================================================================
+//! \name Kinematic contract
+//!
+//! Every energy budget, endpoint and excitation in this file comes from these
+//! five expressions, so that the transport kernel and the offline calibration
+//! cannot disagree about what "the energy available to this channel" means.
+//! The Python half is \c recoil.kinematics in the analysis repository and both
+//! are checked against \c tests/data/kinematics_fixture.json.
+//!
+//! Masses are **nuclear**, obtained from the atomic mass as
+//! \f$M_\text{nuc}(Z,A) = M_\text{atom}(Z,A) - Z m_e\f$ with the five light
+//! ions taken from their CODATA values. Mixing conventions is the error to
+//! avoid: a Q value built from atomic targets and nuclear light ions is wrong
+//! by \f$Z_b m_e c^2\f$, which is 1.02 MeV for an alpha channel.
+//! @{
+//==============================================================================
+
+//! Nuclear rest mass of a nuclide or light ion in [eV]
+//!
+//! \return zero when the mass is not tabulated. Callers must check: a
+//!         fabricated mass produces a Q value wrong by tens of MeV, which is
+//!         worse than producing no recoil at all.
+double nuclear_mass_ev(AtomicNumbers za);
+
+//! Nuclear mass less \f$A\f$ mass units, in [eV]
+//!
+//! Q values are built from these rather than from the masses themselves. A
+//! W-184 channel differences four numbers of order 1.7e11 eV to reach one of
+//! order 1e6, and a double carries about sixteen digits, so the direct
+//! subtraction returns a Q good to only ten. The mass numbers cancel
+//! identically, so working in excesses of order 1e7 eV recovers five digits.
+double mass_excess_ev(AtomicNumbers za);
+
+//! Ground-state mass budget of an exit channel in [eV]
+//!
+//! \f[ Q_M = \left[M_T + m_n - M_D - \sum_j m_j\right] c^2 \f]
+//!
+//! where the daughter \f$D\f$ is whatever the emitted particles leave behind.
+//! This is the rest-mass energy release, which is what an event budget needs.
+//! It is *not* what ENDF MF=3 \c QI holds for a continuum, level-range or
+//! summation channel: there \c QI is a threshold-setting value, and across
+//! 418 evaluated channels in four libraries it sits up to 7.0 MeV below
+//! \f$Q_M\f$.
+//!
+//! \param[in] target     Charge and mass number of the target
+//! \param[in] emitted    Charge and mass number of each emitted particle
+//! \param[in] n_emitted  Number of entries in \p emitted
+//! \param[out] ok        False if any required mass is missing or the channel
+//!                       leaves an impossible daughter
+double mass_difference_q(
+  AtomicNumbers target, const AtomicNumbers* emitted, int n_emitted, bool& ok);
+
+//! Energy available in the compound system's rest frame in [eV]
+//!
+//! \f[ U_0 = E_\text{in}\frac{M_T}{M_T+m_n} + Q \f]
+//!
+//! The centre of mass carries \f$E_\text{in} m_n/(M_T+m_n)\f$ that no exit
+//! channel can spend, so \f$E_\text{in}+Q\f$ overstates the budget. The excess
+//! is a few percent for a mid-mass target and unbounded near threshold.
+double entrance_internal_energy(double E_in, double m_target, double q);
+
+//! Largest centre-of-mass energy ion \p m_b can take from internal energy \p u
+//!
+//! \f[ E_{b,\max} = u\,\frac{M_D}{m_b + M_D} \f]
+double two_body_endpoint(double u, double m_b, double m_d);
+
+//! Internal energy left in the daughter after a two-body emission in [eV]
+//!
+//! \f[ E_x = u - E_b^\text{cm}\left(1 + \frac{m_b}{M_D}\right) \f]
+//!
+//! Negative only if \p e_cm exceeded two_body_endpoint(), which every caller
+//! should assert rather than clamp.
+double residual_excitation(double u, double e_cm, double m_b, double m_d);
+
+//! Endpoint of the channel that emits \p ion alone from \p target, in [eV]
+//!
+//! Sets the shape of the modelled spectrum: the \f$(1-E/E_\text{max})^\nu\f$
+//! factor is the level density of the daughter that ion would leave if nothing
+//! else were emitted. Built from masses and the entrance CM energy, never from
+//! an evaluated Q, because the MT one would reach for is often a level range.
+//!
+//! \return zero if a required mass is missing
+double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion);
+
+//! @}
+
 //! Recoil products following an elastic scattering event
 //!
 //! The recoil energy is the energy the collision transfers to the target, so
@@ -199,12 +285,12 @@ struct LightIonParams {
 //! reaction dynamics. Replaced by a logistic in quantities the transport kernel
 //! already has; see the recoil section of the methods documentation.
 struct AngularParams {
-  double c0 {-7.72232};         //!< constant
-  double c1 {3.78801};          //!< coefficient of E/E_max_shape
-  double c2 {10.59511};         //!< coefficient of log(1 + E_in / 10 MeV)
-  double c3 {-18.91239};        //!< coefficient of A_D^(-1/3)
-  double c4 {8.76885};          //!< coefficient of the daughter neutron excess
-  double slope_scale {1.01913}; //!< multiplies the Kalbach 1988 slope
+  double c0 {-8.42909};         //!< constant
+  double c1 {4.89255};          //!< coefficient of E/E_max_shape
+  double c2 {9.85086};         //!< coefficient of log(1 + E_in / 10 MeV)
+  double c3 {-7.85305};        //!< coefficient of A_D^(-1/3)
+  double c4 {5.69894};          //!< coefficient of the daughter neutron excess
+  double slope_scale {0.99102}; //!< multiplies the Kalbach 1988 slope
 };
 
 //! Pre-equilibrium fraction \f$r\f$ of the Kalbach angular distribution
