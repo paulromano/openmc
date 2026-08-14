@@ -802,8 +802,7 @@ void absorption(Particle& p, int i_nuclide)
         sample = sample_absorption_reaction(i_nuclide, p, true);
         sampled_reaction = sample.rx != nullptr;
         if (sample.rx && !sample.fission) {
-          recoil::from_absorption(
-            p, i_nuclide, p.wgt(), E_in, u_in, sample.rx);
+          recoil::from_absorption(p, i_nuclide, p.wgt(), E_in, u_in, sample.rx);
         }
       }
 
