@@ -189,6 +189,13 @@ can overrun the event's energy budget; a sample that would do so is rejected and
 redrawn. That keeps every event kinematically possible while leaving the
 marginal spectrum close to the evaluated one.
 
+Rejection can fail. When it does the event produces **no record at all**,
+rather than omitting the neutron and banking a recoil whose label claims it
+left: the residual's mass number would then be one higher than the momentum
+balance it carries. The same rule applies to a light ion that cannot be
+emitted. Every such event is counted, so a channel that fails often is visible
+rather than merely underrepresented.
+
 With uncorrelated emission directions the cross terms in :eq:`recoil-momentum`
 average out and the mean recoil approaches
 
@@ -232,6 +239,14 @@ deuteron, triton, helium-3, and alpha ions of channels such as (n,p),
 (n,\ :math:`\alpha`), and (n,np) have no evaluated distribution to sample. When
 ``light_ion_model`` is ``'statistical'``, OpenMC emits them sequentially in the
 rest frame of the system that has not yet decayed.
+
+This is a **conditional independent-emission construction**, not a model of the
+event's decay chain. Evaluated files supply marginal distributions and no joint
+final state, so no ordering of the products is derivable from the data; the
+transported neutron is taken first because it is the one product the library
+does describe, and the modelled products follow in a randomized order so that
+none is systematically favoured. Randomizing does not restore the correlations
+the marginals omit.
 
 Each emission follows :eq:`recoil-endpoint`: the ion can carry at most
 :math:`E_{b,\max}`, and it removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from the
@@ -406,7 +421,11 @@ Limitations
   and its (n,alpha) cross section is a tenth of the value other libraries give
   because the rest of that channel sits in MT = 5.
 - Multi-neutron final states are sampled independently rather than from a
-  correlated joint distribution.
+  correlated joint distribution, and no ordering of the emitted products is
+  implied by the order in which they are constructed.
+- An event whose exit channel cannot be completed produces no record, so a
+  channel with a low sampling success rate is underrepresented in the tally by
+  the amount the counters report.
 - The light-ion model omits optical-model transmission coefficients, explicit
   level densities, channel competition, direct reactions, and evaluated
   sequential decay.

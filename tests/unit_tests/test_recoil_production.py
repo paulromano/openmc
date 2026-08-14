@@ -177,3 +177,194 @@ def test_multi_neutron_within_energy_budget(run_in_tmpdir):
     e_max = (p_in + p_out) ** 2 / awr
     nz = np.nonzero(mean)[0]
     assert e_bins[nz[-1]] < e_max
+
+
+# ---------------------------------------------------------------------------
+# Fission and nonfission absorption
+#
+# Whether a recoil is produced must depend on which reaction absorbed the
+# neutron, not on whether a fission source site happened to be banked. Those
+# are sampled independently: p.fission() is true for a genuine capture on a
+# fissionable nuclide whenever a site was banked, and false for a genuine
+# fission in a fixed-source run with create_fission_neutrons off.
+# ---------------------------------------------------------------------------
+
+
+def _fissionable_model(nuclide, energy, products, e_bins, *, mts=None,
+                       eigenvalue=False, survival=False,
+                       create_fission_neutrons=True, particles=40000,
+                       density=18.0):
+    """A thin sphere of a fissionable nuclide, so scored events are first ones."""
+    mat = openmc.Material()
+    mat.add_nuclide(nuclide, 1.0)
+    mat.set_density('g/cm3', density)
+
+    sph = openmc.Sphere(r=0.4, boundary_type='vacuum')
+    cell = openmc.Cell(fill=mat, region=-sph)
+
+    settings = openmc.Settings()
+    settings.particles = particles
+    settings.batches = 3
+    settings.survival_biasing = survival
+    settings.recoil_production = True
+    settings.source = openmc.IndependentSource(
+        space=openmc.stats.Point(),
+        energy=openmc.stats.Discrete([energy], [1.0]),
+    )
+    if eigenvalue:
+        settings.run_mode = 'eigenvalue'
+        settings.inactive = 1
+    else:
+        settings.run_mode = 'fixed source'
+        settings.create_fission_neutrons = create_fission_neutrons
+    # Kill anything that lost energy so only first collisions contribute
+    settings.cutoff = {'energy_neutron': 0.999 * energy}
+
+    tally = openmc.Tally(name='recoil')
+    filters = [openmc.ParticleProductionFilter(products, e_bins)]
+    if mts is not None:
+        filters.insert(0, openmc.ReactionFilter(mts))
+    tally.filters = filters
+    tally.scores = ['events']
+
+    return openmc.Model(openmc.Geometry([cell]), [mat], settings,
+                        openmc.Tallies([tally]))
+
+
+def _absorption_fractions(nuclide, energy):
+    """Nonfission and fission shares of the absorption cross section."""
+    from openmc.data import IncidentNeutron, DataLibrary
+
+    lib = IncidentNeutron.from_hdf5(
+        DataLibrary.from_xml().get_by_material(nuclide)['path'])
+    fission = capture = 0.0
+    for mt, rx in lib.reactions.items():
+        if mt in (18, 19, 20, 21, 38):
+            fission += rx.xs['294K'](energy) if mt == 18 else 0.0
+        elif mt == 102:
+            capture += rx.xs['294K'](energy)
+    return capture, fission
+
+
+def test_fission_does_not_produce_a_nonfission_recoil(run_in_tmpdir):
+    """No recoil may be attributed to a fission MT.
+
+    Fission fragments are out of scope, so a fission absorption must produce
+    nothing. It used to produce a fabricated capture or (n,alpha) recoil
+    whenever no source site had been banked, because the exit channel was drawn
+    from the nonfission subset while the decision to draw at all was gated on
+    an unrelated flag.
+    """
+    e_bins = np.logspace(0, np.log10(1.0e6), 61)
+    model = _fissionable_model(
+        'U235', 0.0253, ['U236', 'Xe135'], e_bins,
+        mts=['fission', '(n,gamma)'], create_fission_neutrons=False)
+    mean = _run(model, run_in_tmpdir).reshape(2, 2, -1)
+
+    # axis 0 is the reaction filter in the order given
+    assert mean[0].sum() == 0.0, "fission must produce no recoil record"
+    assert mean[1, 0].sum() > 0.0, "capture must still produce U-236"
+
+
+def test_capture_recoil_survives_a_banked_fission_site(run_in_tmpdir):
+    """Banking a fission site must not suppress a real capture recoil.
+
+    This is the failure that made the feature unusable on any fissionable
+    nuclide in eigenvalue mode: nu is around 2.4, so a site was almost always
+    banked and p.fission() was almost always true, which suppressed every
+    absorption recoil including the captures.
+    """
+    e_bins = np.logspace(0, np.log10(1.0e6), 61)
+
+    def capture_rate(**kw):
+        model = _fissionable_model('U235', 0.0253, ['U236'], e_bins,
+                                   mts=['(n,gamma)'], **kw)
+        return _run(model, run_in_tmpdir).sum()
+
+    # Both runs see the same source spectrum; they differ only in whether the
+    # fission sites that spectrum produces are banked, which is precisely the
+    # thing that must not matter. An eigenvalue comparison would not be
+    # like-for-like, because after the first batch its source is the fission
+    # spectrum rather than the thermal point source.
+    without_sites = capture_rate(create_fission_neutrons=False)
+    with_sites = capture_rate(create_fission_neutrons=True)
+
+    assert without_sites > 0.0
+    assert with_sites > 0.0
+    assert abs(with_sites - without_sites) / without_sites < 0.15, (
+        without_sites, with_sites)
+
+
+def test_capture_recoil_is_produced_in_eigenvalue_mode(run_in_tmpdir):
+    """The same thing again where p.fission() was true on almost every event.
+
+    Nu is around 2.4, so a site was banked at essentially every fission and the
+    flag suppressed every absorption recoil on the nuclide, captures included.
+    A rate comparison against fixed source would not be like-for-like -- the
+    eigenvalue source becomes the fission spectrum after the first batch -- so
+    the claim tested here is only that production happens at all, which it did
+    not before.
+    """
+    e_bins = np.logspace(0, np.log10(1.0e6), 61)
+    model = _fissionable_model('U235', 0.0253, ['U236'], e_bins,
+                               mts=['(n,gamma)'], eigenvalue=True)
+    assert _run(model, run_in_tmpdir).sum() > 0.0
+
+
+def test_nonfission_recoil_rate_follows_the_cross_section(run_in_tmpdir):
+    """Production must track the nonfission share of absorption.
+
+    U-235 at 0.0253 eV has a capture-to-fission ratio near 0.17, so a run that
+    produced a capture recoil for every absorption would overproduce by about
+    a factor of seven.
+    """
+    e_bins = np.logspace(0, np.log10(1.0e6), 61)
+    model = _fissionable_model('U235', 0.0253, ['U236'], e_bins,
+                               particles=60000, create_fission_neutrons=False)
+    # tally absorption and fission reaction rates in the same run
+    rates = openmc.Tally(name='rates')
+    rates.scores = ['absorption', 'fission']
+    model.tallies.append(rates)
+
+    sp_path = model.run(output=False)
+    with openmc.StatePoint(sp_path) as sp:
+        recoil = sp.get_tally(name='recoil').mean.sum()
+        r = sp.get_tally(name='rates').mean.ravel()
+    absorption, fission = float(r[0]), float(r[1])
+
+    assert absorption > 0.0 and fission > 0.0
+    expected = absorption - fission
+    assert abs(recoil - expected) / expected < 0.10, (recoil, expected)
+
+
+def test_analog_and_survival_biased_production_agree(run_in_tmpdir):
+    """Survival biasing must give a nonfission channel a nonfission weight.
+
+    Giving it the whole absorbed weight overproduces by the ratio of total to
+    nonfission absorption, which for U-235 at thermal energies is about seven.
+    """
+    e_bins = np.logspace(0, np.log10(1.0e6), 61)
+
+    # No ReactionFilter here. Under survival biasing the neutron survives the
+    # implicit absorption and goes on to scatter, so event_mt reports the
+    # scattering reaction and a reaction-filtered tally would score nothing.
+    # U-236 is produced only by capture, so the product filter is enough.
+    def rate(survival):
+        model = _fissionable_model(
+            'U235', 0.0253, ['U236'], e_bins,
+            survival=survival, particles=60000,
+            create_fission_neutrons=False)
+        return _run(model, run_in_tmpdir).sum()
+
+    analog = rate(False)
+    biased = rate(True)
+    assert analog > 0.0 and biased > 0.0
+    assert abs(biased - analog) / analog < 0.10, (analog, biased)
+
+
+def test_a_nonfissionable_nuclide_is_unaffected(run_in_tmpdir):
+    """The change must not touch the common case."""
+    e_bins = np.logspace(0, 4, 61)
+    model = _one_collision_model('Fe56', 0.0253, ['Fe57'], e_bins,
+                                 mts=['(n,gamma)'], density=7.874)
+    assert _run(model, run_in_tmpdir).sum() > 0.0

@@ -35,6 +35,14 @@ namespace {
 //! Coulomb constant e^2/(4 pi eps0) in [eV fm]
 constexpr double COULOMB_EV_FM = 1.44e6;
 
+//! Event counters, so that a skipped event is visible rather than merely absent
+//!
+//! Every path that declines to bank a recoil increments one of these. The
+//! feature's failure mode used to be a record that looked ordinary and was
+//! wrong; the failure mode now is a record that is missing, which is only an
+//! improvement if it can be counted.
+int64_t COUNTERS[static_cast<int>(RecoilCounter::size)] = {};
+
 //! Maximum rejection attempts before falling back to a tabulated CDF
 constexpr int MAX_REJECTION = 200;
 
@@ -421,7 +429,25 @@ double internal_energy(double budget, Direction momentum, double mass)
   return budget - momentum.dot(momentum) / (2.0 * mass);
 }
 
+void count(RecoilCounter which)
+{
+  int64_t& slot = COUNTERS[static_cast<int>(which)];
+#pragma omp atomic update
+  ++slot;
+}
+
 } // namespace
+
+int64_t counter(RecoilCounter which)
+{
+  return COUNTERS[static_cast<int>(which)];
+}
+
+void reset_counters()
+{
+  for (auto& c : COUNTERS)
+    c = 0;
+}
 
 //==============================================================================
 // Kinematic contract
@@ -970,6 +996,11 @@ PhotonKick sample_photon_kick(
 }
 
 //! Finish an event: model the missing light ions and bank all products
+//!
+//! Either every product of the exit channel is accounted for or nothing is
+//! banked. The recoil's identity asserts that a particular set of particles
+//! left; banking it while silently omitting one of them makes the record's
+//! mass, charge and momentum disagree with its own label.
 void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double weight, double E_in, Direction u_in, const ChargedProducts& ions,
   EmissionState& state, ParticleType recoil)
@@ -980,14 +1011,16 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   if (ions.n > 0 &&
       settings::recoil.light_ion_model == RecoilLightIonModel::statistical) {
     EmissionState trial = state;
-    if (emit_light_ions(
+    if (!emit_light_ions(
           p, nuc, rx, E_in, u_in, ions, trial, sampled, n_sampled)) {
-      state = trial;
-    } else {
-      // Kinematically impossible exit channel for this event; keep the
-      // momentum balance built from the evaluated products only.
-      n_sampled = 0;
+      // The exit channel could not be completed. Banking the recoil anyway --
+      // which is what this did -- leaves a record labelled with a nuclide that
+      // is lighter than the momentum balance it carries by exactly the ions
+      // that were dropped.
+      count(RecoilCounter::incomplete_emission);
+      return;
     }
+    state = trial;
   }
 
   if (settings::recoil.emitted_ions) {
@@ -996,7 +1029,9 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
         weight, sampled[i].direction, sampled[i].energy, sampled[i].type);
     }
   }
-  bank_recoil(p, nuc, weight, state.momentum, recoil);
+  count(bank_recoil(p, nuc, weight, state.momentum, recoil)
+          ? RecoilCounter::banked
+          : RecoilCounter::unbankable);
 }
 
 } // namespace
@@ -1021,7 +1056,9 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
   // neutron.
   Direction p_recoil =
     neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
-  bank_recoil(p, nuc, p.wgt(), p_recoil, nuc.particle_type());
+  count(bank_recoil(p, nuc, p.wgt(), p_recoil, nuc.particle_type())
+          ? RecoilCounter::banked
+          : RecoilCounter::unbankable);
 }
 
 void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
@@ -1039,6 +1076,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     // some evaluations put a substantial part of the charged-particle
     // production there. Producing nothing is better than producing a record
     // labeled with the wrong nuclide.
+    count(RecoilCounter::unknown_channel);
     return;
   }
 
@@ -1049,6 +1087,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     // any mass table disagrees, so the event has no trustworthy energy
     // release. Producing nothing is better than banking a recoil built on a
     // budget we do not believe.
+    count(RecoilCounter::no_budget);
     return;
   }
 
@@ -1100,8 +1139,13 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
         break;
       }
     }
-    if (!accepted)
-      continue;
+    if (!accepted) {
+      // The recoil's identity says this neutron left. Dropping it and banking
+      // the recoil anyway -- which is what a `continue` here did -- makes the
+      // record's mass number one higher than the momentum it carries.
+      count(RecoilCounter::incomplete_emission);
+      return;
+    }
     state.momentum -= neutron_momentum(E_extra, u_extra);
     state.mass -= MASS_NEUTRON_EV;
     state.za.A -= 1;

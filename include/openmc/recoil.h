@@ -44,6 +44,34 @@ struct AtomicNumbers {
 };
 
 //==============================================================================
+//! \name Event diagnostics
+//!
+//! Every path that declines to produce a recoil increments one of these. The
+//! feature's old failure mode was a record that looked ordinary and was wrong
+//! -- a recoil labelled with a nuclide whose momentum balance omitted a
+//! product that could not be sampled. The new failure mode is a record that is
+//! absent, which is only an improvement if it can be counted.
+//! @{
+//==============================================================================
+
+enum class RecoilCounter {
+  banked,              //!< a complete, consistent production record was made
+  incomplete_emission, //!< an exit-channel product could not be emitted
+  no_budget,           //!< no trustworthy energy release for the event
+  unknown_channel,     //!< the exit channel does not follow from the MT
+  unbankable,          //!< the recoil momentum or mass was unusable
+  size
+};
+
+//! Number of events counted in one bin since the last reset
+int64_t counter(RecoilCounter which);
+
+//! Zero every counter. Intended for tests and for the start of a run.
+void reset_counters();
+
+//! @}
+
+//==============================================================================
 //! \name Kinematic contract
 //!
 //! Every energy budget, endpoint and excitation in this file comes from these

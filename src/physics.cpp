@@ -40,35 +40,68 @@ namespace openmc {
 
 namespace {
 
+//! Which absorption reaction occurred, and the cross sections it was drawn from
+struct AbsorptionSample {
+  const Reaction* rx {nullptr}; //!< sampled reaction, or nullptr if none
+  bool fission {false};         //!< the sampled reaction is a fission channel
+  double nonfission {0.0};      //!< summed nonfission disappearance xs
+  double total {0.0};           //!< summed disappearance xs, fission included
+};
+
 //! Sample which disappearance (absorption) reaction occurred
-const Reaction* sample_disappearance_reaction(int i_nuclide, Particle& p)
+//!
+//! \param[in] include_fission  Draw from every disappearance channel, fission
+//!   among them, so that the sampled identity has the right probability of
+//!   being a fission. Passing false draws conditional on the reaction being a
+//!   nonfission one, which is what survival biasing needs alongside a weight
+//!   reduced to match.
+AbsorptionSample sample_absorption_reaction(
+  int i_nuclide, Particle& p, bool include_fission)
 {
+  AbsorptionSample out;
   const auto& nuc {data::nuclides[i_nuclide]};
   const auto& micro {p.neutron_xs(i_nuclide)};
 
-  double total = 0.0;
+  // is_disappearance() covers MT 101-117 and the charged-particle bands but
+  // *not* fission, which ENDF numbers separately. Testing it alone would leave
+  // fission out of the sum however include_fission were set, and every
+  // absorption on a fissionable nuclide would be relabelled as whichever
+  // nonfission channel the draw happened to land on.
+  auto absorbs = [](int mt) { return is_disappearance(mt) || is_fission(mt); };
+
   for (const auto& rx : nuc->reactions_) {
-    if (rx->redundant_ || !is_disappearance(rx->mt_) || is_fission(rx->mt_)) {
+    if (rx->redundant_ || !absorbs(rx->mt_)) {
       continue;
     }
-    total += rx->xs(micro);
-  }
-  if (total <= 0.0) {
-    return nullptr;
+    double xs = rx->xs(micro);
+    out.total += xs;
+    if (!is_fission(rx->mt_)) {
+      out.nonfission += xs;
+    }
   }
 
-  double cutoff = prn(p.current_seed()) * total;
+  double norm = include_fission ? out.total : out.nonfission;
+  if (norm <= 0.0) {
+    return out;
+  }
+
+  double cutoff = prn(p.current_seed()) * norm;
   double prob = 0.0;
   for (const auto& rx : nuc->reactions_) {
-    if (rx->redundant_ || !is_disappearance(rx->mt_) || is_fission(rx->mt_)) {
+    if (rx->redundant_ || !absorbs(rx->mt_)) {
+      continue;
+    }
+    if (!include_fission && is_fission(rx->mt_)) {
       continue;
     }
     prob += rx->xs(micro);
     if (prob > cutoff) {
-      return rx.get();
+      out.rx = rx.get();
+      out.fission = is_fission(rx->mt_);
+      return out;
     }
   }
-  return nullptr;
+  return out;
 }
 
 } // namespace
@@ -711,9 +744,17 @@ void absorption(Particle& p, int i_nuclide)
   // Which disappearance reaction occurred is only needed for recoil
   // production. Sampling it consumes a random number, so it is done only when
   // the feature is on; otherwise the random number stream is untouched.
+  //
+  // Note that whether this event was a fission is decided *here*, by sampling
+  // the absorption reaction, and not by p.fission(). That flag means only that
+  // at least one fission source site was banked, which is sampled
+  // independently of the analog absorption outcome: it is true for a genuine
+  // (n,gamma) on a fissionable nuclide whenever a site happened to be banked,
+  // and false for a genuine fission in a fixed-source run with
+  // create_fission_neutrons off. Gating recoil production on it therefore both
+  // suppressed real nonfission recoils and fabricated recoils for fissions.
   double E_in = p.E();
   Direction u_in = p.u();
-  const Reaction* absorption_rx = nullptr;
 
   if (settings::survival_biasing) {
     // Determine weight absorbed in survival biasing
@@ -721,13 +762,24 @@ void absorption(Particle& p, int i_nuclide)
                               p.neutron_xs(i_nuclide).total;
 
     // Generate recoil with absorbed weight in survival biasing mode
-    if (settings::recoil_production && wgt_absorb > 0.0 && !p.fission()) {
-      absorption_rx = sample_disappearance_reaction(i_nuclide, p);
-      recoil::from_absorption(
-        p, i_nuclide, wgt_absorb, E_in, u_in, absorption_rx);
+    if (settings::recoil_production && wgt_absorb > 0.0) {
+      // The sampled MT excludes fission, so the weight must too. Giving a
+      // nonfission channel the whole absorbed weight overproduces its recoil
+      // by the ratio of total to nonfission absorption, which on a fissionable
+      // nuclide is most of the absorption.
+      auto sample = sample_absorption_reaction(i_nuclide, p, false);
+      double wgt_nonfission =
+        p.wgt() * sample.nonfission / p.neutron_xs(i_nuclide).total;
+      if (sample.rx && wgt_nonfission > 0.0) {
+        recoil::from_absorption(
+          p, i_nuclide, wgt_nonfission, E_in, u_in, sample.rx);
+      }
     }
 
-    // Adjust weight of particle by probability of absorption
+    // Adjust weight of particle by probability of absorption. This uses the
+    // total absorption, fission included, and is deliberately unchanged: the
+    // weight reduction and the keff estimator are population quantities that
+    // have nothing to do with which reaction the recoil was attributed to.
     p.wgt() -= wgt_absorb;
 
     // Score implicit absorption estimate of keff
@@ -740,11 +792,19 @@ void absorption(Particle& p, int i_nuclide)
     // See if disappearance reaction happens
     if (p.neutron_xs(i_nuclide).absorption >
         prn(p.current_seed()) * p.neutron_xs(i_nuclide).total) {
-      // Generate recoil for explicit absorption event
-      if (settings::recoil_production && !p.fission()) {
-        absorption_rx = sample_disappearance_reaction(i_nuclide, p);
-        recoil::from_absorption(
-          p, i_nuclide, p.wgt(), E_in, u_in, absorption_rx);
+      bool sampled_reaction = false;
+      AbsorptionSample sample;
+      if (settings::recoil_production) {
+        // Draw from every disappearance channel including fission, so a
+        // fission absorption is recognized as one and produces nothing rather
+        // than being relabelled as the capture or (n,p) that would otherwise
+        // have been drawn from the nonfission subset.
+        sample = sample_absorption_reaction(i_nuclide, p, true);
+        sampled_reaction = sample.rx != nullptr;
+        if (sample.rx && !sample.fission) {
+          recoil::from_absorption(
+            p, i_nuclide, p.wgt(), E_in, u_in, sample.rx);
+        }
       }
 
       // Score absorption estimate of keff
@@ -756,10 +816,15 @@ void absorption(Particle& p, int i_nuclide)
 
       p.wgt() = 0.0;
       p.event() = TallyEvent::ABSORB;
-      if (!p.fission()) {
-        // Report the specific reaction when it is known so that a
-        // ReactionFilter can resolve (n,gamma), (n,p), (n,alpha), ...
-        p.event_mt() = absorption_rx ? absorption_rx->mt_ : N_DISAPPEAR;
+      if (sampled_reaction) {
+        // Report the reaction that actually absorbed the neutron, so that a
+        // ReactionFilter resolves (n,gamma), (n,p), (n,alpha) -- or a fission
+        // MT when the absorption was a fission. sample_neutron_reaction() may
+        // already have set event_mt to a fission MT because a source site was
+        // banked, which is a different event from this one.
+        p.event_mt() = sample.rx->mt_;
+      } else if (!p.fission()) {
+        p.event_mt() = N_DISAPPEAR;
       }
     }
   }
