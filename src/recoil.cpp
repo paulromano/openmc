@@ -12,7 +12,8 @@
 #include "openmc/settings.h"
 #include "openmc/string_utils.h"
 
-#include <algorithm> // for max, min, swap
+#include <algorithm> // for max, min, swap, lower_bound
+#include <limits>    // for numeric_limits
 #include <cctype>    // for tolower, isdigit
 #include <cmath>     // for sqrt, exp, cbrt, log
 #include <string>
@@ -43,8 +44,21 @@ constexpr double COULOMB_EV_FM = 1.44e6;
 //! improvement if it can be counted.
 int64_t COUNTERS[static_cast<int>(RecoilCounter::size)] = {};
 
-//! Maximum rejection attempts before falling back to a tabulated CDF
-constexpr int MAX_REJECTION = 200;
+//! Points in the tabulated cumulative the light-ion sampler inverts
+//!
+//! Sixty-four intervals put the sampled mean within 0.1% of the analytic one
+//! for every ion, daughter and truncation tested, at a fixed cost the previous
+//! rejection sampler only matched in its best case.
+constexpr int N_TABLE = 64;
+
+//! Negative infinity, for a log density that is identically zero
+constexpr double INFTY = std::numeric_limits<double>::infinity();
+
+//! log(1 + e^x), evaluated so that neither limb overflows
+double softplus(double x)
+{
+  return std::max(x, 0.0) + std::log1p(std::exp(-std::abs(x)));
+}
 
 //! Maximum attempts to resample a modelled product inside the energy budget
 constexpr int MAX_BUDGET_TRIES = 20;
@@ -655,35 +669,34 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
   return 1.0 / (1.0 + std::exp(-u));
 }
 
-//! Mass of a light ion in [amu]
+//! Nuclear mass in [amu] for the Gamow reduced mass
 //!
-//! Nuclear (not atomic) masses, needed by the Gamow transmission through the
-//! reduced mass. Falls back on the mass number for anything unrecognized.
-double light_ion_mass_amu(int Z, int A)
+//! Deferred to the kinematic contract rather than tabulated separately here,
+//! which is how this came to hold a proton mass differing from the contract's
+//! in its eighth digit and a daughter mass of A neutron masses. Neither
+//! mattered physically -- the reduced mass moved by 1e-4 -- but two mass
+//! tables in one file is one too many, and the cross-language fixture caught
+//! the disagreement.
+//!
+//! Falls back on the mass number when the nuclide is not tabulated, which is
+//! acceptable here and only here: the reduced mass enters through a square
+//! root and a heavy daughter's contribution to it is already saturated.
+double gamow_mass_amu(AtomicNumbers za)
 {
-  if (Z == 1 && A == 1)
-    return 1.00727647;
-  if (Z == 1 && A == 2)
-    return 2.01355321;
-  if (Z == 1 && A == 3)
-    return 3.01550072;
-  if (Z == 2 && A == 3)
-    return 3.01493224;
-  if (Z == 2 && A == 4)
-    return 4.00150618;
-  return static_cast<double>(A);
+  double m = nuclear_mass_ev(za);
+  return m > 0.0 ? m / AMU_EV : static_cast<double>(za.A);
 }
 
-double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
-  const LightIonParams& par)
+double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
+  int A_d, const LightIonParams& par)
 {
-  if (E <= 0.0 || E >= E_max)
-    return 0.0;
+  if (!(E > 0.0) || E >= E_max || !std::isfinite(E_max))
+    return -INFTY;
 
-  double transmission = 1.0;
+  double log_p = std::log(E) + par.nu * std::log1p(-E / E_max);
   if (Z_b > 0 && Z_d > 0) {
     double radius = par.r0 * (std::cbrt(static_cast<double>(A_b)) +
-                               std::cbrt(static_cast<double>(A_d)));
+                              std::cbrt(static_cast<double>(A_d)));
     double barrier = COULOMB_EV_FM * Z_b * Z_d / radius;
 
     // Sommerfeld parameter eta = Z_b Z_D alpha sqrt(mu c^2 / 2E). The E^-1/2
@@ -691,8 +704,8 @@ double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
     // which is the widening of the barrier at lower energy; a transmission
     // with a fixed diffuseness falls at one rate everywhere and cannot
     // reproduce it. Normalized so that T = 1/2 at E = V_C.
-    double m_b = light_ion_mass_amu(Z_b, A_b);
-    double m_d = A_d * MASS_NEUTRON_EV / AMU_EV;
+    double m_b = gamow_mass_amu({Z_b, A_b});
+    double m_d = gamow_mass_amu({Z_d, A_d});
     double mu = m_b * m_d / (m_b + m_d);
     // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
     double pref = Z_b * Z_d / FINE_STRUCTURE * std::sqrt(0.5 * mu * AMU_EV);
@@ -700,17 +713,31 @@ double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
       par.g * 2.0 * PI *
       (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
 
-    // The exponent is bounded before it is used, and the bound is part of the
-    // model rather than arithmetic hygiene: it diverges as E -> 0, so the
-    // unbounded form underflows to exactly zero over the whole grid whenever a
-    // channel lies entirely below the barrier, leaving nothing to normalize.
-    // The bound floors the transmission instead, and the spectrum there
-    // reduces to E (1 - E/E_max)^nu.
-    transmission = 1.0 / (1.0 + std::exp(std::min(60.0, std::max(-60.0, arg))));
+    // log T_C = -log(1 + e^arg) = -softplus(arg), evaluated so that neither
+    // limb overflows. There is no bound on the exponent here, and its absence
+    // is the point: the exponent diverges as E -> 0, and clamping it at 60 --
+    // which the direct form needed, because 1/(1+e^arg) underflows to exactly
+    // zero and leaves nothing to normalize -- floors the transmission at a
+    // constant and flattens the spectrum to E (1-E/E_max)^nu wherever a
+    // channel lies deep below the barrier. That erased the barrier shape from
+    // the He-3 channels almost entirely. In log space the relative
+    // probabilities survive to any depth.
+    log_p -= softplus(arg);
   }
-  double endpoint = 1.0 - E / E_max;
-  double level_density = std::pow(endpoint, par.nu);
-  return E * transmission * level_density;
+  return log_p;
+}
+
+double light_ion_log_pdf(
+  double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
+{
+  return light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, LightIonParams {});
+}
+
+double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
+  const LightIonParams& par)
+{
+  double log_p = light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par);
+  return log_p == -INFTY ? 0.0 : std::exp(log_p);
 }
 
 double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
@@ -721,36 +748,68 @@ double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   int Z_d, int A_d, uint64_t* seed, const LightIonParams& par)
 {
-  if (E_max <= 0.0 || !std::isfinite(E_max))
+  if (!(E_max > 0.0) || !std::isfinite(E_max))
     return 0.0;
   if (!(E_limit > 0.0) || E_limit > E_max)
     E_limit = E_max;
 
-  // The spectrum rises from the Coulomb barrier and falls to zero at E_max, so
-  // rejection against its maximum over [0, E_limit] converges quickly even when
-  // the budget cuts deep into the sub-barrier tail.
-  constexpr int N_SCAN = 33;
-  double peak = 0.0;
-  double best = 0.5 * E_limit;
-  for (int i = 0; i < N_SCAN; ++i) {
-    double E = E_limit * i / (N_SCAN - 1);
-    double pdf = light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par);
-    if (pdf > peak) {
-      peak = pdf;
-      best = E;
-    }
+  // Tabulate the spectrum in log space, then invert its cumulative.
+  //
+  // The previous sampler scanned 33 points for a maximum, inflated it by 10%,
+  // and rejected up to 200 times; if all attempts failed it returned the scan
+  // maximizer, putting a point mass into the distribution. Nothing guaranteed
+  // that the inflated scan maximum bounded the true one, and a broad check
+  // that it happened to for the deployed parameters is not a property of the
+  // method. Inversion has neither problem: the work is exactly N_TABLE
+  // evaluations however peaked the spectrum is, there is no envelope to be
+  // wrong about, and there is no fallback.
+  //
+  // What it approximates instead is the shape between table points, by a
+  // straight line. That error is controlled and shrinks as N^-2, where a point
+  // mass is not controlled at all.
+  double f[N_TABLE + 1];
+  double log_peak = -INFTY;
+  const double dE = E_limit / N_TABLE;
+  for (int i = 0; i <= N_TABLE; ++i) {
+    f[i] = light_ion_log_pdf(
+      dE * i, E_max, Z_b, A_b, Z_d, A_d, par);
+    if (f[i] > log_peak)
+      log_peak = f[i];
   }
-  if (peak <= 0.0)
-    return 0.5 * E_limit;
-  peak *= 1.1; // guard against the true maximum falling between scan points
+  if (log_peak == -INFTY)
+    return 0.0; // the channel carries no probability at all
 
-  for (int i = 0; i < MAX_REJECTION; ++i) {
-    double E = E_limit * prn(seed);
-    if (prn(seed) * peak <= light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par))
-      return E;
+  // Shifting by the peak before exponentiating is what keeps a spectrum
+  // spanning hundreds of decades representable.
+  for (int i = 0; i <= N_TABLE; ++i) {
+    f[i] = (f[i] == -INFTY) ? 0.0 : std::exp(f[i] - log_peak);
   }
-  // Spectrum too peaked to sample by rejection: use the scan maximum
-  return best;
+
+  double cdf[N_TABLE + 1];
+  cdf[0] = 0.0;
+  for (int i = 1; i <= N_TABLE; ++i) {
+    cdf[i] = cdf[i - 1] + 0.5 * (f[i - 1] + f[i]) * dE;
+  }
+  double total = cdf[N_TABLE];
+  if (!(total > 0.0) || !std::isfinite(total))
+    return 0.0;
+
+  double xi = prn(seed) * total;
+  int k = static_cast<int>(
+    std::lower_bound(cdf, cdf + N_TABLE + 1, xi) - cdf);
+  k = std::min(std::max(k - 1, 0), N_TABLE - 1);
+
+  // Within the interval the density is f_k + s(E - E_k), so the remaining
+  // probability r fixes the offset through 0.5 s d^2 + f_k d = r. The
+  // rationalized root stays accurate when s is small, where the textbook
+  // formula cancels.
+  double r = xi - cdf[k];
+  double slope = (f[k + 1] - f[k]) / dE;
+  double disc = std::max(f[k] * f[k] + 2.0 * slope * r, 0.0);
+  double denom = f[k] + std::sqrt(disc);
+  double d = (denom > 0.0) ? 2.0 * r / denom : 0.0;
+
+  return std::min(std::max(dE * k + d, 0.0), E_limit);
 }
 
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,

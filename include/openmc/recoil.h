@@ -283,11 +283,14 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //! derived from an optical model; see the recoil section of the user
 //! documentation.
 //!
-//! \note The exponent is bounded to \f$\pm 60\f$ before it is exponentiated.
-//!       This is part of the model, not just arithmetic protection: where a
-//!       channel lies entirely below the barrier the bound floors the
-//!       transmission and the spectrum reduces to
-//!       \f$E (1-E/E_\text{max})^{\nu}\f$.
+//! \note The transmission is evaluated as \f$-\operatorname{softplus}\f$ of
+//!       the exponent, with no bound on it. An earlier implementation clamped
+//!       the exponent at \f$\pm 60\f$ because \f$1/(1+e^x)\f$ underflows to
+//!       exactly zero below the barrier and leaves nothing to normalize. That
+//!       clamp floored the transmission at a constant and flattened the
+//!       spectrum to \f$E(1-E/E_\text{max})^\nu\f$ wherever a channel lay
+//!       deep below the barrier, which erased the barrier shape from the
+//!       helium-3 channels almost entirely.
 double light_ion_pdf(
   double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
 
@@ -335,6 +338,24 @@ struct AngularParams {
 //! \param[in] par           Calibration parameters
 double kalbach_precompound_fraction(double E_cm, double E_max_shape,
   double E_in, AtomicNumbers daughter, const AngularParams& par = {});
+
+//! Natural logarithm of the unnormalized light-ion emission spectrum
+//!
+//! \f[ \ln P(E) = \ln E - \operatorname{softplus}
+//!     \big(2\pi g[\eta(E)-\eta(V_C)]\big)
+//!     + \nu \ln\!\left(1 - E/E_\text{max}\right) \f]
+//!
+//! This is the primitive; light_ion_pdf() exponentiates it. Sub-barrier the
+//! spectrum spans hundreds of decades, so a code that needs relative
+//! probabilities there -- the sampler, or a fit -- must work here instead.
+//!
+//! \return \f$-\infty\f$ outside \f$(0, E_\text{max})\f$
+double light_ion_log_pdf(
+  double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
+
+//! Natural logarithm of the spectrum with explicit parameters
+double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
+  int A_d, const LightIonParams& par);
 
 //! Unnormalized light-ion emission spectrum with explicit parameters
 //!
