@@ -42,8 +42,8 @@ constexpr double FIXTURE_FLOOR_EV = 1.0e-3;
 bool agrees(double actual, double expected, double e_in)
 {
   return std::abs(actual - expected) <=
-         std::max(FIXTURE_TOLERANCE *
-                    std::max(std::abs(expected), std::abs(e_in)),
+         std::max(
+           FIXTURE_TOLERANCE * std::max(std::abs(expected), std::abs(e_in)),
            FIXTURE_FLOOR_EV);
 }
 
@@ -70,8 +70,8 @@ struct Fixture {
 Fixture read_fixture()
 {
   Fixture out;
-  std::ifstream in(std::string(OPENMC_UNIT_TEST_DATA_DIR) +
-                   "/kinematics_fixture.txt");
+  std::ifstream in(
+    std::string(OPENMC_UNIT_TEST_DATA_DIR) + "/kinematics_fixture.txt");
   if (!in)
     return out;
   out.found = true;
@@ -125,8 +125,8 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
     INFO(c.name << " at E_in = " << c.e_in << " eV");
 
     bool ok = false;
-    double q = recoil::mass_difference_q(
-      {c.z_t, c.a_t}, c.emitted, c.n_emitted, ok);
+    double q =
+      recoil::mass_difference_q({c.z_t, c.a_t}, c.emitted, c.n_emitted, ok);
     REQUIRE(ok);
     REQUIRE(agrees(q, c.q, c.e_in));
 
@@ -142,8 +142,8 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
     for (int i = 0; i < c.n_emitted; ++i) {
       daughter.Z -= c.emitted[i].Z;
       daughter.A -= c.emitted[i].A;
-      bool is_probe = !used_ion && c.emitted[i].Z == c.ion.Z &&
-                      c.emitted[i].A == c.ion.A;
+      bool is_probe =
+        !used_ion && c.emitted[i].Z == c.ion.Z && c.emitted[i].A == c.ion.A;
       if (is_probe)
         used_ion = true;
       else
@@ -170,8 +170,7 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
 
   SECTION("an inelastic channel releases nothing")
   {
-    for (auto target :
-      {recoil::AtomicNumbers {6, 12}, {26, 56}, {82, 208}}) {
+    for (auto target : {recoil::AtomicNumbers {6, 12}, {26, 56}, {82, 208}}) {
       bool ok = false;
       double q = recoil::mass_difference_q(target, &neutron, 1, ok);
       REQUIRE(ok);
