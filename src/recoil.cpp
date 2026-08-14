@@ -13,9 +13,9 @@
 #include "openmc/string_utils.h"
 
 #include <algorithm> // for max, min, swap, lower_bound
-#include <limits>    // for numeric_limits
 #include <cctype>    // for tolower, isdigit
 #include <cmath>     // for sqrt, exp, cbrt, log
+#include <limits>    // for numeric_limits
 #include <string>
 
 namespace openmc {
@@ -696,7 +696,7 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
   double log_p = std::log(E) + par.nu * std::log1p(-E / E_max);
   if (Z_b > 0 && Z_d > 0) {
     double radius = par.r0 * (std::cbrt(static_cast<double>(A_b)) +
-                              std::cbrt(static_cast<double>(A_d)));
+                               std::cbrt(static_cast<double>(A_d)));
     double barrier = COULOMB_EV_FM * Z_b * Z_d / radius;
 
     // Sommerfeld parameter eta = Z_b Z_D alpha sqrt(mu c^2 / 2E). The E^-1/2
@@ -771,8 +771,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   double log_peak = -INFTY;
   const double dE = E_limit / N_TABLE;
   for (int i = 0; i <= N_TABLE; ++i) {
-    f[i] = light_ion_log_pdf(
-      dE * i, E_max, Z_b, A_b, Z_d, A_d, par);
+    f[i] = light_ion_log_pdf(dE * i, E_max, Z_b, A_b, Z_d, A_d, par);
     if (f[i] > log_peak)
       log_peak = f[i];
   }
@@ -795,8 +794,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
     return 0.0;
 
   double xi = prn(seed) * total;
-  int k = static_cast<int>(
-    std::lower_bound(cdf, cdf + N_TABLE + 1, xi) - cdf);
+  int k = static_cast<int>(std::lower_bound(cdf, cdf + N_TABLE + 1, xi) - cdf);
   k = std::min(std::max(k - 1, 0), N_TABLE - 1);
 
   // Within the interval the density is f_k + s(E - E_k), so the remaining

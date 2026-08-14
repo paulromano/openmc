@@ -137,8 +137,8 @@ TEST_CASE("Light-ion spectrum agrees with the Python implementation")
 
   double worst = 0.0;
   for (const auto& r : fx.log_pdf) {
-    double got = recoil::light_ion_log_pdf(
-      r.e, r.e_max, r.z_b, r.a_b, r.z_d, r.a_d);
+    double got =
+      recoil::light_ion_log_pdf(r.e, r.e_max, r.z_b, r.a_b, r.z_d, r.a_d);
     INFO("Z_b=" << r.z_b << " A_b=" << r.a_b << " Z_d=" << r.z_d
                 << " A_d=" << r.a_d << " E=" << r.e);
     REQUIRE(std::isfinite(got));
@@ -149,10 +149,10 @@ TEST_CASE("Light-ion spectrum agrees with the Python implementation")
     // square roots and the softplus differs. Anything larger means a constant
     // or an expression has drifted apart, which is what happened when the two
     // carried separate light-ion mass tables: the disagreement was 1.4e-7.
-    worst = std::max(worst, std::fabs(got - r.log_p) /
-                              std::max(std::fabs(r.log_p), 1.0));
-    REQUIRE(std::fabs(got - r.log_p) <=
-            1.0e-10 * std::max(std::fabs(r.log_p), 1.0));
+    worst = std::max(
+      worst, std::fabs(got - r.log_p) / std::max(std::fabs(r.log_p), 1.0));
+    REQUIRE(
+      std::fabs(got - r.log_p) <= 1.0e-10 * std::max(std::fabs(r.log_p), 1.0));
   }
   INFO("worst relative disagreement in ln P: " << worst);
 }
@@ -447,8 +447,8 @@ TEST_CASE("Light-ion spectrum: no exponent floor below the barrier")
   // paper over.
   REQUIRE(lp(2.0e4) < -745.0);
   REQUIRE(std::isfinite(lp(2.0e4)));
-  REQUIRE(recoil::light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, deployed) ==
-          0.0);
+  REQUIRE(
+    recoil::light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, deployed) == 0.0);
 }
 
 TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
@@ -486,8 +486,8 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     double log_peak = -std::numeric_limits<double>::infinity();
     std::vector<double> f(NQ + 1);
     for (int i = 0; i <= NQ; ++i) {
-      f[i] = recoil::light_ion_log_pdf(c.E_limit * i / NQ, c.E_max, c.Z_b,
-        c.A_b, c.Z_d, c.A_d, deployed);
+      f[i] = recoil::light_ion_log_pdf(
+        c.E_limit * i / NQ, c.E_max, c.Z_b, c.A_b, c.Z_d, c.A_d, deployed);
       log_peak = std::max(log_peak, f[i]);
     }
     REQUIRE(std::isfinite(log_peak));
