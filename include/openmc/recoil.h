@@ -287,8 +287,8 @@ struct LightIonParams {
 struct AngularParams {
   double c0 {-8.42909};         //!< constant
   double c1 {4.89255};          //!< coefficient of E/E_max_shape
-  double c2 {9.85086};         //!< coefficient of log(1 + E_in / 10 MeV)
-  double c3 {-7.85305};        //!< coefficient of A_D^(-1/3)
+  double c2 {9.85086};          //!< coefficient of log(1 + E_in / 10 MeV)
+  double c3 {-7.85305};         //!< coefficient of A_D^(-1/3)
   double c4 {5.69894};          //!< coefficient of the daughter neutron excess
   double slope_scale {0.99102}; //!< multiplies the Kalbach 1988 slope
 };

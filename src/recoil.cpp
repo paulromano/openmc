@@ -380,9 +380,8 @@ constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
 //! \param[out] ok      False when no trustworthy budget can be formed, in
 //!                     which case the caller must produce nothing rather than
 //!                     bank a recoil built on a budget it does not believe
-double event_q(
-  const Nuclide& nuc, const Reaction& rx, const EmittedParticles& emitted,
-  bool& ok)
+double event_q(const Nuclide& nuc, const Reaction& rx,
+  const EmittedParticles& emitted, bool& ok)
 {
   ok = true;
   AtomicNumbers target {nuc.Z_, nuc.A_};
@@ -525,11 +524,9 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
   double q = mass_difference_q(target, &ion, 1, ok);
   if (!ok)
     return 0.0;
-  AtomicNumbers daughter {
-    target.Z + 0 - ion.Z, target.A + 1 - ion.A};
+  AtomicNumbers daughter {target.Z + 0 - ion.Z, target.A + 1 - ion.A};
   double u = entrance_internal_energy(E_in, nuclear_mass_ev(target), q);
-  return two_body_endpoint(
-    u, nuclear_mass_ev(ion), nuclear_mass_ev(daughter));
+  return two_body_endpoint(u, nuclear_mass_ev(ion), nuclear_mass_ev(daughter));
 }
 
 //==============================================================================
