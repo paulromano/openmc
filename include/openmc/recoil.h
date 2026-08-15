@@ -315,6 +315,16 @@ struct LightIonParams {
 //! channel's Q value, so it asserted purely direct emission regardless of the
 //! reaction dynamics. Replaced by a logistic in quantities the transport kernel
 //! already has; see the recoil section of the methods documentation.
+//!
+//! These constants describe a **continuum** channel and are not applied to a
+//! named level, which is sampled isotropically in the centre of mass. Nor were
+//! they refitted when the corpus they were calibrated against was found to
+//! carry an exactly-zero pre-equilibrium fraction over 79% of its probability:
+//! measured on the nodes that are not that fill, they already agree with the
+//! evaluations to three decimal places in the bands where the fill dominates,
+//! and refitting without it moves them by less than the disagreement between
+//! libraries. The apparent discrepancy against evaluated MF=6 is documented in
+//! the methods section so that it is not mistaken for a defect here.
 struct AngularParams {
   double c0 {-8.42909};         //!< constant
   double c1 {4.89255};          //!< coefficient of E/E_max_shape
