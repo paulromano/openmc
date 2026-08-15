@@ -273,47 +273,69 @@ daughter. OpenMC evaluates it as
 .. math::
     :label: recoil-light-ion
 
-    P(E) \propto E\, T_C(E) \sqrt{1 - E/E_b^\text{max}} .
+    P(E) \propto E\, T_C(E)
+        \left(1 - \frac{E}{E_{b,\max}^\text{shape}}\right)^{\nu} .
 
 *Inverse cross section.* For a charged light ion :math:`\sigma_\text{inv}` is
-governed almost entirely by the Coulomb barrier, so it is replaced by a barrier
-transmission coefficient,
+governed almost entirely by the Coulomb barrier, so it is replaced by a WKB
+Coulomb penetrability,
 
 .. math::
     :label: recoil-barrier
 
-    T_C(E) = \left[1 + e^{(V_C - E)/\Delta}\right]^{-1} , \qquad
-    V_C = \frac{1.44\ \text{MeV fm}\ Z_b Z_D}{r_0 (A_b^{1/3} + A_D^{1/3})} .
+    T_C(E) = \left[1 + e^{2\pi g\,[\eta(E) - \eta(V_C)]}\right]^{-1} ,
+    \qquad
+    \eta(E) = \frac{Z_b Z_D}{137.036}\sqrt{\frac{\mu c^2}{2E}} ,
+    \qquad
+    V_C = \frac{1.44\ \text{MeV fm}\ Z_b Z_D}{r_0 (A_b^{1/3} + A_D^{1/3})} ,
 
-This is the Hill-Wheeler transmission through a parabolic barrier
-[HillWheeler1953]_, for which the diffuseness is set by the barrier curvature,
-:math:`\Delta = \hbar\omega / 2\pi`. The value used, :math:`\Delta = 0.8` MeV,
-corresponds to :math:`\hbar\omega = 5.0` MeV, at the permeable end of the usual
-few-MeV range. The reduced radius :math:`r_0 = 1.8` fm is larger than a
-geometric touching radius of about 1.4 fm and therefore lowers :math:`V_C` by a
-uniform factor of 0.78 — from 5.35 to 4.16 MeV for p + Mn-55, and from 9.24 to
-7.19 MeV for :math:`\alpha` + Cr-53. That is the same kind of empirical barrier
-reduction as the :math:`k_j` factors of the Dostrovsky inverse-cross-section
-parameterization used in evaporation codes [Dostrovsky1959]_, which are likewise
-below unity and typically of order 0.7-0.9 for medium-mass nuclei. Here it came
-out of the fit described below rather than being imposed.
+with :math:`\mu` the reduced mass of the ion and the daughter. It is normalized
+so that :math:`T_C = 1/2` at the barrier top.
 
-*Level density.* The square root is **not** a nuclear level density, which would
-rise roughly exponentially with :math:`E_x`. Charged-particle spectra in
-TALYS-based evaluations [Koning2012]_ mix compound-nucleus evaporation with much
-harder pre-equilibrium and direct emission, and applying a compound level
-density to the whole spectrum makes it far too soft. The weakly rising
-:math:`\sqrt{E_x}` factor is an empirical compromise between the two components.
+The decisive feature is the :math:`E^{-1/2}` inside the exponent. Because
+:math:`\eta` grows as :math:`E` falls, so does the decay constant of the
+transmission — which is the widening of the barrier at lower energy. A
+Hill-Wheeler transmission [HillWheeler1953]_ with a fixed diffuseness falls at
+one rate everywhere and cannot reproduce it; the Gamow form replaced it for
+that reason.
 
-Three numbers were fitted: the barrier radius :math:`r_0`, the diffuseness
-:math:`\Delta`, and the exponent of the :math:`E_x` factor. They were obtained
-by matching the mean centre-of-mass light-ion energy of :eq:`recoil-light-ion`
-against the evaluated ENDF MF=6 spectra of MT = 103-107 in TENDL, for thirteen
-nuclides between beryllium and tantalum from 5 to 20 MeV. Equation
-:eq:`recoil-light-ion` should therefore be read as a calibrated surrogate whose
+The expression is evaluated in log space, as
+:math:`\ln T_C = -\operatorname{softplus}(2\pi g[\eta - \eta_B])`, with no bound
+on the exponent. Written directly, :math:`[1+e^x]^{-1}` underflows to exactly
+zero once :math:`x` passes 745 — only tens of keV below the barrier for an
+alpha against a heavy target — and a spectrum that is identically zero cannot
+be normalized.
+
+*Endpoint factor.* The :math:`(1-E/E_{b,\max}^\text{shape})^{\nu}` factor stands
+in for the level density of the daughter. It is **not** a nuclear level density,
+which would rise roughly exponentially with :math:`E_x`. Charged-particle
+spectra in TALYS-based evaluations [Koning2012]_ mix compound-nucleus
+evaporation with much harder pre-equilibrium and direct emission, and applying a
+compound level density to the whole spectrum makes it far too soft. The
+exponent is an empirical compromise between the two components, and
+:math:`\nu + 2` should not be read as an exciton number unless a model with
+that derivation is actually being fitted.
+
+*Constants.* Three numbers are fitted: the effective barrier radius
+:math:`r_0`, the WKB strength :math:`g`, and the exponent :math:`\nu`. Their
+current values are the defaults of ``LightIonParams`` in
+``include/openmc/recoil.h``, which is the single authoritative record; they are
+deliberately not restated here, because a documented copy of a fitted constant
+is a copy that goes stale. They were obtained by matching the evaluated ENDF
+MF=6 centre-of-mass spectra of the charged-particle channels across several
+general-purpose libraries.
+
+Equation :eq:`recoil-light-ion` should be read as a calibrated surrogate whose
 *form* is borrowed from statistical-model theory and whose *parameters* come
 from evaluated data — not as an implementation of any published
-nuclear-reaction model.
+nuclear-reaction model. The parameters are also strongly correlated: :math:`r_0`
+and :math:`\nu` trade against each other along a shallow valley, so neither
+should be interpreted on its own as a measured physical quantity.
+
+*Sampling.* The spectrum is sampled by inverting a tabulated cumulative built in
+log space on a fixed grid. The work per emitted ion is therefore bounded and
+independent of how peaked the spectrum is, and no draw is ever replaced by a
+fallback value.
 
 Endpoint and direction
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -448,11 +470,6 @@ References
 .. [HillWheeler1953] D. L. Hill and J. A. Wheeler, "Nuclear Constitution and
    the Interpretation of Fission Phenomena," *Physical Review* **89**,
    1102-1145 (1953). `<https://doi.org/10.1103/PhysRev.89.1102>`_
-
-.. [Dostrovsky1959] I. Dostrovsky, Z. Fraenkel, and G. Friedlander, "Monte Carlo
-   Calculations of Nuclear Evaporation Processes. III. Applications to
-   Low-Energy Reactions," *Physical Review* **116**, 683-702 (1959).
-   `<https://doi.org/10.1103/PhysRev.116.683>`_
 
 .. [Kalbach1988] C. Kalbach, "Systematics of continuum angular distributions:
    Extensions to higher energies," *Physical Review C* **37**, 2350-2370 (1988).
