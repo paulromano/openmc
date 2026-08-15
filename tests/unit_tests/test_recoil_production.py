@@ -413,3 +413,51 @@ def test_discrete_level_recoil_is_uniform(run_in_tmpdir):
     assert chi2 < 3.0 * (len(interior) - 1), \
         f'recoil spectrum is not uniform: chi2 = {chi2:.1f} on ' \
         f'{len(interior) - 1} degrees of freedom'
+
+
+def test_recoil_production_does_not_perturb_transport(run_in_tmpdir):
+    """Banking recoils must not change the neutron solution.
+
+    Recoils are production-only records: they are scored and never transported
+    unless asked for. Sampling one consumes random numbers, so the two runs
+    diverge in their streams and cannot agree bit for bit -- what has to hold
+    is that they agree within statistics, bin by bin.
+    """
+    def run(recoil_on, particles=40000):
+        steel = openmc.Material()
+        for nuclide, fraction in (('Fe56', 0.70), ('Cr52', 0.18),
+                                  ('Ni58', 0.12)):
+            steel.add_nuclide(nuclide, fraction)
+        steel.set_density('g/cm3', 7.9)
+        sph = openmc.Sphere(r=30.0, boundary_type='vacuum')
+
+        settings = openmc.Settings()
+        settings.run_mode = 'fixed source'
+        settings.particles = particles
+        settings.batches = 5
+        settings.seed = 1
+        settings.source = openmc.IndependentSource(
+            space=openmc.stats.Point(),
+            energy=openmc.stats.Discrete([14.1e6], [1.0]))
+        settings.recoil_production = recoil_on
+
+        tally = openmc.Tally(name='flux')
+        tally.filters = [openmc.EnergyFilter(np.logspace(0, 7.2, 13))]
+        tally.scores = ['flux']
+
+        model = openmc.Model(
+            openmc.Geometry([openmc.Cell(fill=steel, region=-sph)]),
+            [steel], settings, openmc.Tallies([tally]))
+        with openmc.StatePoint(model.run(output=False)) as sp:
+            t = sp.get_tally(name='flux')
+            return t.mean.ravel(), t.std_dev.ravel()
+
+    off, off_sd = run(False)
+    on, on_sd = run(True)
+
+    sigma = np.sqrt(off_sd ** 2 + on_sd ** 2)
+    ok = sigma > 0
+    assert ok.sum() > 8, 'not enough populated bins to judge'
+    z = (off[ok] - on[ok]) / sigma[ok]
+    assert np.abs(z).max() < 5.0, \
+        f'recoil production moved the neutron flux: max |z| = {np.abs(z).max():.1f}'
