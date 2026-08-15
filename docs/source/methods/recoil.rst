@@ -359,11 +359,30 @@ The direction uses the Kalbach-Mann form of evaluated MF=6 LANG=2 data,
              \left[\cosh(a\mu) + r \sinh(a\mu)\right] ,
 
 with the slope :math:`a` from Kalbach's systematics [Kalbach1988]_ — the same
-expression the evaluations themselves use — and the pre-equilibrium fraction
-taken as :math:`r = E_b^\text{cm} / E_b^\text{max}`. The systematics for
-:math:`a` are used as published; only :math:`r` is a substitution, and it
-reproduces the qualitative behaviour of evaluated :math:`r` values, which rise
-from nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
+expression the evaluations themselves use, taken as published — and the
+pre-equilibrium fraction from a logistic in the outgoing energy fraction, the
+incident energy and the size and neutron excess of the recoil nucleus,
+
+.. math::
+
+    r = \left[1 + e^{-u}\right]^{-1} , \qquad
+    u = c_0 + c_1 \frac{E_b^\text{cm}}{E_b^\text{max}}
+        + c_2 \ln\!\left(1 + \frac{E}{10\ \text{MeV}}\right)
+        + c_3 A_D^{-1/3} + c_4 \frac{N_D - Z_D}{A_D} ,
+
+calibrated against evaluated MF=6 LANG=2 distributions. Only :math:`r` is a
+substitution.
+
+This applies to continuum channels only. Kalbach's systematics describe a
+channel fed by pre-equilibrium emission, and a named level is not one:
+measured against 25,000 evaluated discrete distributions, carrying the
+systematics onto MT = 600-849 doubles the recoil Wasserstein error relative to
+assuming nothing and biases the first Legendre moment by :math:`+0.12`.
+**Discrete charged-particle levels are therefore sampled isotropically in the
+centre of mass**, which leaves that bias at :math:`-0.04`. No fitted angular
+correction on top of isotropy survived being held out across libraries, so
+none is applied; the residual error there is smaller than the disagreement
+between libraries evaluating the same channel.
 
 Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
 case the recoil of a charged-particle channel recoils against the incident

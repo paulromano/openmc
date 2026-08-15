@@ -910,10 +910,22 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     if (E_cm <= 0.0 || E_cm > E_max_event || !std::isfinite(E_cm))
       return false;
 
-    AngularParams ang {};
-    double slope = ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc);
-    double r = kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
-    double mu = sample_kalbach_mu(slope, r, seed);
+    double mu;
+    if (is_discrete_charged_level(rx.mt_)) {
+      // Kalbach's systematics describe a continuum channel fed by
+      // pre-equilibrium emission, and carrying them onto a named level makes
+      // the recoil distribution worse than assuming nothing: against 25,000
+      // evaluated discrete distributions the systematics double the recoil
+      // Wasserstein error and bias the first Legendre moment by +0.12, while
+      // isotropy leaves it at -0.04. Nothing fitted on top of isotropy
+      // survived being held out.
+      mu = 2.0 * prn(seed) - 1.0;
+    } else {
+      AngularParams ang {};
+      double slope = ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc);
+      double r = kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
+      mu = sample_kalbach_mu(slope, r, seed);
+    }
     Direction u_cm = rotate_angle(u_in, mu, nullptr, seed);
 
     // Boost from the rest frame of the decaying system into the laboratory

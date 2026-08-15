@@ -12,13 +12,14 @@ import openmc
 
 
 def _one_collision_model(nuclide, energy, products, e_bins, mts=None,
-                         recoil=None, particles=20000, density=5.0):
+                         recoil=None, particles=20000, density=5.0,
+                         radius=0.4):
     """Thin monoenergetic target so that scored collisions are first ones."""
     mat = openmc.Material()
     mat.add_nuclide(nuclide, 1.0)
     mat.set_density('g/cm3', density)
 
-    sph = openmc.Sphere(r=0.4, boundary_type='vacuum')
+    sph = openmc.Sphere(r=radius, boundary_type='vacuum')
     cell = openmc.Cell(fill=mat, region=-sph)
 
     settings = openmc.Settings()
@@ -368,3 +369,47 @@ def test_a_nonfissionable_nuclide_is_unaffected(run_in_tmpdir):
     model = _one_collision_model('Fe56', 0.0253, ['Fe57'], e_bins,
                                  mts=['(n,gamma)'], density=7.874)
     assert _run(model, run_in_tmpdir).sum() > 0.0
+
+
+def test_discrete_level_recoil_is_uniform(run_in_tmpdir):
+    """A named level plus isotropic emission makes the recoil energy uniform.
+
+    For an exactly two-body exit channel the laboratory recoil energy is affine
+    in the centre-of-mass cosine, E_R = A + B*mu, so sampling mu uniformly
+    makes E_R uniform between its kinematic limits. The pre-equilibrium
+    systematics that serve the continuum channels would tilt it strongly
+    towards one end instead.
+    """
+    energy = 14.0e6
+    particles, batches = 200000, 2
+    e_bins = np.linspace(0.0, 1.8e6, 37)
+    # A whole mean free path of target: the energy cutoff still restricts the
+    # tally to neutrons that have not scattered, and MT=600 is a 1% channel.
+    model = _one_collision_model('Si28', energy, ['Al28'], e_bins, mts=[600],
+                                 particles=particles, density=2.33,
+                                 radius=20.0)
+    # Scores are per source particle; recover the event counts for the shape
+    counts = _run(model, run_in_tmpdir).ravel() * particles * batches
+
+    nz = np.nonzero(counts)[0]
+    assert nz.size > 20, 'too few occupied bins to judge the shape'
+
+    # Support edges, and the interior bins that they do not clip
+    lo, hi = e_bins[nz[0]], e_bins[nz[-1] + 1]
+    interior = counts[nz[0] + 1:nz[-1]]
+    mid = 0.5 * (e_bins[nz[0] + 1:nz[-1]] + e_bins[nz[0] + 2:nz[-1] + 1])
+    assert interior.sum() > 500, 'too few events to judge the shape'
+
+    # <E_R> = A + B <mu>, and the support gives A and |B|, so the offset of the
+    # mean from the midpoint of the support measures <mu> directly.
+    mean_mu = (0.5 * (lo + hi) - (interior * mid).sum() / interior.sum()) \
+        / (0.5 * (hi - lo))
+    assert abs(mean_mu) < 0.10, \
+        f'centre-of-mass emission is not isotropic: <mu> = {mean_mu:+.3f}'
+
+    # And the shape is flat, not merely balanced
+    expected = interior.mean()
+    chi2 = ((interior - expected) ** 2 / expected).sum()
+    assert chi2 < 3.0 * (len(interior) - 1), \
+        f'recoil spectrum is not uniform: chi2 = {chi2:.1f} on ' \
+        f'{len(interior) - 1} degrees of freedom'
