@@ -436,13 +436,17 @@ result in both cases.
 
 Because the light-ion model of :eq:`recoil-light-ion` is a calibrated surrogate
 rather than evaluated data, agreement for the charged-particle channels should
-be treated as approximate. Across the calibration set the mean light-ion energy
-reproduces the evaluated value with a root-mean-square scatter of about 12% and
-no significant bias, but individual nuclide-energy-channel combinations can
-differ by 20% or more, and near threshold by considerably more. Note also that
-the calibration and the comparison draw on the same family of evaluations, so
-this is a measure of consistency with TENDL rather than of accuracy against
-measured spectra.
+be treated as approximate. Measured against 37,640 evaluated centre-of-mass
+spectra from ENDF/B-VIII.1, JEFF-4.0 and TENDL-2025 over the stable nuclides,
+the mean light-ion energy reproduces the evaluated value with a
+root-mean-square log scatter of 0.151 and a bias of :math:`+1.9\%`, and the
+spectral Wasserstein distance is 7.6% of the endpoint. Individual
+nuclide-energy-channel combinations can differ by 20% or more, and near
+threshold by considerably more. Held out a library at a time the Wasserstein
+distance is 0.0757 against 0.0757 in sample, so this is not an artifact of any
+one evaluation family -- but the calibration and the comparison do draw on the
+same evaluations, so it measures consistency with them rather than accuracy
+against measured spectra.
 
 -----------
 Limitations
