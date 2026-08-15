@@ -384,6 +384,42 @@ correction on top of isotropy survived being held out across libraries, so
 none is applied; the residual error there is smaller than the disagreement
 between libraries evaluating the same channel.
 
+.. _methods_recoil_zero_tails:
+
+Why :math:`r` disagrees with the evaluations near the endpoint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Anyone comparing the :math:`r` above against evaluated MF=6 LANG=2 data will
+find a large disagreement at high outgoing energy, and it is worth saying
+plainly that the disagreement is expected and that the evaluations are the
+side to distrust.
+
+Across 34,136 subsections of ENDF/B-VIII.1, JEFF-4.0 and TENDL-2025 over the
+stable nuclides, 84% carry a contiguous run of **exactly zero** :math:`r`
+extending to the last tabulated outgoing energy, and those runs hold 79% of the
+probability. They are not tails: in 22,966 of 28,945 cases the run contains the
+*mode* of the spectrum, and the median probability above its start is 0.979. In
+5,423 cases :math:`r` sits at exactly one for several nodes and then steps
+straight to exactly zero, which is a quantity clipped at both of its bounds
+rather than measured. A zero never once occurs in the interior of a spectrum;
+it only ever runs to the end of the table.
+
+The control is the 856 subsections that carry no exact zero anywhere. Compared
+within the two libraries that produce both kinds, filled and unfilled
+subsections agree to within 3% up to :math:`x \approx 0.5` and then diverge by
+a factor of 250: the unfilled ones rise to a plateau at :math:`r \approx 0.82`
+and hold it to the endpoint, which is what pre-equilibrium systematics predict.
+In the two bands above :math:`x = 0.8`, where the fill holds 86% and 91% of the
+weight, the model above predicts 0.823 and 0.816 against the unfilled
+evaluations' 0.819 and 0.815.
+
+So the model agrees with the evaluations that were not filled, and disagrees
+with a fill. Scored only on nodes where the reference is not fill, it gives a
+cosine Wasserstein distance of 0.032 and a recoil log-RMS of 0.058; scored on
+the same channels with the filled nodes included, 0.105 and 0.149. Refitting
+the model against the fill-removed data changes it by less than the
+disagreement between libraries and is not done.
+
 Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
 case the recoil of a charged-particle channel recoils against the incident
 neutron alone.
