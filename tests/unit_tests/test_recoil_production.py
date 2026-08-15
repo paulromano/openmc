@@ -461,3 +461,46 @@ def test_recoil_production_does_not_perturb_transport(run_in_tmpdir):
     z = (off[ok] - on[ok]) / sigma[ok]
     assert np.abs(z).max() < 5.0, \
         f'recoil production moved the neutron flux: max |z| = {np.abs(z).max():.1f}'
+
+
+def test_neutron_inelastic_uses_the_evaluated_angle(run_in_tmpdir):
+    """A discrete neutron level must never reach the light-ion angular model.
+
+    MT = 51-90 are two-body like the charged-particle levels, so the same
+    affine relation applies and the mean cosine can be read straight off the
+    recoil spectrum. Here it has to come back as the *evaluated* MF=4 mean, not
+    as the isotropy the charged-particle levels are given and not as the
+    Kalbach systematics the continuum channels are given.
+    """
+    energy, particles, batches = 8.0e6, 100000, 4
+    e_bins = np.linspace(0.0, 6.0e5, 61)
+    model = _one_collision_model('Fe56', energy, ['Fe56'], e_bins, mts=[51],
+                                 particles=particles, density=7.874,
+                                 radius=12.0)
+    counts = _run(model, run_in_tmpdir).ravel() * particles * batches
+
+    nz = np.nonzero(counts)[0]
+    assert nz.size > 20, 'too few occupied bins to judge the shape'
+    lo, hi = e_bins[nz[0]], e_bins[nz[-1] + 1]
+    interior = counts[nz[0] + 1:nz[-1]]
+    mid = 0.5 * (e_bins[nz[0] + 1:nz[-1]] + e_bins[nz[0] + 2:nz[-1] + 1])
+    assert interior.sum() > 500, 'too few events to judge the shape'
+    measured = (0.5 * (lo + hi) - (interior * mid).sum() / interior.sum()) \
+        / (0.5 * (hi - lo))
+
+    # What the evaluation says, read from whichever library is in use
+    lib = openmc.data.IncidentNeutron.from_hdf5(
+        openmc.data.DataLibrary.from_xml().get_by_material('Fe56')['path'])
+    angle = lib[51].products[0].distribution[0].angle
+    grid = np.asarray(angle.energy, float)
+    tab = angle.mu[int(np.argmin(np.abs(grid - energy)))]
+    x, p = np.asarray(tab.x, float), np.asarray(tab.p, float)
+    expected = np.trapezoid(p * x, x) / np.trapezoid(p, x)
+
+    # Generous, because the support edges are read off finite bins; tight
+    # enough that isotropy, which would give zero, cannot pass when the
+    # evaluated distribution is this anisotropic.
+    assert abs(measured - expected) < 0.06, \
+        f'recoil implies <mu> = {measured:+.3f}, evaluation says {expected:+.3f}'
+    assert abs(expected) > 0.15, \
+        'this level is not anisotropic enough here for the test to bite'
