@@ -504,3 +504,28 @@ def test_neutron_inelastic_uses_the_evaluated_angle(run_in_tmpdir):
         f'recoil implies <mu> = {measured:+.3f}, evaluation says {expected:+.3f}'
     assert abs(expected) > 0.15, \
         'this level is not anisotropic enough here for the test to bite'
+
+
+@pytest.mark.parametrize('mt,correct,wrong', [
+    ('(n,p)', 'Mn56', ['Mn55', 'Fe56', 'Cr53']),
+    ('(n,a)', 'Cr53', ['Cr52', 'Mn56', 'Fe55']),
+    ('(n,2n)', 'Fe55', ['Fe56', 'Mn55', 'Cr53']),
+])
+def test_exit_channel_identity_is_conserved(run_in_tmpdir, mt, correct, wrong):
+    """Only the residual the channel actually leaves may be banked.
+
+    Charge and mass conservation at the level a tally can see. Every wrong
+    candidate here is one unit of Z or A away from the right one, so an
+    off-by-one in the exit-channel bookkeeping -- counting the emitted
+    multiplicity wrongly, or parsing the reaction name wrongly -- produces a
+    nuclide that is silently plausible rather than an obvious error.
+    """
+    e_bins = np.logspace(0, np.log10(5.0e6), 41)
+    products = [correct] + wrong
+    model = _one_collision_model('Fe56', 14.0e6, products, e_bins, mts=[mt],
+                                 particles=100000, density=7.874)
+    mean = _run(model, run_in_tmpdir).reshape(len(products), -1)
+
+    assert mean[0].sum() > 0.0, f'{mt} banked no {correct}'
+    for i, name in enumerate(wrong, start=1):
+        assert mean[i].sum() == 0.0, f'{mt} banked {name}, which it cannot leave'
