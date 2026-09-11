@@ -2,7 +2,10 @@
 
 namespace openmc {
 
-// Atomic masses in [u] from AME2020 and CODATA 2018
+// Masses in [u] from AME2020 and CODATA 2018. Nuclide entries are neutral-atom
+// masses, except that PDG's proton, deuteron, helion, and alpha particle codes
+// use their bare-particle masses. This is therefore not a uniform nuclear-mass
+// table; callers that need nuclear masses must account for the electrons.
 std::unordered_map<int32_t, double> ATOMIC_MASS = {
   {11, MASS_ELECTRON},
   {22, 0.0},

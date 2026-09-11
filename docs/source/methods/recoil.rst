@@ -72,6 +72,14 @@ which is 1.02 MeV for an alpha channel. A nuclide with no tabulated mass yields
 no budget and therefore no recoil record, rather than a fabricated mass and a Q
 value wrong by tens of MeV.
 
+The PDG-keyed ``ATOMIC_MASS`` lookup is not itself a nuclear-mass table: most
+nuclide entries are neutral-atom masses, while several light-particle entries
+are bare masses. Recoil construction therefore uses a dedicated nuclear-mass
+conversion and carries each resolved mass through energy division, frame
+transformation, acceptance, and final banking. An unlisted residual may use
+:math:`A\,u` only as an inertial approximation when an evaluated Q value is
+already available; that fallback is never used to derive Q.
+
 Energy budget
 -------------
 
@@ -109,18 +117,22 @@ evaluation cannot be reconciled and the event produces no recoil.
 Entrance and exit energetics
 ----------------------------
 
-For a stationary target the energy available in the compound system's rest
-frame is
+For a stationary target the energy available in the complete final system's
+rest frame is
 
 .. math::
     :label: recoil-u0
 
-    U_0 = E_\text{in} + Q - \frac{|\mathbf{p}_n|^2}{2 (M_T + m_n)}
-        = E_\text{in} \frac{M_T}{M_T + m_n} + Q ,
+    U_0 = E_\text{in} + Q
+        - \frac{|\mathbf{p}_n|^2}{2 M_\text{final}} ,
 
-the subtracted term being the kinetic energy of the centre of mass, which no
-exit channel can spend. Emitting ion :math:`b` from a parent with remaining
-internal energy :math:`U` leaves the daughter recoiling against it, so
+where :math:`M_\text{final}` is the additive ground-state nuclear mass of all
+final products. Q and excitation are treated as energy releases; their
+:math:`1/c^2` contributions to inertia are neglected, as is electron binding.
+This makes the masses additive within the nonrelativistic Galilean model and
+lets the kinetic energies actually banked close to numerical precision.
+Emitting ion :math:`b` from a parent with remaining internal energy :math:`U`
+leaves the daughter recoiling against it, so
 
 .. math::
     :label: recoil-endpoint
@@ -132,6 +144,13 @@ with :math:`M_D` the daughter plus any product not yet emitted. These
 expressions are shared with the offline calibration through a checked-in
 fixture of 374 cases, so the distribution the transport kernel samples is the
 one the surrogate was fitted to.
+
+Elastic scattering and evaluated one-neutron inelastic laws are exceptions to
+the final-product mass lookup. Their outgoing neutron laws were processed and
+sampled with the evaluation's target atomic-weight ratio, so their recoil uses
+that same ratio and the sampled neutron remains authoritative. Reconstructed
+multi-particle and charged-particle events use the additive nuclear-mass
+inventory described above.
 
 -----------------
 Reaction Families

@@ -172,10 +172,6 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
     REQUIRE(ok);
     REQUIRE(agrees(q, c.q, c.e_in));
 
-    double m_t = recoil::nuclear_mass_ev({c.z_t, c.a_t});
-    double u0 = recoil::entrance_internal_energy(c.e_in, m_t, q);
-    REQUIRE(agrees(u0, c.u0, c.e_in));
-
     // event endpoint: every other product is charged to the budget at rest, so
     // the ion recoils against the daughter plus the rest
     recoil::AtomicNumbers daughter {c.z_t, c.a_t + 1};
@@ -193,6 +189,8 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
     }
     double m_b = recoil::nuclear_mass_ev(c.ion);
     double m_d = recoil::nuclear_mass_ev(daughter) + rest;
+    double u0 = recoil::final_state_internal_energy(c.e_in, m_b + m_d, q);
+    REQUIRE(agrees(u0, c.u0, c.e_in));
     REQUIRE(agrees(recoil::two_body_endpoint(u0, m_b, m_d), c.e_event, c.e_in));
 
     REQUIRE(agrees(recoil::residual_excitation(u0, 0.5 * c.e_event, m_b, m_d),
@@ -220,14 +218,14 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
     }
   }
 
-  SECTION("the entrance correction is what E_in + Q leaves out")
+  SECTION("the final-state translation is what E_in + Q leaves out")
   {
-    double m_t = recoil::nuclear_mass_ev({26, 56});
-    double m_n = MASS_NEUTRON * AMU_EV;
-    double u = recoil::entrance_internal_energy(14.0e6, m_t, -2.0e6);
+    double m_final = recoil::nuclear_mass_ev({26, 55}) +
+                     2.0 * recoil::nuclear_mass_ev(neutron);
+    double u = recoil::final_state_internal_energy(14.0e6, m_final, -2.0e6);
     REQUIRE(u < 14.0e6 - 2.0e6);
     REQUIRE((14.0e6 - 2.0e6) - u ==
-            Approx(14.0e6 * m_n / (m_t + m_n)).epsilon(1e-12));
+            Approx(14.0e6 * MASS_NEUTRON_EV / m_final).epsilon(1e-12));
   }
 
   SECTION("no excitation is left at the endpoint")
@@ -285,12 +283,23 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
 
 TEST_CASE("Recoil particle masses")
 {
-  // Masses come from the tabulated atomic masses, in eV
+  // Recoil kinematics always uses nuclear masses, even though the underlying
+  // PDG-keyed table contains neutral-atom masses for these nuclides.
   REQUIRE(recoil::particle_mass_ev(ParticleType::photon()) == 0.0);
+  REQUIRE(recoil::particle_mass_ev(ParticleType::electron()) ==
+          Approx(MASS_ELECTRON * AMU_EV).epsilon(1e-12));
   REQUIRE(recoil::particle_mass_ev(ParticleType::neutron()) ==
           Approx(MASS_NEUTRON_EV).epsilon(1e-9));
-  REQUIRE(recoil::particle_mass_ev(ParticleType::alpha()) / AMU_EV ==
-          Approx(4.0015).epsilon(1e-4));
+  for (auto za : {recoil::AtomicNumbers {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4},
+         {3, 7}, {26, 56}}) {
+    ParticleType type = za.Z == 1 && za.A == 1 ? ParticleType::proton()
+                                               : ParticleType {za.Z, za.A, 0};
+    REQUIRE(recoil::particle_mass_ev(type) ==
+            Approx(recoil::nuclear_mass_ev(za)).epsilon(1e-12));
+  }
+  REQUIRE(recoil::particle_mass_ev(ParticleType::triton()) / AMU_EV ==
+          Approx(MASS_TRITON).epsilon(1e-13));
+  REQUIRE(recoil::particle_mass_ev(ParticleType::triton()) / AMU_EV < 3.0160);
 
   // A nuclide that is not in the tabulated mass table still gets a usable mass
   double m = recoil::particle_mass_ev(ParticleType {40, 130, 0});

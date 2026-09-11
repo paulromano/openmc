@@ -156,6 +156,50 @@ def test_emitted_ions_flag(run_in_tmpdir):
     assert mean[1].sum() > 0.0       # Mn56 residual still banked
 
 
+def test_discrete_alpha_products_close_the_banked_energy(run_in_tmpdir):
+    """B-10 MT=800 banked products close, not merely the helper formulas."""
+    energy = 2.0e6
+    nuclide = 'B10'
+    lib = openmc.data.IncidentNeutron.from_hdf5(
+        openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
+    budget = energy + lib[800].q_value
+
+    # A 240 eV bin width makes the histogram-derived sum sensitive to the
+    # 1.256 keV excess caused by the former mixed mass convention.
+    e_bins = np.linspace(0.0, budget * 1.001, 20001)
+    model = _one_collision_model(
+        nuclide, energy, ['He4', 'Li7'], e_bins, mts=[800],
+        particles=50000, density=2.34)
+    mean = _run(model, run_in_tmpdir).reshape(2, -1)
+    assert np.all(mean.sum(axis=1) > 0.0)
+
+    midpoint = 0.5 * (e_bins[1:] + e_bins[:-1])
+    product_mean = (mean * midpoint).sum(axis=1) / mean.sum(axis=1)
+    assert abs(product_mean.sum() - budget) < 500.0
+
+
+def test_triton_channel_uses_a_feasible_product_budget(run_in_tmpdir):
+    """Li-6 MT=105 exercises the bare triton and very-light residual path."""
+    energy = 2.0e6
+    nuclide = 'Li6'
+    lib = openmc.data.IncidentNeutron.from_hdf5(
+        openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
+    budget = energy + lib[105].q_value
+    e_bins = np.linspace(0.0, budget * 1.001, 2001)
+    model = _one_collision_model(
+        nuclide, energy, ['H3', 'He4'], e_bins, mts=[105],
+        particles=50000, density=0.534)
+    mean = _run(model, run_in_tmpdir).reshape(2, -1)
+    assert np.all(mean.sum(axis=1) > 0.0)
+
+    midpoint = 0.5 * (e_bins[1:] + e_bins[:-1])
+    product_mean = (mean * midpoint).sum(axis=1) / mean.sum(axis=1)
+    # MT=105 is a continuum surrogate channel, so the unspent part is residual
+    # excitation rather than a requirement that the two kinetic energies sum
+    # to the full ground-state Q-value.
+    assert 0.0 < product_mean.sum() < budget
+
+
 def test_multi_neutron_within_energy_budget(run_in_tmpdir):
     """(n,2n) recoil stays inside the kinematic window set by E + Q."""
     energy = 14.0e6

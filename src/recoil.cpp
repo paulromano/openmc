@@ -500,7 +500,7 @@ double nuclear_mass_ev(AtomicNumbers za)
   if (za.Z == 1 && za.A == 2)
     return MASS_DEUTRON * AMU_EV;
   if (za.Z == 1 && za.A == 3)
-    return 3.01550071621 * AMU_EV; // triton, nuclear
+    return MASS_TRITON * AMU_EV;
   if (za.Z == 2 && za.A == 3)
     return MASS_HELION * AMU_EV;
   if (za.Z == 2 && za.A == 4)
@@ -552,12 +552,11 @@ double mass_difference_q(
          mass_excess_ev(daughter) - exit_excess;
 }
 
-double entrance_internal_energy(double E_in, double m_target, double q)
+double final_state_internal_energy(double E_in, double m_final, double q)
 {
-  double m_n = MASS_NEUTRON * AMU_EV;
-  if (m_target <= 0.0)
+  if (m_final <= 0.0)
     return E_in + q;
-  return E_in * m_target / (m_target + m_n) + q;
+  return E_in + q - E_in * MASS_NEUTRON_EV / m_final;
 }
 
 double two_body_endpoint(double u, double m_b, double m_d)
@@ -589,8 +588,10 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
   if (!ok)
     return 0.0;
   AtomicNumbers daughter {target.Z + 0 - ion.Z, target.A + 1 - ion.A};
-  double u = entrance_internal_energy(E_in, nuclear_mass_ev(target), q);
-  return two_body_endpoint(u, nuclear_mass_ev(ion), nuclear_mass_ev(daughter));
+  double m_b = nuclear_mass_ev(ion);
+  double m_d = nuclear_mass_ev(daughter);
+  double u = final_state_internal_energy(E_in, m_b + m_d, q);
+  return two_body_endpoint(u, m_b, m_d);
 }
 
 //==============================================================================
@@ -651,13 +652,16 @@ double particle_mass_ev(ParticleType type)
 {
   if (type.is_photon())
     return 0.0;
-  int32_t pdg = std::abs(type.pdg_number());
-  auto it = ATOMIC_MASS.find(pdg);
-  if (it != ATOMIC_MASS.end())
-    return it->second * AMU_EV;
-  // Unlisted nuclide: fall back on the mass number
-  if (type.is_nucleus())
-    return particle_za(type).A * AMU_EV;
+  if (std::abs(type.pdg_number()) == PDG_ELECTRON)
+    return MASS_ELECTRON * AMU_EV;
+  AtomicNumbers za = particle_za(type);
+  double mass = nuclear_mass_ev(za);
+  if (mass > 0.0)
+    return mass;
+  // Unlisted nuclide: use A u only as an inertial mass. Q-value calculations
+  // call nuclear_mass_ev() directly and therefore never take this fallback.
+  if (type.is_nucleus() && za.A > 0)
+    return za.A * AMU_EV;
   return 0.0;
 }
 
@@ -843,9 +847,41 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 
 namespace {
 
+//! Resolve one inertial mass and report whether the A-u fallback was needed
+double inertial_mass_ev(ParticleType type, bool& used_fallback)
+{
+  AtomicNumbers za = particle_za(type);
+  double mass = nuclear_mass_ev(za);
+  if (mass > 0.0)
+    return mass;
+  mass = particle_mass_ev(type);
+  if (mass > 0.0)
+    used_fallback = true;
+  return mass;
+}
+
+//! Additive nuclear mass of everything not yet emitted
+double remaining_system_mass(ParticleType recoil, int n_neutrons,
+  const ChargedProducts& ions, bool include_ions, bool& used_fallback)
+{
+  double mass = inertial_mass_ev(recoil, used_fallback);
+  if (mass <= 0.0)
+    return 0.0;
+  mass += n_neutrons * MASS_NEUTRON_EV;
+  if (include_ions) {
+    for (int i = 0; i < ions.n; ++i) {
+      double ion_mass = inertial_mass_ev(ion_type(ions.za[i]), used_fallback);
+      if (ion_mass <= 0.0)
+        return 0.0;
+      mass += ion_mass;
+    }
+  }
+  return mass;
+}
+
 //! Create the recoil production record
-bool bank_recoil(Particle& p, const Nuclide& nuc, double weight,
-  Direction p_recoil, ParticleType type)
+bool bank_recoil(Particle& p, double weight, Direction p_recoil, double mass,
+  ParticleType type)
 {
   if (weight <= 0.0)
     return false;
@@ -854,9 +890,6 @@ bool bank_recoil(Particle& p, const Nuclide& nuc, double weight,
   if (!std::isfinite(p2) || p2 <= 0.0)
     return false;
 
-  double mass = particle_mass_ev(type);
-  if (mass <= 0.0 || !std::isfinite(mass))
-    mass = nuc.awr_ * MASS_NEUTRON_EV;
   if (mass <= 0.0 || !std::isfinite(mass))
     return false;
 
@@ -1097,7 +1130,7 @@ PhotonKick sample_photon_kick(
 void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double weight, double E_in, Direction u_in, const ChargedProducts& ions,
   EmissionState& state, ParticleType recoil, double budget,
-  bool enforce_closure)
+  bool validate_closure)
 {
   SampledIon sampled[ChargedProducts::MAX];
   int n_sampled = 0;
@@ -1117,9 +1150,10 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
     state = trial;
   }
 
-  // Multi-neutron candidates are constrained after every emission, and this
-  // final check pins the invariant to the mass and momentum actually banked.
-  if (enforce_closure && !update_internal_energy(state, budget)) {
+  // Pin reconstructed events to the mass and momentum actually banked. An
+  // evaluated one-neutron law is exempt because its sampled neutron remains
+  // authoritative and the evaluation does not promise eventwise closure.
+  if (validate_closure && !update_internal_energy(state, budget)) {
     count(RecoilCounter::incomplete_emission);
     return;
   }
@@ -1130,7 +1164,7 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
         weight, sampled[i].direction, sampled[i].energy, sampled[i].type);
     }
   }
-  count(bank_recoil(p, nuc, weight, state.momentum, recoil)
+  count(bank_recoil(p, weight, state.momentum, state.mass, recoil)
           ? RecoilCounter::banked
           : RecoilCounter::unbankable);
 }
@@ -1157,7 +1191,8 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
   // neutron.
   Direction p_recoil =
     neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
-  count(bank_recoil(p, nuc, p.wgt(), p_recoil, nuc.particle_type())
+  count(bank_recoil(
+          p, p.wgt(), p_recoil, nuc.awr_ * MASS_NEUTRON_EV, nuc.particle_type())
           ? RecoilCounter::banked
           : RecoilCounter::unbankable);
 }
@@ -1207,40 +1242,47 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     n_extra = static_cast<int>(std::round(yield)) - 1;
   }
 
-  // Start from the compound system and remove the transported neutron
+  // Start with the incident momentum, then remove the transported neutron.
+  // The inertial mass is not the entrance compound mass: in this
+  // nonrelativistic construction Q is energy, while the mass of the undecayed
+  // system is the additive ground-state nuclear mass of its final products.
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
-  state.mass = MASS_NEUTRON_EV + nuc.awr_ * MASS_NEUTRON_EV;
   state.za = {nuc.Z_, nuc.A_ + 1};
   state.emitted_kin = 0.0;
 
   // Lab-frame kinetic energy release. The closure calculation subtracts the
-  // translational energy of whatever has not decayed, so its first evaluation
-  // is exactly the entrance internal energy of the contract,
-  // E_in M_T/(M_T + m_n) + Q.
+  // translational energy of the final-state mass that has not yet decayed.
   double budget = E_in + q;
 
   state.momentum -= neutron_momentum(E_out, u_out);
-  state.mass -= MASS_NEUTRON_EV;
   state.za.A -= 1;
   state.emitted_kin += E_out;
 
-  if (n_extra > 0) {
-    // Use the same residual mass here and in bank_recoil(). The old
-    // compound-minus-products mass differed by binding energies, allowing the
-    // acceptance predicate and the banked recoil energy to disagree.
-    state.mass = particle_mass_ev(recoil) + n_extra * MASS_NEUTRON_EV;
-    for (int i = 0; i < ions.n; ++i) {
-      state.mass += particle_mass_ev(ion_type(ions.za[i]));
-    }
-    if (!update_internal_energy(state, budget)) {
-      // The evaluated first-neutron marginal left no kinematically possible
-      // remainder. It is already committed to transport and must not be
-      // resampled merely to manufacture a recoil record.
-      count(RecoilCounter::infeasible_primary);
-      count(RecoilCounter::incomplete_emission);
-      return;
-    }
+  bool used_fallback = false;
+  bool include_ions = ions.n > 0 && settings::recoil.light_ion_model ==
+                                      RecoilLightIonModel::statistical;
+  // A one-neutron inelastic law is sampled with the evaluation's target AWR,
+  // just like elastic scattering. Preserve that processed-law mass so the
+  // recoil remains the exact complement of the evaluated neutron. Reconstructed
+  // multiparticle states use the additive nuclear-mass inventory instead.
+  bool evaluated_neutron_only =
+    emitted.neutron == 1 && n_extra == 0 && ions.n == 0;
+  if (evaluated_neutron_only) {
+    state.mass = nuc.awr_ * MASS_NEUTRON_EV;
+  } else {
+    state.mass =
+      remaining_system_mass(recoil, n_extra, ions, include_ions, used_fallback);
+  }
+  if (used_fallback)
+    count(RecoilCounter::mass_fallback);
+  if (!evaluated_neutron_only && !update_internal_energy(state, budget)) {
+    // The evaluated first-neutron marginal left no kinematically possible
+    // remainder. It is already committed to transport and must not be
+    // resampled merely to manufacture a recoil record.
+    count(RecoilCounter::infeasible_primary);
+    count(RecoilCounter::incomplete_emission);
+    return;
   }
 
   for (int i = 0; i < n_extra; ++i) {
@@ -1272,13 +1314,8 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     }
   }
 
-  if (n_extra == 0) {
-    state.internal = remaining_internal_energy(
-      budget, state.emitted_kin, state.momentum, state.mass);
-  }
-
-  finish_event(
-    p, nuc, rx, wgt, E_in, u_in, ions, state, recoil, budget, n_extra > 0);
+  finish_event(p, nuc, rx, wgt, E_in, u_in, ions, state, recoil, budget,
+    !evaluated_neutron_only);
 }
 
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
@@ -1302,10 +1339,24 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   ParticleType recoil = recoil_particle_type(*nuc, rx->mt_);
 
+  ChargedProducts ions;
+  ions.fill(emitted);
+
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
-  state.mass = MASS_NEUTRON_EV + nuc->awr_ * MASS_NEUTRON_EV;
   state.za = {nuc->Z_, nuc->A_ + 1};
+
+  bool used_fallback = false;
+  bool include_ions = ions.n > 0 && settings::recoil.light_ion_model ==
+                                      RecoilLightIonModel::statistical;
+  state.mass =
+    remaining_system_mass(recoil, 0, ions, include_ions, used_fallback);
+  if (used_fallback)
+    count(RecoilCounter::mass_fallback);
+  if (state.mass <= 0.0 || !std::isfinite(state.mass)) {
+    count(RecoilCounter::unbankable);
+    return;
+  }
 
   double budget = E_in + q;
 
@@ -1319,14 +1370,13 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
     state.emitted_kin += kick.energy;
   }
 
-  ChargedProducts ions;
-  ions.fill(emitted);
+  if (!update_internal_energy(state, budget)) {
+    count(RecoilCounter::incomplete_emission);
+    return;
+  }
 
-  state.internal = remaining_internal_energy(
-    budget, state.emitted_kin, state.momentum, state.mass);
-
-  finish_event(
-    p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil, budget, false);
+  finish_event(p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil, budget,
+    include_ions || ions.n == 0);
 }
 
 } // namespace recoil

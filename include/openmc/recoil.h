@@ -62,6 +62,7 @@ enum class RecoilCounter {
   incomplete_emission, //!< an exit-channel product could not be emitted
   no_budget,           //!< no trustworthy energy release for the event
   unknown_channel,     //!< the exit channel does not follow from the MT
+  mass_fallback,       //!< an unlisted nuclide used an A-u inertial mass
   unbankable,          //!< the recoil momentum or mass was unusable
   size
 };
@@ -88,6 +89,8 @@ void reset_counters();
 //! ions taken from their CODATA values. Mixing conventions is the error to
 //! avoid: a Q value built from atomic targets and nuclear light ions is wrong
 //! by \f$Z_b m_e c^2\f$, which is 1.02 MeV for an alpha channel.
+//! Evaluated elastic and one-neutron inelastic laws retain the target AWR with
+//! which their outgoing-neutron kinematics were processed.
 //! @{
 //==============================================================================
 
@@ -126,14 +129,15 @@ double mass_excess_ev(AtomicNumbers za);
 double mass_difference_q(
   AtomicNumbers target, const AtomicNumbers* emitted, int n_emitted, bool& ok);
 
-//! Energy available in the compound system's rest frame in [eV]
+//! Energy available in the final system's rest frame in [eV]
 //!
-//! \f[ U_0 = E_\text{in}\frac{M_T}{M_T+m_n} + Q \f]
+//! \f[ U_0 = E_\text{in} + Q
+//!       - \frac{|\mathbf p_n|^2}{2M_\text{final}} \f]
 //!
-//! The centre of mass carries \f$E_\text{in} m_n/(M_T+m_n)\f$ that no exit
-//! channel can spend, so \f$E_\text{in}+Q\f$ overstates the budget. The excess
-//! is a few percent for a mid-mass target and unbounded near threshold.
-double entrance_internal_energy(double E_in, double m_target, double q);
+//! \f$M_\text{final}\f$ is the additive ground-state nuclear mass of all final
+//! products. Q and excitation are energy releases; their \f$1/c^2\f$
+//! contributions to inertia are neglected in this nonrelativistic model.
+double final_state_internal_energy(double E_in, double m_final, double q);
 
 //! Largest centre-of-mass energy ion \p m_b can take from internal energy \p u
 //!
@@ -230,10 +234,14 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 //!         channel cannot be determined from \p mt
 ParticleType recoil_particle_type(const Nuclide& nuc, int mt);
 
-//! Rest mass of a particle in [eV]
+//! Nuclear rest mass of a particle in [eV]
 //!
-//! Returns zero for photons and falls back to \f$A\f$ atomic mass units for
-//! nuclides that are absent from the tabulated mass table.
+//! Returns zero for photons and the free-particle mass for electrons. Nuclear
+//! identities use \ref nuclear_mass_ev and fall back to \f$A\f$ atomic mass
+//! units only when a tabulated mass is absent.
+//! This fallback is suitable for an inertial denominator when the evaluated Q
+//! is already known; mass-derived Q values must use \ref nuclear_mass_ev
+//! directly and fail if it returns zero.
 double particle_mass_ev(ParticleType type);
 
 //! Centre-of-mass kinetic energy of a light ion emitted from an excited system
