@@ -116,6 +116,8 @@ int openmc_finalize()
   settings::path_sourcepoint.clear();
   settings::path_statepoint.clear();
   settings::photon_transport = false;
+  settings::recoil_production = false;
+  settings::recoil = RecoilSettings {};
   settings::reduce_tallies = true;
   settings::rel_max_lost_particles = 1.0e-6;
   settings::res_scat_on = false;
