@@ -56,6 +56,9 @@ struct AtomicNumbers {
 
 enum class RecoilCounter {
   banked,              //!< a complete, consistent production record was made
+  budget_rejection,    //!< an auxiliary draw violated the complete budget
+  infeasible_primary,  //!< transported product left no feasible remainder
+  budget_exhaustion,   //!< all auxiliary budget-limited draws were rejected
   incomplete_emission, //!< an exit-channel product could not be emitted
   no_budget,           //!< no trustworthy energy release for the event
   unknown_channel,     //!< the exit channel does not follow from the MT
@@ -75,7 +78,7 @@ void reset_counters();
 //! \name Kinematic contract
 //!
 //! Every energy budget, endpoint and excitation in this file comes from these
-//! five expressions, so that the transport kernel and the offline calibration
+//! shared expressions, so that the transport kernel and offline calibration
 //! cannot disagree about what "the energy available to this channel" means.
 //! The Python half is \c recoil.kinematics in the analysis repository and both
 //! are checked against \c tests/data/kinematics_fixture.json.
@@ -144,6 +147,21 @@ double two_body_endpoint(double u, double m_b, double m_d);
 //! Negative only if \p e_cm exceeded two_body_endpoint(), which every caller
 //! should assert rather than clamp.
 double residual_excitation(double u, double e_cm, double m_b, double m_d);
+
+//! Internal energy left in a system with laboratory momentum \p momentum
+//!
+//! \f[ U = B - K_\text{emitted} - \frac{|\mathbf{P}|^2}{2M} \f]
+//!
+//! The translational term is the minimum kinetic energy the remaining mass
+//! must retain. A negative result therefore identifies an impossible partial
+//! or completed event.
+//!
+//! \param[in] budget       Total laboratory kinetic-energy budget in [eV]
+//! \param[in] emitted_kin  Kinetic energy already assigned to products [eV]
+//! \param[in] momentum     Momentum of the remaining system in [eV]
+//! \param[in] mass         Rest mass of the remaining system in [eV]
+double remaining_internal_energy(
+  double budget, double emitted_kin, Direction momentum, double mass);
 
 //! Endpoint of the channel that emits \p ion alone from \p target, in [eV]
 //!

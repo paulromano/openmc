@@ -178,23 +178,26 @@ Reactions emitting several neutrons
 -----------------------------------
 
 OpenMC's transport samples one outgoing neutron and duplicates it for integral
-yields, which is correct for transport but not for an event-by-event momentum
-balance: duplicating one momentum vector makes the emitted momenta perfectly
-correlated, which broadens the recoil spectrum and shifts its mean.
+yields. This preserves the evaluated one-particle marginal and total yield for
+linear transport, but it is not a correlated exclusive event: duplicating one
+momentum vector makes the emitted momenta perfectly correlated, which broadens
+the recoil spectrum and shifts its mean.
 
 Instead, each additional neutron of a multiplicity :math:`\nu > 1` channel is
 sampled independently from the same evaluated distribution. Because the ENDF
 distribution is inclusive and carries no joint final state, independent samples
-can overrun the event's energy budget; a sample that would do so is rejected and
-redrawn. That keeps every event kinematically possible while leaving the
-marginal spectrum close to the evaluated one.
+can overrun the event's energy budget. A trial is rejected unless the emitted
+kinetic energy plus the minimum translational energy of the entire remaining
+system fits in the budget. Thus the final recoil energy is reserved after every
+emission, not checked only after the neutron energies have been accepted.
 
-Rejection can fail. When it does the event produces **no record at all**,
-rather than omitting the neutron and banking a recoil whose label claims it
-left: the residual's mass number would then be one higher than the momentum
-balance it carries. The same rule applies to a light ion that cannot be
-emitted. Every such event is counted, so a channel that fails often is visible
-rather than merely underrepresented.
+Reconstruction can fail if every auxiliary trial is rejected or if the fixed,
+transported neutron itself leaves no feasible remainder. When it does, neutron
+transport is unchanged and the event produces **no recoil record at all**,
+rather than omitting a neutron or banking an energetically impossible recoil.
+The same rule applies to a light ion that cannot be emitted. Every such event is
+counted, so a channel that fails often is visible rather than merely
+underrepresented.
 
 With uncorrelated emission directions the cross terms in :eq:`recoil-momentum`
 average out and the mean recoil approaches

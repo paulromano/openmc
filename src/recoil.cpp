@@ -61,7 +61,12 @@ double softplus(double x)
 }
 
 //! Maximum attempts to resample a modelled product inside the energy budget
-constexpr int MAX_BUDGET_TRIES = 20;
+//!
+//! Evaluated inclusive neutron spectra can put appreciable probability in the
+//! part of the marginal that is infeasible after another neutron has already
+//! been drawn. A high bound makes exhaustion negligible without changing the
+//! common-case cost, since feasible candidates are still accepted immediately.
+constexpr int MAX_BUDGET_TRIES = 1000;
 
 //==============================================================================
 // Momentum helpers. Masses and energies are in eV and momenta in eV with c = 1,
@@ -357,6 +362,25 @@ struct SampledIon {
   double energy;
 };
 
+//! Update the internal energy and reject a materially impossible state
+bool update_internal_energy(EmissionState& state, double budget)
+{
+  if (state.mass <= 0.0 || !std::isfinite(state.mass))
+    return false;
+  double translation = state.momentum.dot(state.momentum) / (2.0 * state.mass);
+  if (!std::isfinite(translation) || translation < 0.0)
+    return false;
+  double scale =
+    std::max({1.0, std::abs(budget), std::abs(state.emitted_kin), translation});
+  double tolerance = 64.0 * std::numeric_limits<double>::epsilon() * scale;
+  double internal = remaining_internal_energy(
+    budget, state.emitted_kin, state.momentum, state.mass);
+  if (!std::isfinite(internal) || internal < -tolerance)
+    return false;
+  state.internal = std::max(0.0, internal);
+  return true;
+}
+
 //! True for the discrete charged-particle level MTs, which are exactly two-body
 bool is_discrete_charged_level(int mt)
 {
@@ -435,14 +459,6 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
   return 0.0;
 }
 
-//! Internal energy of a system with the given lab momentum, mass, and budget
-double internal_energy(double budget, Direction momentum, double mass)
-{
-  if (mass <= 0.0)
-    return 0.0;
-  return budget - momentum.dot(momentum) / (2.0 * mass);
-}
-
 void count(RecoilCounter which)
 {
   int64_t& slot = COUNTERS[static_cast<int>(which)];
@@ -466,7 +482,7 @@ void reset_counters()
 //==============================================================================
 // Kinematic contract
 //
-// Five expressions, documented in recoil.h, mirrored by recoil.kinematics in
+// Shared expressions, documented in recoil.h, mirrored by recoil.kinematics in
 // the analysis repository and checked against a shared fixture.
 //==============================================================================
 
@@ -556,6 +572,14 @@ double residual_excitation(double u, double e_cm, double m_b, double m_d)
   if (m_d <= 0.0)
     return u;
   return u - e_cm * (1.0 + m_b / m_d);
+}
+
+double remaining_internal_energy(
+  double budget, double emitted_kin, Direction momentum, double mass)
+{
+  if (mass <= 0.0 || !std::isfinite(mass))
+    return -INFTY;
+  return budget - emitted_kin - momentum.dot(momentum) / (2.0 * mass);
 }
 
 double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
@@ -1072,7 +1096,8 @@ PhotonKick sample_photon_kick(
 //! mass, charge and momentum disagree with its own label.
 void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double weight, double E_in, Direction u_in, const ChargedProducts& ions,
-  EmissionState& state, ParticleType recoil)
+  EmissionState& state, ParticleType recoil, double budget,
+  bool enforce_closure)
 {
   SampledIon sampled[ChargedProducts::MAX];
   int n_sampled = 0;
@@ -1090,6 +1115,13 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
       return;
     }
     state = trial;
+  }
+
+  // Multi-neutron candidates are constrained after every emission, and this
+  // final check pins the invariant to the mass and momentum actually banked.
+  if (enforce_closure && !update_internal_energy(state, budget)) {
+    count(RecoilCounter::incomplete_emission);
+    return;
   }
 
   if (settings::recoil.emitted_ions) {
@@ -1165,6 +1197,16 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   ChargedProducts ions;
   ions.fill(emitted);
 
+  // Additional neutrons of a multiplicity > 1 channel. OpenMC transports only
+  // one sampled neutron, so the others are sampled independently from the same
+  // evaluated distribution for recoil kinematics only.
+  int n_extra = 0;
+  if (emitted.neutron > 1) {
+    n_extra = emitted.neutron - 1;
+  } else if (yield > 1.0 && std::floor(yield) == yield) {
+    n_extra = static_cast<int>(std::round(yield)) - 1;
+  }
+
   // Start from the compound system and remove the transported neutron
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
@@ -1172,9 +1214,9 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   state.za = {nuc.Z_, nuc.A_ + 1};
   state.emitted_kin = 0.0;
 
-  // Lab-frame kinetic energy release. internal_energy() below subtracts the
-  // translational energy of whatever has not decayed, so the first evaluation
-  // of it is exactly the entrance internal energy of the contract,
+  // Lab-frame kinetic energy release. The closure calculation subtracts the
+  // translational energy of whatever has not decayed, so its first evaluation
+  // is exactly the entrance internal energy of the contract,
   // E_in M_T/(M_T + m_n) + Q.
   double budget = E_in + q;
 
@@ -1183,17 +1225,22 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   state.za.A -= 1;
   state.emitted_kin += E_out;
 
-  // Additional neutrons of a multiplicity > 1 channel. OpenMC transports only
-  // one sampled neutron, so the others are sampled independently from the same
-  // evaluated distribution. The ENDF distribution is inclusive and carries no
-  // joint final state, so a sample is rejected when it would overrun the
-  // event's energy budget; that keeps every event kinematically possible while
-  // leaving the marginal spectrum close to the evaluated one.
-  int n_extra = 0;
-  if (emitted.neutron > 1) {
-    n_extra = emitted.neutron - 1;
-  } else if (yield > 1.0 && std::floor(yield) == yield) {
-    n_extra = static_cast<int>(std::round(yield)) - 1;
+  if (n_extra > 0) {
+    // Use the same residual mass here and in bank_recoil(). The old
+    // compound-minus-products mass differed by binding energies, allowing the
+    // acceptance predicate and the banked recoil energy to disagree.
+    state.mass = particle_mass_ev(recoil) + n_extra * MASS_NEUTRON_EV;
+    for (int i = 0; i < ions.n; ++i) {
+      state.mass += particle_mass_ev(ion_type(ions.za[i]));
+    }
+    if (!update_internal_energy(state, budget)) {
+      // The evaluated first-neutron marginal left no kinematically possible
+      // remainder. It is already committed to transport and must not be
+      // resampled merely to manufacture a recoil record.
+      count(RecoilCounter::infeasible_primary);
+      count(RecoilCounter::incomplete_emission);
+      return;
+    }
   }
 
   for (int i = 0; i < n_extra; ++i) {
@@ -1203,28 +1250,35 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     for (int attempt = 0; attempt < MAX_BUDGET_TRIES; ++attempt) {
       sample_reaction_neutron(
         nuc, rx, E_in, u_in, p.current_seed(), E_extra, u_extra);
-      if (state.emitted_kin + E_extra <= budget) {
+      EmissionState trial = state;
+      trial.momentum -= neutron_momentum(E_extra, u_extra);
+      trial.mass -= MASS_NEUTRON_EV;
+      trial.za.A -= 1;
+      trial.emitted_kin += E_extra;
+      if (update_internal_energy(trial, budget)) {
+        state = trial;
         accepted = true;
         break;
       }
+      count(RecoilCounter::budget_rejection);
     }
     if (!accepted) {
       // The recoil's identity says this neutron left. Dropping it and banking
       // the recoil anyway -- which is what a `continue` here did -- makes the
       // record's mass number one higher than the momentum it carries.
+      count(RecoilCounter::budget_exhaustion);
       count(RecoilCounter::incomplete_emission);
       return;
     }
-    state.momentum -= neutron_momentum(E_extra, u_extra);
-    state.mass -= MASS_NEUTRON_EV;
-    state.za.A -= 1;
-    state.emitted_kin += E_extra;
   }
 
-  state.internal =
-    internal_energy(budget - state.emitted_kin, state.momentum, state.mass);
+  if (n_extra == 0) {
+    state.internal = remaining_internal_energy(
+      budget, state.emitted_kin, state.momentum, state.mass);
+  }
 
-  finish_event(p, nuc, rx, wgt, E_in, u_in, ions, state, recoil);
+  finish_event(
+    p, nuc, rx, wgt, E_in, u_in, ions, state, recoil, budget, n_extra > 0);
 }
 
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
@@ -1268,10 +1322,11 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   ChargedProducts ions;
   ions.fill(emitted);
 
-  state.internal =
-    internal_energy(budget - state.emitted_kin, state.momentum, state.mass);
+  state.internal = remaining_internal_energy(
+    budget, state.emitted_kin, state.momentum, state.mass);
 
-  finish_event(p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil);
+  finish_event(
+    p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil, budget, false);
 }
 
 } // namespace recoil

@@ -1,0 +1,47 @@
+<?xml version='1.0' encoding='utf-8'?>
+<model>
+  <materials>
+    <material id="1">
+      <density value="7.874" units="g/cm3"/>
+      <nuclide name="Fe56" ao="1.0"/>
+    </material>
+  </materials>
+  <geometry>
+    <cell id="1" material="1" region="-1" universe="1"/>
+    <surface id="1" type="sphere" boundary="vacuum" coeffs="0.0 0.0 0.0 1.0"/>
+  </geometry>
+  <settings>
+    <run_mode>fixed source</run_mode>
+    <particles>100000</particles>
+    <batches>10</batches>
+    <source type="independent" strength="1.0" particle="neutron">
+      <space type="point">
+        <parameters>0.0 0.0 0.0</parameters>
+      </space>
+      <energy type="discrete">
+        <parameters>14000000.0 1.0</parameters>
+      </energy>
+    </source>
+    <recoil_production>true</recoil_production>
+    <cutoff>
+      <energy_neutron>13986000.0</energy_neutron>
+    </cutoff>
+  </settings>
+  <tallies>
+    <filter id="1" type="reaction">
+      <bins>(n,2n)</bins>
+    </filter>
+    <filter id="2" type="particleproduction">
+      <particles>Fe55</particles>
+      <energies>0.0 25000.0 50000.0 75000.0 100000.0 125000.0 150000.0 175000.0 200000.0 225000.0 250000.0 275000.0 300000.0 325000.0 350000.0 375000.0 400000.0 425000.0 450000.0 475000.0 500000.0 525000.0 550000.0 575000.0 600000.0 625000.0 650000.0 675000.0 700000.0 725000.0 750000.0 775000.0 800000.0 825000.0 850000.0 875000.0 900000.0 925000.0 950000.0 975000.0 1000000.0</energies>
+    </filter>
+    <tally id="1" name="rate">
+      <nuclides>Fe56</nuclides>
+      <scores>(n,2n)</scores>
+    </tally>
+    <tally id="2" name="production">
+      <filters>1 2</filters>
+      <scores>events</scores>
+    </tally>
+  </tallies>
+</model>

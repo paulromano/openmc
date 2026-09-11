@@ -239,6 +239,27 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
     REQUIRE(std::abs(recoil::residual_excitation(u, e_max, m_b, m_d)) < 1.0e-6);
   }
 
+  SECTION("multi-neutron closure reserves the residual translation")
+  {
+    recoil::AtomicNumbers neutrons[2] {{0, 1}, {0, 1}};
+    bool ok = false;
+    double q = recoil::mass_difference_q({26, 56}, neutrons, 2, ok);
+    REQUIRE(ok);
+
+    double e_in = 14.0e6;
+    double budget = e_in + q;
+    double e_out = 0.5 * (budget - 1.0);
+    REQUIRE(2.0 * e_out <= budget); // the old predicate accepted this
+
+    double m_n = MASS_NEUTRON * AMU_EV;
+    double pz =
+      std::sqrt(2.0 * m_n * e_in) + 2.0 * std::sqrt(2.0 * m_n * e_out);
+    double m_r = recoil::nuclear_mass_ev({26, 55});
+    double u = recoil::remaining_internal_energy(
+      budget, 2.0 * e_out, {0.0, 0.0, pz}, m_r);
+    REQUIRE(u < -0.5e6);
+  }
+
   SECTION("a missing mass is reported, not invented")
   {
     REQUIRE(recoil::nuclear_mass_ev({60, 300}) == 0.0);
