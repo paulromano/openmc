@@ -218,6 +218,12 @@ photon distribution, and the yield is converted to a stochastic integer
 multiplicity so that the recoil belongs to the reaction a
 :class:`ReactionFilter` reports.
 
+In windowed-multipole and unresolved-resonance probability-table ranges, the
+cross-section representation distinguishes sampled radiative capture from
+fission but does not provide a finer decomposition among absorption MTs.
+Recoil production follows that same aggregate representation and assigns the
+nonfission component to radiative capture (MT=102).
+
 This is an event-by-event model, so it produces a spectrum rather than the
 average kick
 

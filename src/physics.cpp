@@ -35,6 +35,7 @@
 #include <algorithm> // for max, min, max_element
 #include <cctype>    // for tolower, isdigit
 #include <cmath>     // for sqrt, exp, log, abs, copysign
+#include <limits>    // for numeric_limits
 
 namespace openmc {
 
@@ -43,9 +44,9 @@ namespace {
 //! Which absorption reaction occurred, and the cross sections it was drawn from
 struct AbsorptionSample {
   const Reaction* rx {nullptr}; //!< sampled reaction, or nullptr if none
-  bool fission {false};         //!< the sampled reaction is a fission channel
-  double nonfission {0.0};      //!< summed nonfission disappearance xs
-  double total {0.0};           //!< summed disappearance xs, fission included
+  bool fission {false};         //!< sampled reaction is a fission channel
+  double nonfission_xs {0.0};   //!< nonfission disappearance xs
+  double absorption_xs {0.0};   //!< disappearance xs, fission included
 };
 
 //! Sample which disappearance (absorption) reaction occurred
@@ -62,6 +63,51 @@ AbsorptionSample sample_absorption_reaction(
   const auto& nuc {data::nuclides[i_nuclide]};
   const auto& micro {p.neutron_xs(i_nuclide)};
 
+  // Windowed multipole and probability-table data provide only aggregate
+  // capture and fission cross sections. In particular, multipole evaluation
+  // deliberately leaves the pointwise grid indices invalid, while probability
+  // tables replace the smooth cross sections with the sampled realization.
+  // This is the same decomposition used for (n,gamma) tallies in
+  // get_nuclide_xs() and for reaction identity in sample_fission().
+  bool use_multipole = nuc->multipole_ && multipole_in_range(*nuc, p.E());
+  if (micro.use_ptable || use_multipole) {
+    double fission_xs = micro.fission;
+    double capture_xs = micro.absorption - micro.fission;
+    double scale =
+      std::max({1.0, std::abs(micro.absorption), std::abs(micro.fission)});
+    double tol = 64.0 * std::numeric_limits<double>::epsilon() * scale;
+    if (capture_xs < -tol || fission_xs < -tol) {
+      fatal_error(fmt::format("Invalid aggregate absorption cross sections for "
+                              "nuclide '{}': absorption={}, fission={}.",
+        nuc->name_, micro.absorption, micro.fission));
+    }
+    capture_xs = std::max(0.0, capture_xs);
+    fission_xs = std::max(0.0, fission_xs);
+    out.nonfission_xs = capture_xs;
+    out.absorption_xs = capture_xs + fission_xs;
+
+    double norm = include_fission ? out.absorption_xs : out.nonfission_xs;
+    if (norm <= 0.0) {
+      return out;
+    }
+
+    bool capture =
+      !include_fission || prn(p.current_seed()) * norm < capture_xs;
+    if (capture) {
+      int i_capture = nuc->reaction_index_[N_GAMMA];
+      if (i_capture == C_NONE) {
+        fatal_error(fmt::format("Nuclide '{}' has a positive aggregate capture "
+                                "cross section but no MT=102 reaction.",
+          nuc->name_));
+      }
+      out.rx = nuc->reactions_[i_capture].get();
+    } else {
+      out.rx = &sample_fission(i_nuclide, p);
+      out.fission = true;
+    }
+    return out;
+  }
+
   // is_disappearance() covers MT 101-117 and the charged-particle bands but
   // *not* fission, which ENDF numbers separately. Testing it alone would leave
   // fission out of the sum however include_fission were set, and every
@@ -74,13 +120,13 @@ AbsorptionSample sample_absorption_reaction(
       continue;
     }
     double xs = rx->xs(micro);
-    out.total += xs;
+    out.absorption_xs += xs;
     if (!is_fission(rx->mt_)) {
-      out.nonfission += xs;
+      out.nonfission_xs += xs;
     }
   }
 
-  double norm = include_fission ? out.total : out.nonfission;
+  double norm = include_fission ? out.absorption_xs : out.nonfission_xs;
   if (norm <= 0.0) {
     return out;
   }
@@ -769,7 +815,7 @@ void absorption(Particle& p, int i_nuclide)
       // nuclide is most of the absorption.
       auto sample = sample_absorption_reaction(i_nuclide, p, false);
       double wgt_nonfission =
-        p.wgt() * sample.nonfission / p.neutron_xs(i_nuclide).total;
+        p.wgt() * sample.nonfission_xs / p.neutron_xs(i_nuclide).total;
       if (sample.rx && wgt_nonfission > 0.0) {
         recoil::from_absorption(
           p, i_nuclide, wgt_nonfission, E_in, u_in, sample.rx);
