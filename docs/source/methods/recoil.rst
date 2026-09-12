@@ -6,10 +6,10 @@ Recoil Production
 
 .. currentmodule:: openmc
 
-When :attr:`Settings.recoil_production` is enabled, every continuous-energy
-neutron collision creates additional entries in the secondary bank describing
-the *recoil nucleus* left by the reaction and, optionally, the light
-ions the reaction emits. Scoring those entries with a
+When :attr:`Settings.recoil_production` is enabled, supported
+continuous-energy neutron reactions create additional entries in the secondary
+bank describing the *recoil nucleus* left by the reaction and, optionally, the
+light ions the reaction emits. Scoring those entries with a
 :class:`ParticleProductionFilter` gives the primary knock-on atom (PKA)
 spectrum, which is the starting point for displacement-damage estimates and for
 hydrogen and helium production spectra.
@@ -17,6 +17,13 @@ hydrogen and helium production spectra.
 These entries are production records, not transported particles. OpenMC has no
 stopping-power model for heavy ions, so the records are removed from the
 secondary bank as soon as the collision tallies have been scored.
+
+Bound thermal scattering through :math:`S(\alpha,\beta)` data or NCrystal does
+not identify a unique recoiling nucleus and is not represented by this model.
+Fission fragments and multi-group reactions are also excluded. The absence of
+a production record is therefore not, by itself, a runtime coverage diagnostic;
+weighted coverage is assessed with paired reaction-event and production tallies
+in validation calculations.
 
 --------------------
 Kinematic Foundation

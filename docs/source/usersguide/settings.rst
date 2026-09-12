@@ -885,11 +885,11 @@ The full list of fields is as follows:
 Recoil Production
 -----------------
 
-Setting :attr:`Settings.recoil_production` makes every continuous-energy neutron
-collision record the recoiling residual nucleus -- the primary knock-on atom --
-and the light ions the reaction emits. The records are added to the secondary
-bank so that a :class:`openmc.ParticleProductionFilter` can score them; they are
-not transported.
+Setting :attr:`Settings.recoil_production` makes supported continuous-energy
+neutron reactions record the recoiling residual nucleus -- the primary
+knock-on atom -- and the light ions the reaction emits. The records are added
+to the secondary bank so that a :class:`openmc.ParticleProductionFilter` can
+score them; they are not transported.
 
 .. code-block:: python
 
@@ -908,6 +908,13 @@ particle's* weight rather than the colliding particle's. Combining it with a
 :class:`openmc.ReactionFilter` gives reaction-resolved PKA spectra, which needs
 analog absorption (``settings.survival_biasing = False``) for the absorption
 channels to be tagged with the right MT.
+
+Bound thermal scattering described by :math:`S(\alpha,\beta)` data or by
+NCrystal, fission fragments, and multi-group transport are outside the current
+recoil-production scope and do not create recoil records. OpenMC does not
+provide runtime recoil-coverage diagnostics. Validation calculations should
+compare reaction-event tally weight with heavy-residual production tally weight
+for every reaction included in an accuracy result.
 
 Two options control the model:
 

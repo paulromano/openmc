@@ -75,6 +75,40 @@ def test_elastic_recoil_endpoint(run_in_tmpdir):
     assert e_bins[nz[-1] + 1] > 0.5 * e_max
 
 
+def test_bound_thermal_scattering_is_outside_recoil_scope(run_in_tmpdir):
+    """An S(alpha,beta) event must not be reported as a free-atom PKA."""
+    energy = 0.0253
+    mat = openmc.Material()
+    mat.add_nuclide('H1', 1.0)
+    mat.set_density('g/cm3', 1.0)
+    mat.add_s_alpha_beta('c_H_in_H2O')
+
+    sph = openmc.Sphere(r=0.4, boundary_type='vacuum')
+    cell = openmc.Cell(fill=mat, region=-sph)
+    settings = openmc.Settings()
+    settings.run_mode = 'fixed source'
+    settings.particles = 20000
+    settings.batches = 2
+    settings.survival_biasing = False
+    settings.recoil_production = True
+    settings.source = openmc.IndependentSource(
+        space=openmc.stats.Point(),
+        energy=openmc.stats.Discrete([energy], [1.0]),
+    )
+
+    tally = openmc.Tally(name='recoil')
+    tally.filters = [
+        openmc.ReactionFilter(['(n,elastic)']),
+        openmc.ParticleProductionFilter(['H1'], [0.0, 1.0]),
+    ]
+    tally.scores = ['events']
+    model = openmc.Model(openmc.Geometry([cell]), [mat], settings,
+                         openmc.Tallies([tally]))
+
+    mean = _run(model, run_in_tmpdir)
+    assert mean.sum() == 0.0
+
+
 def test_elastic_recoil_energy_balance(run_in_tmpdir):
     """Recoil energy plus outgoing neutron energy equals the incident energy."""
     energy = 2.0e6
