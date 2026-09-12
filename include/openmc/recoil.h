@@ -149,9 +149,9 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion);
 
 //! Recoil products following an elastic scattering event
 //!
-//! The recoil energy is the energy the collision transfers to the target, so
-//! the target's own thermal momentum is not included; see the implementation
-//! for why.
+//! The record contains the neutron momentum transfer and its associated
+//! target-rest-frame kinetic energy. It is not the target's final laboratory
+//! kinetic energy or its signed laboratory kinetic-energy change.
 //!
 //! \param[in,out] p        Colliding neutron, after the outgoing state is set
 //! \param[in] nuc          Target nuclide

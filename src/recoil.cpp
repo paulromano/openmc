@@ -1148,14 +1148,11 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
   if (!settings::recoil_production)
     return;
 
-  // The momentum the collision transferred to the target, deliberately not
-  // including the target's own thermal momentum. A PKA energy is the energy a
-  // collision *imparts* to an atom, which is the quantity displacement models
-  // and NJOY recoil matrices are built on; adding the target's pre-collision
-  // momentum would instead report its total kinetic energy, which below a few
-  // eV is dominated by thermal motion and has nothing to do with damage. The
-  // free-gas treatment still shapes the result through the sampled outgoing
-  // neutron.
+  // Bank the neutron momentum transfer q and the corresponding recoil kinetic
+  // energy in the incident target's rest frame, |q|^2/(2M). The free-gas
+  // target velocity shapes q through the sampled outgoing neutron, but this
+  // record is neither the target's final laboratory kinetic energy nor its
+  // signed laboratory kinetic-energy change.
   Direction p_recoil =
     neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
   bank_recoil(

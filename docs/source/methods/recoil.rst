@@ -166,19 +166,67 @@ Reaction Families
 Elastic scattering
 ------------------
 
-Subtracting the sampled outgoing neutron momentum from the incident one gives
-the recoil exactly.
+For elastic scattering, OpenMC records the neutron momentum transfer
 
-The target's own thermal momentum is deliberately left out of
-:eq:`recoil-momentum`. A PKA energy is the energy a collision *imparts* to an
-atom, which is what displacement models and NJOY recoil matrices are built on;
-adding the target's pre-collision momentum would instead report the atom's
-total kinetic energy, which below a few eV is dominated by thermal motion and
-has nothing to do with damage. The free-gas treatment still shapes the result
-through the sampled outgoing neutron, so up-scattering broadens the recoil
-distribution slightly past the stationary-target endpoint
-:math:`4 A E / (A+1)^2` while leaving the mean at
-:math:`2 A E (1 - \bar\mu_\text{cm}) / (A+1)^2`.
+.. math::
+    :label: elastic-momentum-transfer
+
+    \mathbf{q} =
+    \mathbf{p}_{n,\text{in}}-\mathbf{p}_{n,\text{out}}
+
+and assigns the recoil direction :math:`\widehat{\mathbf{q}}` and energy
+
+.. math::
+    :label: elastic-target-rest-energy
+
+    T_q = \frac{|\mathbf{q}|^2}{2M}.
+
+This is exactly the final target momentum and kinetic energy in the *incident
+target's rest frame*. It is also the stationary-target-equivalent
+momentum-transfer energy used by conventional PKA and displacement models.
+OpenMC's free-gas and resonance-scattering treatments still affect
+:math:`\mathbf{q}` through the sampled outgoing neutron.
+
+The distinction between frames matters when the target has initial laboratory
+momentum :math:`\mathbf{p}_T`. Exact two-body kinematics then gives
+
+.. math::
+
+    \mathbf{p}_{T,\text{out}} = \mathbf{p}_T+\mathbf{q},
+
+so the target's final laboratory kinetic energy is
+
+.. math::
+
+    K_T^\text{out} =
+    \frac{|\mathbf{p}_T+\mathbf{q}|^2}{2M},
+
+whereas its laboratory kinetic-energy change is
+
+.. math::
+
+    \Delta K_T =
+    K_T^\text{out}-K_T^\text{in}
+    = \frac{|\mathbf{q}|^2}{2M}
+      + \frac{\mathbf{p}_T\mathbin{\cdot}\mathbf{q}}{M}
+    = E_{n,\text{in}}-E_{n,\text{out}}.
+
+Neither laboratory quantity generally equals :math:`T_q`. In particular,
+:math:`\Delta K_T` can be negative for neutron up-scattering and cannot serve
+as the nonnegative kinetic energy of an ordinary production record. Including
+:math:`\mathbf{p}_T` in the produced momentum would instead report
+:math:`K_T^\text{out}`, including the target's pre-collision thermal energy.
+
+The production filter therefore reports :math:`T_q`, with the corresponding
+direction :math:`\widehat{\mathbf{q}}`. For a stationary target all three
+energy definitions coincide and the endpoint is
+:math:`4 A E/(A+1)^2`. At low neutron energy, the sampled target velocity can
+broaden the :math:`T_q` distribution through the outgoing neutron state. At
+the fast energies used in the principal recoil comparisons, the thermal terms
+are negligible. NJOY GROUPR recoil matrices do not carry an eventwise sampled
+target momentum, so comparisons with them use the same
+stationary-target-equivalent convention; they do not validate the target's
+final laboratory velocity.
 
 Discrete inelastic scattering
 -----------------------------

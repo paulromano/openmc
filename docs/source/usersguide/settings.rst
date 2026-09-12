@@ -916,6 +916,12 @@ provide runtime recoil-coverage diagnostics. Validation calculations should
 compare reaction-event tally weight with heavy-residual production tally weight
 for every reaction included in an accuracy result.
 
+For free-gas elastic scattering, the recorded energy is the kinetic energy
+associated with the neutron momentum transfer in the incident target's rest
+frame. It is not the target's final laboratory kinetic energy or its signed
+laboratory kinetic-energy change. See :ref:`methods_recoil` for the precise
+definition and its relationship to thermal target motion.
+
 Two options control the model:
 
 .. code-block:: python
