@@ -462,34 +462,7 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
 
 double nuclear_mass_ev(AtomicNumbers za)
 {
-  // The five light ions come from their CODATA values. Reading them out of
-  // ATOMIC_MASS would work for four of them and quietly fail for the fifth:
-  // that table holds bare nuclear masses for the proton, deuteron, helion and
-  // alpha, which are CODATA particle constants, but the *atomic* H-3 mass at
-  // PDG 1000010030, which is 0.55 mu heavier than the triton.
-  if (za.Z == 0 && za.A == 1)
-    return MASS_NEUTRON * AMU_EV;
-  if (za.Z == 1 && za.A == 1)
-    return MASS_PROTON * AMU_EV;
-  if (za.Z == 1 && za.A == 2)
-    return MASS_DEUTRON * AMU_EV;
-  if (za.Z == 1 && za.A == 3)
-    return MASS_TRITON * AMU_EV;
-  if (za.Z == 2 && za.A == 3)
-    return MASS_HELION * AMU_EV;
-  if (za.Z == 2 && za.A == 4)
-    return MASS_ALPHA * AMU_EV;
-
-  if (za.Z < 0 || za.A <= 0 || za.Z > za.A)
-    return 0.0;
-  int32_t pdg = 1000000000 + za.Z * 10000 + za.A * 10;
-  auto it = ATOMIC_MASS.find(pdg);
-  if (it == ATOMIC_MASS.end())
-    return 0.0;
-  // Atomic minus Z electrons. Electron *binding* energy is neglected; it does
-  // not cancel exactly in a charged-particle Q value, but the residue is a few
-  // keV on a mid-mass target against a budget of MeV.
-  return (it->second - za.Z * MASS_ELECTRON) * AMU_EV;
+  return nuclear_mass(za.Z, za.A) * AMU_EV;
 }
 
 double mass_excess_ev(AtomicNumbers za)

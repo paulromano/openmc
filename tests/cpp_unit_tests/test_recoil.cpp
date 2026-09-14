@@ -273,8 +273,7 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
 
   SECTION("the triton is the nucleus, not the H-3 atom")
   {
-    // ATOMIC_MASS holds the atomic H-3 mass at this PDG number, so a plain
-    // table lookup would be 0.55 mu -- 511 keV -- too heavy.
+    // The shared mass API distinguishes atomic H-3 from the bare triton.
     double triton = recoil::nuclear_mass_ev({1, 3});
     REQUIRE(triton / AMU_EV == Approx(3.0155007).epsilon(1e-7));
     REQUIRE(triton / AMU_EV < 3.0160);

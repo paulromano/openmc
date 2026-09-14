@@ -1,4 +1,5 @@
 set(TEST_NAMES
+  test_atomic_mass
   test_distribution
   test_file_utils
   test_tally
@@ -9,6 +10,7 @@ set(TEST_NAMES
   test_photon
   test_ray
   test_region
+  test_surface
   test_tensor
   test_geometry
   test_recoil
@@ -17,10 +19,15 @@ set(TEST_NAMES
 
 foreach(test ${TEST_NAMES})
   add_executable(${test} ${test}.cpp)
-  target_link_libraries(${test} Catch2::Catch2WithMain libopenmc)
+  target_link_libraries(${test} Catch2::Catch2WithMain libopenmc_test)
   # Some tests replay a checked-in fixture. The binary runs from the build
   # tree, so it is told where the source-tree data lives rather than guessing.
   target_compile_definitions(${test} PRIVATE
     OPENMC_UNIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
   add_test(NAME ${test} COMMAND ${test} WORKING_DIRECTORY ${UNIT_TEST_BIN_OUTPUT_DIR})
+
+  # Catch2 uses exit code 4 when all test cases in a binary are skipped. Treat
+  # that result as a skipped CTest test rather than a failure when an optional
+  # dependency is unavailable.
+  set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 4)
 endforeach()
