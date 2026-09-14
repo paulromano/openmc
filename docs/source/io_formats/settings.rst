@@ -677,12 +677,11 @@ found in the :ref:`random ray user guide <random_ray>`.
 
 The ``<recoil_production>`` element has no attributes and has an accepted value
 of "true" or "false". If set to "true", supported continuous-energy neutron
-reactions add records of the recoiling residual nucleus and, optionally, the
-light ions emitted by the reaction to the secondary bank. These records are
-scored by :ref:`particle production filters <filter>`; they are not transported.
-Bound :math:`S(\alpha,\beta)` and NCrystal scattering, fission fragments, and
-multi-group transport are outside the current scope. No runtime coverage
-diagnostic is produced.
+reactions will produce the recoiling residual nucleus and, optionally, the light
+ions emitted by the reaction as secondary particles. Recoil and light-ion
+production can scored by :ref:`particle production filters <filter>`; they are
+not transported. Bound :math:`S(\alpha,\beta)` and NCrystal scattering, fission
+fragments, and multigroup transport are currently not handled.
 
   *Default*: false
 
