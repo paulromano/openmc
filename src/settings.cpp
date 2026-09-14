@@ -1346,6 +1346,12 @@ void read_settings_xml(pugi::xml_node root)
     settings::use_decay_photons =
       get_node_value_bool(root, "use_decay_photons");
   }
+  if (settings::use_decay_photons && settings::recoil_production) {
+    fatal_error(
+      "The 'use_decay_photons' and 'recoil_production' settings cannot both "
+      "be enabled because decay photons do not carry the prompt momentum "
+      "that determines reaction recoil.");
+  }
 
   // If weight windows are on, also enable shared secondary bank (unless
   // explicitly disabled by user).

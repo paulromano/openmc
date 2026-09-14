@@ -1013,22 +1013,21 @@ struct PhotonKick {
 //!
 //! \f[ \sum_i E_i + E_R = E_\text{in} + Q, \f]
 //!
-//! an equality rather than a bound. The evaluated files supply only an average
-//! photon spectrum and an average multiplicity, never the joint distribution of
-//! a cascade, so photons drawn independently from that spectrum do not obey it:
-//! their sum spans more than an order of magnitude about the budget and exceeds
-//! it in roughly 45% of events at 14 MeV, which inflates the width of the
-//! recoil spectrum by half.
+//! an equality rather than a bound. OpenMC's processed reaction products supply
+//! inclusive photon spectra and average multiplicities, not an eventwise joint
+//! cascade. Photons drawn independently from those marginals do not obey the
+//! equality: their sum spans more than an order of magnitude about the budget
+//! and exceeds it in roughly 45% of events at 14 MeV, which inflates the width
+//! of the recoil spectrum by half.
 //!
 //! The cascade is therefore drawn first and then scaled by the single factor
 //! that satisfies the equality. Scaling rather than rejecting keeps the
 //! evaluated multiplicity exactly -- rejecting whole cascades would bias it
 //! low, because one with more photons is likelier to overshoot -- and keeps the
 //! mean photon energy within a couple of percent, where rejection would lose
-//! nearly half of it. What it gives up is the spread of individual photon
-//! energies, which is the right thing to give up here: these photons exist only
-//! to build the recoil momentum, are never transported or tallied, and the
-//! cascade that is actually transported is sampled separately in
+//! nearly half of it. It narrows the spread of individual photon energies, an
+//! explicit modeling choice for recoil-only samples. These photons are never
+//! transported or tallied; the transported cascade is sampled separately in
 //! sample_secondary_photons().
 //!
 //! \param[in,out] kick    Cascade momentum and energy, scaled in place
@@ -1306,9 +1305,12 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   double budget = E_in + q;
 
-  // Radiative capture: the recoil is kicked by the emitted photons. Their
-  // momenta are resampled from this reaction's own photon distribution so that
-  // the recoil belongs to the reaction the ReactionFilter reports.
+  // Radiative capture: independently sample photon multiplicity, energies, and
+  // directions from this reaction's inclusive photon products, then constrain
+  // the constructed cascade to the event energy budget. The resulting recoil
+  // is kinematically exact for a fully specified single-photon final state but
+  // model-dependent for a cascade because the processed data do not provide
+  // inter-photon correlations.
   if (rx->mt_ == N_GAMMA) {
     PhotonKick kick = sample_photon_kick(*rx, E_in, u_in, p.current_seed());
     constrain_photon_kick(kick, state.momentum, state.mass, budget);

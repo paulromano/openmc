@@ -773,6 +773,12 @@ class Settings:
     @recoil_production.setter
     def recoil_production(self, recoil_production: bool):
         cv.check_type('recoil production', recoil_production, bool)
+        if recoil_production and self._use_decay_photons:
+            raise ValueError(
+                "'recoil_production' cannot be enabled with "
+                "'use_decay_photons' because decay photons do not carry the "
+                "prompt momentum that determines reaction recoil."
+            )
         self._recoil_production = recoil_production
 
     @property
@@ -1535,6 +1541,12 @@ class Settings:
     @use_decay_photons.setter
     def use_decay_photons(self, value):
         cv.check_type('use decay photons', value, bool)
+        if value and self._recoil_production:
+            raise ValueError(
+                "'use_decay_photons' cannot be enabled with "
+                "'recoil_production' because decay photons do not carry the "
+                "prompt momentum that determines reaction recoil."
+            )
         self._use_decay_photons = value
 
     @property

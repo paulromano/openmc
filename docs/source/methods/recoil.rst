@@ -288,12 +288,24 @@ against the emitted neutrons.
 Radiative capture
 -----------------
 
-The recoil recoils against the emitted photons,
+The residual momentum balances the incident neutron and emitted photons,
 :math:`\mathbf{p}_R = \mathbf{p}_{n,\text{in}} - \sum_k \mathbf{p}_{\gamma,k}`.
-Photon multiplicity and energies are resampled from the capture reaction's own
-photon distribution, and the yield is converted to a stochastic integer
-multiplicity so that the recoil belongs to the reaction a
-:class:`ReactionFilter` reports.
+OpenMC's processed reaction data provide inclusive photon distributions and
+average yields, not the eventwise joint distribution of a cascade. OpenMC
+therefore converts each yield to a stochastic integer multiplicity, samples
+photon energies and directions independently from the capture reaction's own
+marginal distributions, and scales the sampled cascade by a common factor that
+enforces
+
+.. math::
+
+    \sum_k E_{\gamma,k} + E_R = E_{n,\text{in}} + Q.
+
+This construction preserves the sampled multiplicity and enforces energy and
+momentum conservation. Its kinematics are exact for a fully specified
+single-photon final state. For a multi-photon cascade, however, its recoil
+spectrum is model-dependent because the inter-photon energy and angular
+correlations are unavailable.
 
 In windowed-multipole and unresolved-resonance probability-table ranges, the
 cross-section representation distinguishes sampled radiative capture from
@@ -301,16 +313,18 @@ fission but does not provide a finer decomposition among absorption MTs.
 Recoil production follows that same aggregate representation and assigns the
 nonfission component to radiative capture (MT=102).
 
-This is an event-by-event model, so it produces a spectrum rather than the
-average kick
+Unlike an average-kick approximation, this event-by-event construction
+produces a recoil spectrum. For comparison, NJOY's HEATR module
+[MacFarlane2016]_ uses the average
 
 .. math::
 
     \overline{E_R} = \frac{E}{A+1}
       + \frac{\overline{\sum_k E_{\gamma,k}^2}}{2 (A+1) m_n c^2}
 
-that NJOY's HEATR module [MacFarlane2016]_ uses when explicit recoil data are
-absent. The two agree in the mean but not in shape.
+when explicit recoil data are absent. Agreement in the mean does not determine
+the recoil-spectrum shape, which depends on photon second moments and angular
+cross terms.
 
 .. _methods_recoil_light_ions:
 
