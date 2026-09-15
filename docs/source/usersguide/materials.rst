@@ -75,13 +75,13 @@ argument `enrichment_type`. For example the following would enrich Li6 to 15wo%:
    mat.add_element('Li', 1.0, enrichment=15.0, enrichment_target='Li6',
                    enrichment_type='wo')
 
-Often, cross section libraries don't actually have all naturally-occurring
-isotopes for a given element. For example, in ENDF/B-VII.1, cross section
-evaluations are given for O16 and O17 but not for O18. If OpenMC is aware of
-what cross sections you will be using (through the
-:envvar:`OPENMC_CROSS_SECTIONS` environment variable), it will attempt to only
-put isotopes in your model for which you have cross section data. In the case of
-oxygen in ENDF/B-VII.1, the abundance of O18 would end up being lumped with O16.
+Some older cross section libraries do not have all naturally-occurring isotopes
+for a given element. For example, in ENDF/B-VII.1, cross section evaluations are
+given for O16 and O17 but not for O18. If OpenMC is aware of what cross sections
+you will be using through ``openmc.config['cross_sections']``, it will attempt
+to only put isotopes in your model for which you have cross section data. In the
+case of oxygen in ENDF/B-VII.1, the abundance of O18 would end up being lumped
+with O16.
 
 --------------------------
 Bundled Material Libraries
@@ -107,8 +107,8 @@ and composition reported in the compendium.
 Natural compositions in the PNNL library are stored as elemental atom fractions
 and expanded using :meth:`Material.add_element`. As described above, OpenMC will
 account for the nuclides available in the cross section library indicated by
-:envvar:`OPENMC_CROSS_SECTIONS`. Materials that are explicitly isotopic in the
-compendium, such as enriched uranium or He-3 proportional gas, retain those
+``openmc.config['cross_sections']``. Materials that are explicitly isotopic in
+the compendium, such as enriched uranium or He-3 proportional gas, retain those
 specified nuclides. OpenMC cannot substitute for a required isotope if it is
 absent from the selected nuclear data library.
 
