@@ -82,6 +82,26 @@ def test_independent_materials():
     assert second.get_nuclides() == ['He3']
 
 
+def test_constructor_kwargs():
+    """Keyword arguments are forwarded to the Material constructor."""
+    material = openmc.Material.from_library(
+        'He-3 Proportional Gas',
+        material_id=987654,
+        name='Helium-3 detector gas',
+        temperature=293.15,
+        volume=10.0,
+        depletable=True,
+    )
+
+    assert material.id == 987654
+    assert material.name == 'Helium-3 detector gas'
+    assert material.temperature == 293.15
+    assert material.volume == 10.0
+    assert material.depletable
+    assert material.density == pytest.approx(0.0001252645124733361)
+    assert material.nuclides == [('He3', 1.0, 'ao')]
+
+
 def test_unknown_library_and_material():
     with pytest.raises(ValueError, match="Unknown material library 'unknown'"):
         openmc.Material.from_library('Sodium Oxide', library='unknown')

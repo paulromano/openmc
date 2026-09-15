@@ -94,6 +94,12 @@ with :meth:`Material.from_library`, for example::
 
    sodium_oxide = openmc.Material.from_library('Sodium Oxide')
 
+Keyword arguments accepted by :class:`Material` can also be specified, such as
+a material ID or temperature::
+
+   salt_water = openmc.Material.from_library(
+       'Salt Water', material_id=10, temperature=293.15)
+
 Material names are case sensitive. The default and currently available library
 is ``'pnnl_v2'``. Each call returns a new, independent material with the density
 and composition reported in the compendium.

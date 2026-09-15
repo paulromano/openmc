@@ -738,7 +738,9 @@ class Material(IDManagerMixin):
         return material
 
     @classmethod
-    def from_library(cls, name: str, library: str = 'pnnl_v2') -> Material:
+    def from_library(
+        cls, material_name: str, library: str = 'pnnl_v2', **kwargs
+    ) -> Material:
         """Create a material from a library bundled with OpenMC.
 
         Natural elements in a library are expanded according to the nuclides
@@ -750,12 +752,16 @@ class Material(IDManagerMixin):
 
         Parameters
         ----------
-        name : str
+        material_name : str
             Name of the material in the library. Names are case sensitive.
         library : str, optional
             Name of the material library. Defaults to ``'pnnl_v2'``, the
             `PNNL Compendium of Material Composition Data for Radiation
             Transport Modeling <https://doi.org/10.2172/1782721>`_.
+        **kwargs
+            Keyword arguments passed to :class:`openmc.Material`. The material
+            name, composition, density, density units, and percent type from the
+            library are used as defaults.
 
         Returns
         -------
@@ -765,32 +771,30 @@ class Material(IDManagerMixin):
         Raises
         ------
         ValueError
-            If `library` or `name` is not found.
+            If `library` or `material_name` is not found.
 
         """
-        cv.check_type('material name', name, str)
+        cv.check_type('material name', material_name, str)
         cv.check_type('material library', library, str)
 
         library_data = _load_material_library(library)
         try:
-            material_data = library_data['materials'][name]
+            material_data = library_data['materials'][material_name]
         except KeyError:
             raise ValueError(
-                f"Material '{name}' not found in library '{library}'"
+                f"Material '{material_name}' not found in library '{library}'"
             ) from None
 
-        material = cls(name=name)
         components = {
             **material_data.get('elements', {}),
             **material_data.get('nuclides', {}),
         }
-        material.add_components(
-            components, percent_type=library_data['percent_type']
-        )
-        material.set_density(
-            library_data['density_units'], material_data['density']
-        )
-        return material
+        kwargs.setdefault('name', material_name)
+        kwargs.setdefault('components', components)
+        kwargs.setdefault('percent_type', library_data['percent_type'])
+        kwargs.setdefault('density', material_data['density'])
+        kwargs.setdefault('density_units', library_data['density_units'])
+        return cls(**kwargs)
 
     @classmethod
     def from_ncrystal(cls, cfg, **kwargs) -> Material:
