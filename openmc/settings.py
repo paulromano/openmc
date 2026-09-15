@@ -30,14 +30,6 @@ class RunMode(Enum):
 
 _RES_SCAT_METHODS = {'dbrc', 'rvs'}
 
-_RECOIL_OPTION_VALUES = {
-    'light_ion_model': {'statistical', 'none'},
-}
-
-_RECOIL_BOOL_OPTIONS = {'emitted_ions'}
-
-_RECOIL_OPTIONS = set(_RECOIL_OPTION_VALUES) | _RECOIL_BOOL_OPTIONS
-
 
 class Settings:
     """Settings used for an OpenMC simulation.
@@ -841,23 +833,23 @@ class Settings:
     @recoil.setter
     def recoil(self, recoil: dict):
         cv.check_type('recoil settings', recoil, Mapping)
-        unknown = set(recoil) - _RECOIL_OPTIONS
+        unknown = set(recoil) - {'light_ion_model', 'emitted_ions'}
         if unknown:
             raise ValueError(f'Unrecognized recoil setting(s): {sorted(unknown)}')
 
         validated = {}
-        for key, allowed in _RECOIL_OPTION_VALUES.items():
-            if key in recoil:
-                value = recoil[key]
-                cv.check_type(f'recoil setting "{key}"', value, str)
-                cv.check_value(f'recoil setting "{key}"', value, allowed)
-                validated[key] = value
+        if 'light_ion_model' in recoil:
+            value = recoil['light_ion_model']
+            cv.check_type('recoil setting "light_ion_model"', value, str)
+            cv.check_value(
+                'recoil setting "light_ion_model"', value,
+                ('statistical', 'none'))
+            validated['light_ion_model'] = value
 
-        for key in _RECOIL_BOOL_OPTIONS:
-            if key in recoil:
-                value = recoil[key]
-                cv.check_type(f'recoil setting "{key}"', value, bool)
-                validated[key] = value
+        if 'emitted_ions' in recoil:
+            value = recoil['emitted_ions']
+            cv.check_type('recoil setting "emitted_ions"', value, bool)
+            validated['emitted_ions'] = value
 
         self._recoil = validated
 
@@ -1849,9 +1841,7 @@ class Settings:
     def _create_recoil_subelement(self, root):
         if self._recoil:
             element = ET.SubElement(root, "recoil")
-            keys = itertools.chain(
-                _RECOIL_OPTION_VALUES, sorted(_RECOIL_BOOL_OPTIONS))
-            for key in keys:
+            for key in ('light_ion_model', 'emitted_ions'):
                 if key in self._recoil:
                     subelement = ET.SubElement(element, key)
                     value = self._recoil[key]
@@ -2409,14 +2399,12 @@ class Settings:
         elem = root.find('recoil')
         if elem is not None:
             recoil = {}
-            for key in _RECOIL_OPTION_VALUES:
-                value = get_text(elem, key)
-                if value is not None:
-                    recoil[key] = value
-            for key in _RECOIL_BOOL_OPTIONS:
-                value = get_text(elem, key)
-                if value is not None:
-                    recoil[key] = value in ('true', '1')
+            value = get_text(elem, 'light_ion_model')
+            if value is not None:
+                recoil['light_ion_model'] = value
+            value = get_text(elem, 'emitted_ions')
+            if value is not None:
+                recoil['emitted_ions'] = value in ('true', '1')
             self.recoil = recoil
 
     def _cutoff_from_xml_element(self, root):

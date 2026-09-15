@@ -28,6 +28,6 @@ foreach(test ${TEST_NAMES})
   set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 4)
 endforeach()
 
-# test_recoil replays a checked-in fixture from the source tree.
-target_compile_definitions(test_recoil PRIVATE
-  OPENMC_UNIT_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data")
+# Stage the checked-in fixture in test_recoil's CTest working directory.
+configure_file(data/kinematics_fixture.txt
+  "${CMAKE_CURRENT_BINARY_DIR}/kinematics_fixture.txt" COPYONLY)

@@ -76,8 +76,7 @@ struct Fixture {
 Fixture read_fixture()
 {
   Fixture out;
-  std::ifstream in(
-    std::string(OPENMC_UNIT_TEST_DATA_DIR) + "/kinematics_fixture.txt");
+  std::ifstream in("kinematics_fixture.txt");
   if (!in)
     return out;
   out.found = true;
