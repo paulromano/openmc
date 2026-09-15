@@ -49,7 +49,7 @@ double softplus(double x)
   return std::max(x, 0.0) + std::log1p(std::exp(-std::abs(x)));
 }
 
-//! Maximum attempts to resample a modelled product inside the energy budget
+//! Maximum attempts to resample a modeled product inside the energy budget
 //!
 //! Evaluated inclusive neutron spectra can put appreciable probability in the
 //! part of the marginal that is infeasible after another neutron has already
@@ -288,7 +288,7 @@ int all_products(const EmittedParticles& e, AtomicNumbers* out, int capacity)
 //
 // with the slope a from Kalbach's systematics and the pre-equilibrium fraction
 // r taken as the fraction of the available energy carried by the ion. That
-// reproduces the qualitative behaviour of evaluated r values, which rise from
+// reproduces the qualitative behavior of evaluated r values, which rise from
 // nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
 //==============================================================================
 
@@ -337,7 +337,7 @@ double separation_energy(
 //! Tracks the laboratory momentum, mass, and remaining internal (excitation
 //! plus kinetic) energy of the system that has not yet decayed. Emitting a
 //! particle removes its momentum and its share of the internal energy, so the
-//! sum of the modelled kinetic energies can never exceed the budget.
+//! sum of the modeled kinetic energies can never exceed the budget.
 struct EmissionState {
   Direction momentum {};    //!< lab momentum of the undecayed system [eV]
   double mass {0.0};        //!< mass of the undecayed system [eV]
@@ -346,7 +346,7 @@ struct EmissionState {
   double emitted_kin {0.0}; //!< lab kinetic energy already given to products
 };
 
-//! Record of a modelled light ion, kept until we know whether to bank it
+//! Modeled light ion kept until the event can be completed and banked
 struct SampledIon {
   ParticleType type;
   Direction direction;
@@ -801,7 +801,7 @@ double remaining_system_mass(ParticleType recoil, int n_neutrons,
   return mass;
 }
 
-//! Create the recoil production record
+//! Create a recoil secondary particle
 bool bank_recoil(Particle& p, double weight, Direction p_recoil, double mass,
   ParticleType type)
 {
@@ -825,7 +825,7 @@ bool bank_recoil(Particle& p, double weight, Direction p_recoil, double mass,
 //! Emit the light charged particles that the library does not describe
 //!
 //! Each ion is emitted sequentially in the rest frame of the system that has
-//! not yet decayed. Its centre-of-mass energy comes from
+//! not yet decayed. Its center-of-mass energy comes from
 //! sample_light_ion_energy() with the endpoint of the corresponding pure
 //! channel, then is rejected and resampled until it also fits inside this
 //! event's remaining budget. Its direction follows Kalbach-Mann systematics.
@@ -845,7 +845,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
   uint64_t* seed = p.current_seed();
 
   // Emission order affects which ion sees the larger budget; randomize it so
-  // that no ion is systematically favoured.
+  // that no ion is systematically favored.
   AtomicNumbers order[ChargedProducts::MAX];
   for (int i = 0; i < ions.n; ++i)
     order[i] = ions.za[i];
@@ -890,7 +890,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     if (is_discrete_charged_level(rx.mt_)) {
       // Kalbach's systematics describe continuum pre-equilibrium emission, not
       // a named residual level. With no evaluated charged-particle angle for
-      // these two-body channels, sample the centre-of-mass direction
+      // these two-body channels, sample the center-of-mass direction
       // isotropically.
       mu = 2.0 * prn(seed) - 1.0;
     } else {
@@ -1042,8 +1042,8 @@ PhotonKick sample_photon_kick(
 //!
 //! Either every product of the exit channel is accounted for or nothing is
 //! banked. The recoil's identity asserts that a particular set of particles
-//! left; banking it while silently omitting one of them makes the record's
-//! mass, charge and momentum disagree with its own label.
+//! left; banking it while silently omitting one of them makes the secondary
+//! particle's mass, charge, and momentum disagree with its own label.
 void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double weight, double E_in, Direction u_in, const ChargedProducts& ions,
   EmissionState& state, ParticleType recoil, double budget,
@@ -1095,8 +1095,8 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
   // Bank the neutron momentum transfer q and the corresponding recoil kinetic
   // energy in the incident target's rest frame, |q|^2/(2M). The free-gas
   // target velocity shapes q through the sampled outgoing neutron, but this
-  // record is neither the target's final laboratory kinetic energy nor its
-  // signed laboratory kinetic-energy change.
+  // secondary particle is neither the target's final laboratory kinetic energy
+  // nor its signed laboratory kinetic-energy change.
   Direction p_recoil =
     neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
   bank_recoil(
@@ -1116,8 +1116,8 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
     // the identity of the recoil. MT=5 (n,misc) is the case that matters: it
     // is a catch-all with inclusive product yields and no single recoil, and
     // some evaluations put a substantial part of the charged-particle
-    // production there. Producing nothing is better than producing a record
-    // labeled with the wrong nuclide.
+    // production there. Producing nothing is better than producing a secondary
+    // particle labeled with the wrong nuclide.
     return;
   }
 
@@ -1125,7 +1125,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double q = event_q(nuc, rx, emitted, budget_ok);
   if (!budget_ok) {
     // The evaluated level Q is above the ground-state mass budget by more than
-    // any mass table disagrees, so the event has no trustworthy energy
+    // any mass-table disagreement, so the event has no trustworthy energy
     // release. Producing nothing is better than banking a recoil built on a
     // budget we do not believe.
     return;
@@ -1180,7 +1180,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   if (!evaluated_neutron_only && !update_internal_energy(state, budget)) {
     // The evaluated first-neutron marginal left no kinematically possible
     // remainder. It is already committed to transport and must not be
-    // resampled merely to manufacture a recoil record.
+    // resampled merely to manufacture a recoil secondary particle.
     return;
   }
 

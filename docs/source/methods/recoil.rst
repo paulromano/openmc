@@ -6,461 +6,825 @@ Recoil Production
 
 .. currentmodule:: openmc
 
-When :attr:`Settings.recoil_production` is enabled, supported continuous-energy
-neutron reactions explicitly produce the *recoil nucleus* left by the reaction
-and, optionally, any emitted light ions as secondary particles. Scoring those
-entries with a :class:`ParticleProductionFilter` gives the primary knock-on atom
-(PKA) spectrum, which can be used as a starting point for displacement-damage
-estimates and for hydrogen and helium production spectra. Note that recoils and
-light ions are not transported. OpenMC has no stopping-power model for heavy
-ions, so the secondary particles are removed from the secondary bank as soon as
-tallies have been scored. Bound thermal scattering through
-:math:`S(\alpha,\beta)` data or NCrystal does not identify a unique recoiling
-nucleus and is not represented by this model. Fission fragments are also
+When :attr:`Settings.recoil_production` is enabled, supported
+continuous-energy neutron reactions create the residual nucleus left by the
+reaction as a secondary particle. OpenMC can also create emitted protons,
+deuterons, tritons, helium-3 nuclei, and alpha particles. A
+:class:`ParticleProductionFilter` can score the energy and direction of
+these secondary particles to obtain primary knock-on atom (PKA) and gas-
+production spectra.
+
+Recoil production has two complementary parts:
+
+1. OpenMC uses exact two-body kinematics when the processed nuclear data
+   describe the emitted neutron or identify a discrete two-body final state.
+2. When the processed data omit a required product distribution, OpenMC
+   reconstructs a physically admissible event. In particular, a fitted
+   **surrogate model** supplies the energy and direction of emitted light
+   charged particles. Momentum conservation then determines the heavy
+   residual.
+
+The surrogate is necessary because the ACE neutron format used by OpenMC
+retains neutron and photon distributions but not the evaluated charged-particle
+distributions. It is intended to recover useful PKA and light-ion spectra
+without adding all ENDF File 6 charged-particle data to OpenMC's HDF5 format.
+Its functional form is motivated by statistical nuclear-reaction theory, while
+its parameters are fitted to charged-particle distributions read directly from
+ENDF evaluations. The model is described in
+:ref:`methods_recoil_light_ions`.
+
+These secondary particles are scored but not transported. OpenMC has no
+stopping-power model for heavy ions, so it removes them from the secondary bank
+after scoring. Bound thermal scattering represented by
+:math:`S(\alpha,\beta)` data or NCrystal does not identify a unique free
+recoiling nucleus and is outside the present model. Fission fragments are also
 excluded.
 
 --------------------
 Kinematic Foundation
 --------------------
 
-Every reaction uses the same nonrelativistic momentum balance. Writing
-:math:`\mathbf{p}_{n,\text{in}}` for the incident neutron momentum and
-:math:`\mathbf{p}_i` for the momentum of each emitted particle,
+Conservation of momentum
+------------------------
+
+Consider a neutron incident on a stationary target nucleus. Target thermal
+motion, which requires a different interpretation, is discussed separately in
+:ref:`methods_recoil_elastic`. Let
+:math:`\mathbf{p}_{n,\mathrm{in}}` be the incident neutron momentum,
+:math:`\mathbf{p}_i` the momentum of emitted particle :math:`i`,
+:math:`\mathbf{p}_R` the momentum of the residual nucleus, and
+:math:`M_R` the ground-state mass of the residual. Momentum conservation
+gives
 
 .. math::
     :label: recoil-momentum
 
-    \mathbf{p}_R = \mathbf{p}_{n,\text{in}} - \sum_i \mathbf{p}_i , \qquad
-    E_R = \frac{|\mathbf{p}_R|^2}{2 M_R} .
+    \mathbf{p}_R =
+    \mathbf{p}_{n,\mathrm{in}} - \sum_i \mathbf{p}_i .
 
-Masses and energies are in eV and momenta in eV with :math:`c = 1`, so
-:math:`p = \sqrt{2mE}` for a massive particle and :math:`p = E` for a photon.
+For the neutron energies considered here, the massive products are
+nonrelativistic. In Newtonian mechanics, momentum is :math:`p=mv` and
+kinetic energy is :math:`E=mv^2/2`; eliminating the speed :math:`v` gives
+:math:`E=p^2/(2m)`. Applying that relation to the residual gives
 
-The identity of the recoil follows from the MT number,
+.. math::
+    :label: recoil-energy
+
+    E_R = \frac{|\mathbf{p}_R|^2}{2M_R}.
+
+These equations do not require a particular system of units. Energies, masses,
+momenta, and the speed of light :math:`c` must simply be expressed
+consistently. OpenMC uses the relativistic relation
+:math:`p_\gamma=E_\gamma/c` for photons.
+
+Conservation of charge and nucleon number determines the residual nuclide. Let
+:math:`Z_T` and :math:`A_T` denote the atomic number and mass
+number of the target, and let :math:`Z_i` and :math:`A_i` denote
+those quantities for emitted particle :math:`i`. The incident neutron
+adds one nucleon and no charge, so
+
+.. math::
+    :label: recoil-identity
+
+    Z_R = Z_T - \sum_i Z_i ,
 
 .. math::
 
-    Z_R = Z_T - \sum_i Z_i , \qquad A_R = A_T + 1 - \sum_i A_i ,
+    A_R = A_T + 1 - \sum_i A_i .
 
-and the recoil is always represented in its ground state. Recoil excitation
-energy is implicit: it is whatever remains of
+Here :math:`Z_R` and :math:`A_R` identify the residual nucleus.
+OpenMC represents that nucleus in its ground state.
 
-.. math::
-    :label: recoil-budget
+Energy release and excitation
+-----------------------------
 
-    E_x = E_\text{in} + Q - \sum_i E_i - E_R \ge 0
-
-after all kinetic energies are accounted for.
-
-Products that OpenMC samples from evaluated data are used exactly as sampled.
-Products for which the library carries no distribution are modelled, and the
-model is constrained by :eq:`recoil-budget` so that no event can violate energy
-conservation.
-
-Energy budget
--------------
-
-The Q value in :eq:`recoil-budget` is the **rest-mass energy release** of the
-exit channel,
+The ground-state Q value is the rest-mass energy released by the reaction. If
+:math:`M_T` is the target nuclear mass, :math:`m_n` is the neutron
+mass, :math:`M_R` is the ground-state mass of the final residual, and
+:math:`m_j` are the masses of all other final particles, mass-energy
+balance gives
 
 .. math::
     :label: recoil-qm
 
-    Q_M = \left[M_T + m_n - M_D - \sum_j m_j\right] c^2 ,
+    Q_M =
+    \left(M_T + m_n - M_R - \sum_j m_j\right)c^2 .
 
-computed from mass excesses so that the mass numbers cancel identically rather
-than numerically. It is *not*, in general, the Q value stored in the nuclear
-data library. ENDF MF=3 carries two: ``QM``, the mass-difference Q, and ``QI``,
-the Q of the lowest state the MT represents. When the MT names no unique state,
-an effective value is chosen to place the threshold correctly. ENDF-102 warns
-that such a value cannot be relied on for energy-release calculations, and it is
-``QI`` that both the ACE and the direct-ENDF readers store in
-:attr:`Reaction.q_value`.
+The mass inputs are neutral ground-state atomic masses from AME2020
+[AME2020]_. OpenMC converts each to an approximate nuclear mass by subtracting
+:math:`Z` electron masses; electron binding energy is neglected. It then
+evaluates :eq:`recoil-qm` through the corresponding nuclear mass excesses.
+Using mass excesses avoids subtracting several nearly equal nuclear masses to
+obtain a much smaller Q value.
 
-For a lumped channel the two generally agree. For the continuum member of a
-split representation (MT=649, 699, 749, 799, 849), ``QI`` can lie well below the
-ground-state release, so using it as the event budget can truncate the modelled
-light-ion spectrum inside the evaluated one. OpenMC therefore uses
-:eq:`recoil-qm` for continuum, lumped, and multiparticle channels, and the
-evaluated ``QI`` only for MT numbers that name one residual level (MT = 51-90
-and the discrete charged-particle bands), where it is the level-specific Q and
-is exactly what a two-body channel needs. A level Q above the ground-state
-release implies a negative excitation; an excess within 0.25 MeV is absorbed as
-mass-table disagreement, and a larger one means the evaluation cannot be
-reconciled and the event produces no recoil.
+ENDF File 3 distinguishes the mass-difference value ``QM`` from the
+reaction value ``QI`` [ENDF102]_. A **lumped reaction channel** is an MT
+number that represents the sum over all final states of a reaction type rather
+than one named residual level. For a lumped channel, ``QI`` and ``QM``
+generally agree. For a continuum member of a split representation
+(MT=649, 699, 749, 799, or 849), ``QI`` is an effective threshold value and
+can be several MeV below the ground-state energy release.
 
-Entrance and exit energetics
-----------------------------
+OpenMC therefore uses :math:`Q_M` for continuum, lumped, and
+multiparticle channels. It uses the evaluated ``QI`` for an MT number that
+names one residual level, because that value includes the excitation energy of
+the named level. A level-specific Q value should not exceed
+:math:`Q_M`. Small positive differences can arise because the evaluation
+and OpenMC use different mass tables, so OpenMC caps an excess of at most
+0.25 MeV at :math:`Q_M`. A larger difference is treated as inconsistent,
+and no secondary recoil particle is created.
 
-For a stationary target the energy available in the complete final system's
-rest frame is
+The 0.25 MeV tolerance is not a frequent correction in the calibration data.
+An audit of 418 channels in ENDF/B-VIII.1, JEFF-4.0, JENDL-5, and TENDL-2025
+found a median difference of 0.1 keV, a 90th percentile of 2.2 keV, and a
+maximum of 90 keV between evaluated ``QM`` and the AME2020 mass-derived
+value. None exceeded 0.25 MeV. The tolerance is consequently a guard against
+inconsistent input, not an approximation expected to affect ordinary results.
+
+The additive ground-state mass of the complete final system is
+
+.. math::
+    :label: recoil-final-mass
+
+    M_{\mathrm{final}} = M_R + \sum_i m_i ,
+
+where the sum includes every emitted massive particle. For a stationary target,
+the incident neutron and target have total laboratory momentum
+:math:`\mathbf{p}_{n,\mathrm{in}}`. The kinetic energy associated with
+motion of the final system's center of mass is therefore
+:math:`|\mathbf{p}_{n,\mathrm{in}}|^2/(2M_{\mathrm{final}})`. Subtracting
+that translational energy from the laboratory energy balance gives the energy
+available for relative motion and excitation in the center-of-mass frame:
 
 .. math::
     :label: recoil-u0
 
-    U_0 = E_\text{in} + Q
-        - \frac{|\mathbf{p}_n|^2}{2 M_\text{final}} ,
+    U_0 = E_{\mathrm{in}} + Q
+        - \frac{|\mathbf{p}_{n,\mathrm{in}}|^2}
+               {2M_{\mathrm{final}}}.
 
-where :math:`M_\text{final}` is the additive ground-state nuclear mass of all
-final products. Q and excitation are treated as energy releases; their
-:math:`1/c^2` contributions to inertia are neglected, as is electron binding.
-This makes the masses additive within the nonrelativistic Galilean model and
-lets the kinetic energies actually banked close to numerical precision.
-Emitting ion :math:`b` from a parent with remaining internal energy :math:`U`
-leaves the daughter recoiling against it, so
+Here :math:`E_{\mathrm{in}}` is the incident neutron kinetic energy and
+:math:`Q` is the channel Q value selected as described above.
+
+A fully relativistic treatment would use the invariant masses of the actual
+excited parent and final systems. Relative to the ground-state masses used
+here, those masses contain corrections on the scale of :math:`Q/c^2` and
+:math:`E_x/c^2`, where :math:`E_x` is the excitation energy. OpenMC instead
+uses fixed ground-state masses for inertia and carries :math:`Q` and
+:math:`E_x` only in the energy balance. This is the Newtonian, or Galilean,
+approximation: velocities combine by vector addition between the
+center-of-mass and laboratory frames, and each massive particle has kinetic
+energy :math:`p^2/(2m)`. Expanding the relativistic kinetic-energy relation
+in powers of :math:`p/(mc)` shows that its leading fractional correction is
+approximately :math:`E/(2mc^2)`. For a 14 MeV neutron, that correction is
+below one percent.
+
+After the secondary-particle kinetic energies are selected, the remaining
+excitation energy is
+
+.. math::
+    :label: recoil-budget
+
+    E_x = E_{\mathrm{in}} + Q - \sum_i E_i - E_R .
+
+The purpose of :math:`E_x` is energy bookkeeping. OpenMC does not create
+an excited residual or transport its later decay; it requires
+:math:`E_x \geq 0` to ensure that the sampled final state does not spend
+more energy than the reaction provides. Exact two-body channels have
+:math:`E_x=0`, apart from numerical roundoff.
+
+Two-body emission endpoint
+--------------------------
+
+Suppose a light particle :math:`b` of mass :math:`m_b` is emitted
+from a system with available center-of-mass energy :math:`U`. Let
+:math:`M_D` be the combined mass of the daughter and any products not yet
+emitted. In the two-body center-of-mass frame, the two sides have equal and
+opposite momentum :math:`p`. Their kinetic energies are
+
+.. math::
+
+    E_b^{\mathrm{cm}} = \frac{p^2}{2m_b},
+    \qquad
+    E_D^{\mathrm{cm}} = \frac{p^2}{2M_D}
+      = \frac{m_b}{M_D}E_b^{\mathrm{cm}} .
+
+Requiring
+:math:`E_b^{\mathrm{cm}}+E_D^{\mathrm{cm}}\leq U` gives
 
 .. math::
     :label: recoil-endpoint
 
-    E_{b,\max} = U \frac{M_D}{m_b + M_D} , \qquad
-    E_x = U - E_b^\text{cm}\left(1 + \frac{m_b}{M_D}\right) \ge 0 ,
+    E_{b,\max} = U\frac{M_D}{m_b+M_D}.
 
-with :math:`M_D` the daughter plus any product not yet emitted. The offline
-calibration uses these same expressions so that its spectrum definition
-matches the transport implementation.
+For a sampled energy below this endpoint, the energy left as excitation is
 
-Elastic scattering and evaluated one-neutron inelastic laws are exceptions to
-the final-product mass lookup. Their outgoing neutron laws were processed and
-sampled with the evaluation's target atomic-weight ratio, so their recoil uses
-that same ratio and the sampled neutron remains authoritative. Reconstructed
-multi-particle and charged-particle events use the additive nuclear-mass
-inventory described above.
+.. math::
+
+    E_x =
+    U - E_b^{\mathrm{cm}}\left(1+\frac{m_b}{M_D}\right) \geq 0 .
+
+The same expressions are used by the OpenMC transport implementation and by
+the separate Python fitting and validation programs. In this documentation,
+**calibration** refers to those Python analyses of raw ENDF evaluations; no
+fitting occurs while OpenMC is running.
 
 -----------------
 Reaction Families
 -----------------
 
+.. _methods_recoil_elastic:
+
 Elastic scattering
 ------------------
 
-For elastic scattering, OpenMC records the neutron momentum transfer
+For elastic scattering, define the momentum transferred from the neutron to the
+target as
 
 .. math::
     :label: elastic-momentum-transfer
 
     \mathbf{q} =
-    \mathbf{p}_{n,\text{in}}-\mathbf{p}_{n,\text{out}}
+    \mathbf{p}_{n,\mathrm{in}}-\mathbf{p}_{n,\mathrm{out}},
 
-and assigns the recoil direction :math:`\widehat{\mathbf{q}}` and energy
+where :math:`\mathbf{p}_{n,\mathrm{out}}` is the sampled outgoing neutron
+momentum. OpenMC assigns the recoil direction
+:math:`\widehat{\mathbf{q}}` and the stationary-target-equivalent recoil
+energy
 
 .. math::
     :label: elastic-target-rest-energy
 
-    T_q = \frac{|\mathbf{q}|^2}{2M}.
+    E_R = \frac{|\mathbf{q}|^2}{2M_T}.
 
-This is exactly the final target momentum and kinetic energy in the *incident
-target's rest frame*. It is also the stationary-target-equivalent
-momentum-transfer energy used by conventional PKA and displacement models.
-OpenMC's free-gas and resonance-scattering treatments still affect
-:math:`\mathbf{q}` through the sampled outgoing neutron.
+For a target initially at rest, this is exactly its final kinetic energy. It is
+also the momentum-transfer energy conventionally used in PKA and displacement
+models.
 
-The distinction between frames matters when the target has initial laboratory
-momentum :math:`\mathbf{p}_T`. Exact two-body kinematics then gives
-
-.. math::
-
-    \mathbf{p}_{T,\text{out}} = \mathbf{p}_T+\mathbf{q},
-
-so the target's final laboratory kinetic energy is
+OpenMC samples target motion in its free-gas and resonance-scattering models.
+If the target initially has laboratory momentum :math:`\mathbf{p}_T`,
+momentum conservation gives
 
 .. math::
 
-    K_T^\text{out} =
-    \frac{|\mathbf{p}_T+\mathbf{q}|^2}{2M},
+    \mathbf{p}_{T,\mathrm{out}} = \mathbf{p}_T+\mathbf{q}.
 
-whereas its laboratory kinetic-energy change is
+Its final laboratory kinetic energy is consequently
 
 .. math::
 
-    \Delta K_T =
-    K_T^\text{out}-K_T^\text{in}
-    = \frac{|\mathbf{q}|^2}{2M}
-      + \frac{\mathbf{p}_T\mathbin{\cdot}\mathbf{q}}{M}
-    = E_{n,\text{in}}-E_{n,\text{out}}.
+    E_T^\mathrm{out} =
+    \frac{|\mathbf{p}_T+\mathbf{q}|^2}{2M_T},
 
-Neither laboratory quantity generally equals :math:`T_q`. In particular,
-:math:`\Delta K_T` can be negative for neutron up-scattering and cannot serve as
-the nonnegative kinetic energy of an ordinary production record. Including
-:math:`\mathbf{p}_T` in the produced momentum would instead report
-:math:`K_T^\text{out}`, including the target's pre-collision thermal energy.
+and its change in laboratory kinetic energy is
 
-The production filter therefore reports :math:`T_q`, with the corresponding
-direction :math:`\widehat{\mathbf{q}}`. For a stationary target all three energy
-definitions coincide and the endpoint is :math:`4 A E/(A+1)^2`. At low neutron
-energy, the sampled target velocity can broaden the :math:`T_q` distribution
-through the outgoing neutron state. At the fast energies used in the principal
-recoil comparisons, the thermal terms are negligible. NJOY GROUPR recoil
-matrices do not carry an eventwise sampled target momentum, so comparisons with
-them use the same stationary-target-equivalent convention.
+.. math::
 
-Discrete inelastic scattering
------------------------------
+    \Delta E_T =
+    \frac{|\mathbf{q}|^2}{2M_T}
+    + \frac{\mathbf{p}_T\mathbin{\cdot}\mathbf{q}}{M_T}.
 
-For MT=51-90 the outgoing neutron determines the recoil completely, so
-subtracting the sampled neutron momentum is exact for the two-body level
-transition described by the evaluated angular distribution. Momentum carried by
-the de-excitation photons is neglected; for a recoil of mass :math:`M_R` and
-uncorrelated photon directions they add :math:`\overline{\sum_k E_{\gamma,k}^2}
-/ 2 M_R c^2` to the mean recoil energy, which is generally negligible.
+Neither quantity generally equals :eq:`elastic-target-rest-energy`.
+The energy change can even be negative when a neutron gains energy from target
+motion. It therefore cannot be used as the nonnegative energy of a produced
+PKA. OpenMC reports :eq:`elastic-target-rest-energy`; target motion still
+affects it through the sampled outgoing neutron.
 
-Continuum inelastic scattering
-------------------------------
+For a stationary target of neutron-mass ratio
+:math:`A=M_T/m_n`, the greatest transfer occurs in a head-on collision in
+which the neutron reverses direction in the center-of-mass frame. Solving
+momentum and kinetic-energy conservation for that limiting case gives
 
-MT=91 is treated the same way: the recoil recoils against the sampled outgoing
-neutron. This is exact given the evaluated neutron energy-angle distribution.
-Note that it can differ substantially from the explicit recoil array some
-evaluations store in MF=6; see :ref:`methods_recoil_validation`.
+.. math::
+
+    E_{R,\max} = \frac{4A}{(A+1)^2}E_{\mathrm{in}} .
+
+At the fast energies used in the principal recoil comparisons, thermal-motion
+effects are negligible. NJOY GROUPR recoil matrices do not contain an
+event-by-event sampled target momentum, so comparison with them uses the same
+stationary-target-equivalent convention.
+
+One-neutron inelastic scattering
+--------------------------------
+
+For discrete inelastic levels (MT=51-90), the evaluated outgoing-neutron energy
+and angle specify a two-body final state. OpenMC obtains the residual momentum
+by inserting the sampled neutron in :eq:`recoil-momentum`. This is exact
+for the nuclear level and neutron distribution represented by the evaluation.
+Momentum from later de-excitation photons is neglected.
+
+Continuum inelastic scattering (MT=91) uses the same momentum balance against
+the sampled outgoing neutron. The evaluated distribution is inclusive over
+unresolved residual states, so the inferred residual excitation varies from
+event to event. The result can differ from an explicit recoil subsection stored
+by an evaluation; see :ref:`methods_recoil_validation`.
 
 Reactions emitting several neutrons
 -----------------------------------
 
-For reactions emitting several neutrons, like (n,2n), OpenMC's transport samples
-one outgoing neutron and duplicates it for integral yields. This preserves the
-evaluated one-particle marginal and total yield for linear transport, but it is
-not a correlated exclusive event: duplicating one momentum vector makes the
-emitted momenta perfectly correlated, which broadens the recoil spectrum and
-shifts its mean.
+For a reaction such as (n,2n), processed data provide a one-neutron marginal
+distribution and an average multiplicity, not a joint distribution for all
+neutrons in one event. OpenMC transports one sampled neutron. Its usual
+secondary-production treatment duplicates that neutron as needed to reproduce
+the expected neutron yield. This preserves the evaluated single-neutron
+distribution and expected multiplicity, but the duplicated particles do not
+constitute a physically correlated final state.
 
-Instead, to compute the recoil energy, each additional neutron of a multiplicity
-:math:`\nu > 1` channel is sampled independently from the same evaluated
-distribution. Because the ENDF distribution is inclusive and carries no joint
-final state, independent samples can overrun the event's energy budget. A trial
-is rejected unless the emitted kinetic energy plus the minimum translational
-energy of the entire remaining system fits in the budget. Thus the final recoil
-energy is reserved after every emission, not checked only after the neutron
-energies have been accepted.
+Recoil reconstruction leaves the transported neutron unchanged and samples
+each additional neutron independently from the same evaluated marginal.
+Independent samples can request more energy than the reaction provides.
+OpenMC therefore accepts an additional neutron only if enough energy remains
+for all unmodeled products and for the minimum translational kinetic energy of
+the residual system.
 
-Reconstruction can fail if every auxiliary trial is rejected or if the fixed,
-transported neutron itself leaves no feasible remainder. When it does, neutron
-transport is unchanged and the event produces **no recoil at all**, rather than
-omitting a neutron or banking an energetically impossible recoil. The same rule
-applies to a light ion that cannot be emitted. Such failures can underrepresent
-the channel in a recoil tally; OpenMC does not report a runtime coverage
-counter, so coverage must be checked by comparing reaction and
-residual-production tally weights.
+Reconstruction fails when the transported neutron is already incompatible with
+the energy budget or when no acceptable auxiliary sample is found. In that
+case, neutron transport is unchanged and no residual secondary particle is
+created. OpenMC never creates a residual whose nuclide identity assumes an
+emitted neutron that was omitted from its momentum balance.
 
-With uncorrelated emission directions the cross terms in :eq:`recoil-momentum`
-average out and the mean recoil approaches
+The approximate mean recoil energy can be derived directly from
+:eq:`recoil-momentum`. Let
 
 .. math::
 
-    \langle E_R \rangle \simeq
-      \frac{M_R m_n E_\text{in}}{(m_n + M_T)^2}
-      + \frac{m_n}{M_R} \sum_i \langle E_i^\text{cm} \rangle ,
+    \mathbf{V}_{\mathrm{cm}} =
+    \frac{\mathbf{p}_{n,\mathrm{in}}}{m_n+M_T}
 
-the first term being the motion of the centre of mass and the second the recoil
-against the emitted neutrons.
+be the velocity of the entrance-channel center of mass, and let
+:math:`\mathbf{k}_i` be emitted-neutron momentum :math:`i` in that
+frame. The residual laboratory momentum is
+
+.. math::
+
+    \mathbf{p}_R =
+    M_R\mathbf{V}_{\mathrm{cm}}-\sum_i\mathbf{k}_i .
+
+If the emission directions are independent and have zero mean, then
+:math:`\langle\mathbf{k}_i\rangle=0` and
+:math:`\langle\mathbf{k}_i\mathbin{\cdot}\mathbf{k}_j\rangle=0` for
+:math:`i\ne j`. Expanding :math:`|\mathbf{p}_R|^2` in
+:eq:`recoil-energy` then gives
+
+.. math::
+
+    \langle E_R\rangle \simeq
+    \frac{M_Rm_nE_{\mathrm{in}}}{(m_n+M_T)^2}
+    + \frac{m_n}{M_R}
+      \sum_i\langle E_i^{\mathrm{cm}}\rangle .
+
+The first term is translation of the center of mass. The second is the average
+recoil caused by the independently directed emitted neutrons, where
+:math:`E_i^{\mathrm{cm}}` is the center-of-mass kinetic energy of neutron
+:math:`i`. Correlations missing from the evaluated marginal would contribute
+additional cross terms.
 
 Radiative capture
 -----------------
 
-The residual momentum balances the incident neutron and emitted photons,
-:math:`\mathbf{p}_R = \mathbf{p}_{n,\text{in}} - \sum_k \mathbf{p}_{\gamma,k}`.
-OpenMC's processed reaction data provide inclusive photon distributions and
-average yields, not the eventwise joint distribution of a cascade. OpenMC
-therefore converts each yield to a stochastic integer multiplicity, samples
-photon energies and directions independently from the capture reaction's own
-marginal distributions, and scales the sampled cascade by a common factor that
-enforces
+For radiative capture, momentum conservation gives
 
 .. math::
 
-    \sum_k E_{\gamma,k} + E_R = E_{n,\text{in}} + Q.
+    \mathbf{p}_R =
+    \mathbf{p}_{n,\mathrm{in}}-\sum_k\mathbf{p}_{\gamma,k},
 
-This construction preserves the sampled multiplicity and enforces energy and
-momentum conservation. Its kinematics are exact for a fully specified
-single-photon final state. For a multi-photon cascade, however, its recoil
-spectrum is model-dependent because the inter-photon energy and angular
-correlations are unavailable.
-
-Unlike an average-kick approximation, this event-by-event construction
-produces a recoil spectrum. For comparison, NJOY's HEATR module
-[MacFarlane2016]_ uses the average
+where :math:`\mathbf{p}_{\gamma,k}` is the momentum of cascade photon
+:math:`k`. Processed reaction data provide inclusive photon distributions
+and average yields, not the event-by-event joint distribution of a cascade.
+OpenMC converts each yield to a stochastic integer multiplicity and samples
+photon energies and directions independently. A common scale factor is then
+applied to the sampled photon energies so that
 
 .. math::
 
-    \overline{E_R} = \frac{E}{A+1}
-      + \frac{\overline{\sum_k E_{\gamma,k}^2}}{2 (A+1) m_n c^2}
+    \sum_k E_{\gamma,k}+E_R=E_{\mathrm{in}}+Q .
 
-when explicit recoil data are absent. Agreement in the mean does not determine
-the recoil-spectrum shape, which depends on photon second moments and angular
-cross terms.
+This procedure preserves the sampled multiplicity and enforces energy and
+momentum conservation. It is exact for a fully specified single-photon final
+state. A multiphoton recoil spectrum remains model dependent because the
+processed data do not supply correlations among cascade photons.
+
+For comparison, when explicit recoil data are absent, NJOY HEATR
+[MacFarlane2016]_ estimates the mean using
+
+.. math::
+
+    \overline{E_R} =
+    \frac{E_{\mathrm{in}}}{A+1}
+    + \frac{\overline{\sum_k E_{\gamma,k}^2}}
+           {2(A+1)m_nc^2},
+
+where :math:`A` is the target-to-neutron mass ratio. Matching this mean
+does not determine the spectral shape, which also depends on photon-energy and
+angular correlations. The overbar denotes an average over capture events.
+
+With survival biasing, OpenMC creates the implicit nonfission absorption
+secondary with the corresponding absorbed weight and then continues the
+neutron to a scattering event. A :class:`ReactionFilter` consequently
+reports the scattering MT rather than the implicit absorption MT. Use analog
+absorption (``settings.survival_biasing = False``) for reaction-resolved
+absorption PKA tallies.
 
 .. _methods_recoil_light_ions:
 
-Light charged particles
------------------------
+Light charged particles: fitted surrogate model
+------------------------------------------------
 
-ACE-derived libraries carry only neutron and photon products, so the proton,
-deuteron, triton, helium-3, and alpha ions of channels such as (n,p), (n,\
-:math:`\alpha`), and (n,np) have no evaluated distribution to sample. When the
-statistical light-ion model is being used (see :attr:`Settings.recoil`), OpenMC
-emits them sequentially in the rest frame of the system that has not yet
-decayed.
+Purpose and scope
+~~~~~~~~~~~~~~~~~
 
-This is a **conditional independent-emission construction**. Evaluated files
-supply marginal distributions and no joint final state, so no ordering of the
-products is derivable from the data; the transported neutron is taken first
-because it is the one product the library does describe, and the modelled
-products follow in a randomized order so that none is systematically favoured.
+ACE-derived neutron libraries do not contain the evaluated energy-angle
+distributions of emitted protons, deuterons, tritons, helium-3 nuclei, or alpha
+particles. OpenMC therefore cannot sample these products directly even though
+the original ENDF evaluation may describe them in File 6. The light-ion model
+is explicitly a **surrogate** for those missing distributions.
 
-Each emission follows :eq:`recoil-endpoint`: the ion can carry at most
-:math:`E_{b,\max}`, and it removes :math:`E_b^\text{cm}(1 + m_b/M_D)` from the
-parent's internal energy, leaving the daughter with
-:math:`E_x = U\left(1 - E_b^\text{cm}/E_{b,\max}\right)`. Emission order is
-randomized so no ion is systematically favoured.
+The surrogate has two goals:
 
-Energy
-~~~~~~
+- reproduce the broad energy and angular trends in evaluated charged-particle
+  distributions with a small, evaluation-independent set of coefficients; and
+- produce a complete final state that satisfies charge, nucleon-number, energy,
+  and momentum conservation event by event.
 
-The centre-of-mass energy follows the Weisskopf-Ewing form for statistical
-particle emission [Weisskopf1940]_,
+The model is not a replacement for an optical-model, Hauser-Feshbach, exciton,
+or direct-reaction calculation. It borrows physically motivated functional
+forms from those theories and calibrates their coefficients against evaluated
+data. Consequently, agreement with ENDF distributions measures consistency
+with nuclear-data evaluations, many of which themselves use reaction models;
+it is not equivalent to validation against experimental double-differential
+measurements.
+
+When several products are missing, OpenMC emits them sequentially in the rest
+frame of the undecayed system. The transported neutron, if present, is used
+first because its evaluated sample must remain unchanged. The missing products
+are then placed in random order so that the algorithm does not systematically
+give the first product more of the available energy. Each accepted emission
+reduces the internal energy according to :eq:`recoil-endpoint`.
+
+Energy distribution
+~~~~~~~~~~~~~~~~~~~
+
+The starting point is the Weisskopf-Ewing statistical-emission spectrum
+[Weisskopf1940]_,
 
 .. math::
     :label: recoil-weisskopf
 
-    P(E) \propto E\, \sigma_\text{inv}(E)\, \rho_D(E_x) ,
+    P(E)\mathop{}\!\mathrm{d}E
+    \propto
+    E\,\sigma_{\mathrm{inv}}(E)\,\rho_D(E_x)
+    \mathop{}\!\mathrm{d}E .
 
-where the leading :math:`E` comes from detailed balance and phase space,
-:math:`\sigma_\text{inv}` is the cross section of the inverse reaction
-:math:`b + D \rightarrow` parent, and :math:`\rho_D` is the level density of the
-daughter. OpenMC evaluates it as
+Here :math:`E` is the light ion's center-of-mass kinetic energy,
+:math:`\sigma_{\mathrm{inv}}(E)` is the cross section for the inverse
+reaction in which the ion is absorbed by the daughter, and
+:math:`\rho_D(E_x)` is the density of daughter states at remaining
+excitation :math:`E_x`. The factor :math:`E` follows from phase
+space and detailed balance in the Weisskopf-Ewing derivation.
+
+A transport collision kernel cannot evaluate the inverse cross section and
+detailed daughter level density for every event. OpenMC replaces them with a
+Coulomb transmission factor and an empirical endpoint factor:
 
 .. math::
     :label: recoil-light-ion
 
-    P(E) \propto E\, T_C(E)
-        \left(1 - \frac{E}{E_{b,\max}^\text{shape}}\right)^{\nu} .
+    P(E) \propto
+    E\,T_C(E)
+    \left(1-\frac{E}{E_{\max}^{\mathrm{shape}}}\right)^\nu ,
 
-*Inverse cross section.* For a charged light ion :math:`\sigma_\text{inv}` is
-governed almost entirely by the Coulomb barrier, so it is replaced by a WKB
-Coulomb penetrability,
+with
+
+.. math::
+
+    0\leq E\leq E_{\max}^{\mathrm{event}} .
+
+The two endpoints have different purposes.
+:math:`E_{\max}^{\mathrm{shape}}` is the two-body endpoint for the channel
+that emits this ion alone and determines the shape of the distribution.
+:math:`E_{\max}^{\mathrm{event}}` is calculated from the energy remaining
+in the current reconstructed event and limits the sampled energy. The endpoints
+are equal for a one-ion channel and differ after another product has consumed
+part of the available energy.
+
+For a charged ion, the inverse reaction is strongly suppressed below the
+Coulomb barrier. Quantum tunneling through a Coulomb potential gives the Gamow
+factor :math:`\exp[-2\pi\eta(E)]` [Gamow1928]_, where the Sommerfeld
+parameter is
+
+.. math::
+    :label: recoil-sommerfeld
+
+    \eta(E) =
+    \alpha Z_bZ_D
+    \sqrt{\frac{\mu c^2}{2E}} .
+
+In this expression, :math:`\alpha` is the fine-structure constant,
+:math:`Z_b` and :math:`Z_D` are the atomic numbers of the ion and
+daughter, and :math:`\mu` is their reduced mass,
+
+.. math::
+
+    \mu = \frac{m_bM_D}{m_b+M_D}.
+
+The approximate height of the Coulomb barrier at the touching radius is
+
+.. math::
+    :label: recoil-coulomb-barrier
+
+    V_C =
+    \frac{\alpha\hbar c\,Z_bZ_D}
+         {r_0\left(A_b^{1/3}+A_D^{1/3}\right)} ,
+
+where :math:`A_b` and :math:`A_D` are the ion and daughter mass
+numbers, :math:`\hbar` is the reduced Planck constant, and :math:`r_0`
+is an effective nuclear-radius coefficient. This expression is the
+electrostatic potential energy of charges :math:`Z_be` and :math:`Z_De`
+separated by the assumed touching distance
+:math:`r_0(A_b^{1/3}+A_D^{1/3})`.
+
+OpenMC uses a smooth surrogate that has the WKB energy dependence and equals
+one half at the nominal barrier:
 
 .. math::
     :label: recoil-barrier
 
-    T_C(E) = \left[1 + e^{2\pi g\,[\eta(E) - \eta(V_C)]}\right]^{-1} ,
-    \qquad
-    \eta(E) = \frac{Z_b Z_D}{137.036}\sqrt{\frac{\mu c^2}{2E}} ,
-    \qquad
-    V_C = \frac{1.44\ \text{MeV fm}\ Z_b Z_D}{r_0 (A_b^{1/3} + A_D^{1/3})} ,
+    T_C(E) =
+    \left[
+      1+\exp\left(
+        2\pi g\,[\eta(E)-\eta(V_C)]
+      \right)
+    \right]^{-1}.
 
-with :math:`\mu` the reduced mass of the ion and the daughter. It is normalized
-so that :math:`T_C = 1/2` at the barrier top.
+The dimensionless fitted coefficient :math:`g` adjusts the strength of
+the idealized Coulomb exponent to account empirically for effects omitted by a
+one-dimensional barrier. Equation :eq:`recoil-barrier` is therefore
+inspired by WKB tunneling, not asserted to be an exact optical-model
+transmission coefficient.
 
-The decisive feature is the :math:`E^{-1/2}` inside the exponent. Because
-:math:`\eta` grows as :math:`E` falls, so does the decay constant of the
-transmission — which is the widening of the barrier at lower energy. A
-Hill-Wheeler transmission [HillWheeler1953]_ with a fixed diffuseness falls at
-one rate everywhere and therefore does not represent this energy dependence.
+At very low energy, the exponential argument can exceed the floating-point
+range even though ratios of probabilities remain meaningful. The
+implementation therefore calculates :math:`\ln T_C` directly using a
+numerically stable evaluation of :math:`\ln(1+\exp x)`. This avoids
+artificially flattening the sub-barrier spectrum. The term sometimes called
+the *softplus* function is only a numerical device; it does not add another
+physical assumption.
 
-The expression is evaluated in log space, as
-:math:`\ln T_C = -\operatorname{softplus}(2\pi g[\eta - \eta_B])`, with no bound
-on the exponent. Written directly, :math:`[1+e^x]^{-1}` underflows to exactly
-zero once :math:`x` passes 745 — only tens of keV below the barrier for an
-alpha against a heavy target — and a spectrum that is identically zero cannot
-be normalized.
+The endpoint power in :eq:`recoil-light-ion` approximates the effect of
+the daughter level density. It is empirical rather than a literal nuclear
+level-density formula. Evaluated charged-particle spectra combine compound,
+pre-equilibrium, and direct emission [Koning2012]_, so applying a pure
+compound-nucleus level density to the entire spectrum makes it too soft. The
+fitted exponent :math:`\nu` provides a compact compromise among those
+components.
 
-*Endpoint factor.* The :math:`(1-E/E_{b,\max}^\text{shape})^{\nu}` factor stands
-in for the level density of the daughter. It is **not** a nuclear level density,
-which would rise roughly exponentially with :math:`E_x`. Charged-particle
-spectra in TALYS-based evaluations [Koning2012]_ mix compound-nucleus
-evaporation with much harder pre-equilibrium and direct emission, and applying a
-compound level density to the whole spectrum makes it far too soft. The
-exponent is an empirical compromise between the two components, and
-:math:`\nu + 2` should not be read as an exciton number unless a model with
-that derivation is actually being fitted.
+Energy-model calibration
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-*Constants.* Three numbers are fitted: the effective barrier radius
-:math:`r_0`, the WKB strength :math:`g`, and the exponent :math:`\nu`. Their
-current values are the defaults of ``LightIonParams`` in
-``include/openmc/recoil.h``, which is the single authoritative record; they are
-deliberately not restated here, because a documented copy of a fitted constant
-is a copy that goes stale. They were obtained by matching the evaluated ENDF
-MF=6 centre-of-mass spectra of the charged-particle channels across several
-general-purpose libraries.
+The energy coefficients :math:`r_0`, :math:`g`, and
+:math:`\nu` were fitted to evaluated ENDF File 6 center-of-mass
+charged-particle spectra. The adopted dataset contains 37,368 deduplicated
+targets from 388 stable or long-lived nuclides and 1,029 distinct evaluations
+in ENDF/B-VIII.1, JEFF-4.0, and TENDL-2025. A target is one combination of
+evaluation, nuclide, emitted-ion species, and incident-energy node.
 
-Equation :eq:`recoil-light-ion` should be read as a calibrated surrogate whose
-*form* is borrowed from statistical-model theory and whose *parameters* come
-from evaluated data — not as an implementation of any published
-nuclear-reaction model. The parameters are also strongly correlated: :math:`r_0`
-and :math:`\nu` trade against each other along a shallow valley, so neither
-should be interpreted on its own as a measured physical quantity.
+Each target is weighted by the square root of its reaction cross section. This
+compromise prevents the largest channels from completely dominating the fit
+without giving a microbarn channel the same influence as a barn-scale channel.
+Numerically identical evaluations adopted by more than one library are
+deduplicated.
 
-*Sampling.* The spectrum is sampled by inverting a tabulated cumulative built in
-log space on a fixed grid. The work per emitted ion is therefore bounded and
-independent of how peaked the spectrum is, and no draw is ever replaced by a
-fallback value.
+The primary shape metric is the normalized one-dimensional Wasserstein
+distance. For model and evaluated cumulative distributions
+:math:`F_\theta(E)` and :math:`F_{\mathrm{eval}}(E)`, respectively,
+where :math:`\theta` denotes the three fitted parameters, the per-target
+distance is
 
-Endpoint and direction
-~~~~~~~~~~~~~~~~~~~~~~
+.. math::
+    :label: recoil-energy-wasserstein
 
-Two endpoints appear in :eq:`recoil-light-ion` and they play different roles.
-The *shape* endpoint is the one belonging to the channel that emits this ion
-**alone**, built from :eq:`recoil-qm` and :eq:`recoil-u0` for that channel and
-not from any evaluated Q; it sets the spectrum's shape, because the endpoint
-factor stands in for the level density of the daughter that ion would leave on
-its own. The *event* endpoint is :eq:`recoil-endpoint` evaluated on whatever
-internal energy this particular event has left, and it truncates the sample.
-The two coincide unless an earlier product has already spent part of the
-budget. Discrete charged-particle levels (MT = 600-849) are exactly two-body,
-so their light-ion energy is fixed at the event endpoint rather than sampled.
+    W_1 =
+    \frac{1}{E_{\max}^{\mathrm{event}}}
+    \int_0^{E_{\max}^{\mathrm{event}}}
+    \left|F_\theta(E)-F_{\mathrm{eval}}(E)\right|
+    \mathop{}\!\mathrm{d}E .
 
-The direction uses the Kalbach-Mann form of evaluated MF=6 LANG=2 data,
+This is the area between the two cumulative distributions divided by the
+energy range, so spectra with different endpoints can be compared on the same
+scale. The per-target objective is defined as
 
 .. math::
 
-    f(\mu) = \frac{a}{2 \sinh a}
-             \left[\cosh(a\mu) + r \sinh(a\mu)\right] ,
+    \mathcal{L}_E = W_1 + 0.25\delta_1^2 + 0.10\delta_2^2,
 
-with the slope :math:`a` from Kalbach's systematics [Kalbach1988]_ — the same
-expression the evaluations themselves use, taken as published — and the
-pre-equilibrium fraction from a logistic in the outgoing energy fraction, the
-incident energy and the size and neutron excess of the recoil nucleus,
+where
 
 .. math::
 
-    r = \left[1 + e^{-u}\right]^{-1} , \qquad
-    u = c_0 + c_1 \frac{E_b^\text{cm}}{E_b^\text{max}}
-        + c_2 \ln\!\left(1 + \frac{E}{10\ \text{MeV}}\right)
-        + c_3 A_D^{-1/3} + c_4 \frac{N_D - Z_D}{A_D} ,
+    \delta_1 =
+    \ln\left(\frac{\langle E\rangle_\theta}
+                   {\langle E\rangle_{\mathrm{eval}}}\right),
+    \qquad
+    \delta_2 =
+    \ln\left(\frac{\langle E^2\rangle_\theta}
+                   {\langle E^2\rangle_{\mathrm{eval}}}\right).
 
-calibrated against evaluated MF=6 LANG=2 distributions. Only :math:`r` is a
-substitution.
+Thus, spectral shape is the primary fitting criterion, while the two smaller
+terms discourage a model from obtaining a good cumulative shape with biased
+first or second moments. The fitted parameters minimize the weighted mean of
+:math:`\mathcal{L}_E` over the calibration targets. Targets are held out by
+nuclear data library and by groups of elements during cross-validation;
+neighboring incident-energy points from the same evaluation are never split
+between training and validation.
 
-This applies to continuum channels only. Kalbach's systematics describe
-pre-equilibrium emission rather than a named residual level. Because
-ACE-derived libraries provide no charged-particle angle for MT = 600-849,
-**discrete charged-particle levels are sampled isotropically in the centre of
-mass**.
+The fitted values used by transport are
 
-.. _methods_recoil_zero_tails:
+.. list-table::
+   :header-rows: 1
+   :widths: 15 20 65
 
-Why :math:`r` disagrees with the evaluations near the endpoint
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   * - Parameter
+     - Value
+     - Role
+   * - :math:`r_0`
+     - 1.36093 fm
+     - Effective radius in :eq:`recoil-coulomb-barrier`
+   * - :math:`g`
+     - 0.48566
+     - Scale on the WKB-inspired exponent
+   * - :math:`\nu`
+     - 1.18221
+     - Exponent of the empirical endpoint factor
 
-Many evaluated MF=6 LANG=2 distributions contain a contiguous run of exactly
-zero :math:`r` through the high-energy endpoint, often covering the mode and
-most of the outgoing-energy probability. The abrupt transition, confinement to
-the end of the table, and occurrence of values clipped at both zero and one are
-consistent with a filled or bounded field rather than resolved angular
-physics.
+The parameters are correlated fit coefficients, not independently measured
+nuclear properties. In particular, changes in :math:`r_0` can be partly
+compensated by changes in :math:`\nu`.
 
-The logistic prescription is calibrated to the nonzero portion of the
-evaluated data. It can therefore disagree sharply with these zero-filled nodes
-near the endpoint while remaining consistent with evaluated distributions that
-do not contain the fill. This is an expected limitation of comparisons against
-the marginal MF=6 representation, not an eventwise angular correlation supplied
-by the library.
+Angular distribution
+~~~~~~~~~~~~~~~~~~~~
 
-Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
-case the recoil of a charged-particle channel recoils against the incident
-neutron alone.
+Continuum light-ion directions use the Kalbach-Mann distribution
+[Kalbach1988]_,
+
+.. math::
+    :label: recoil-kalbach
+
+    f(\mu) =
+    \frac{a}{2\sinh a}
+    \left[
+      \cosh(a\mu)+r\sinh(a\mu)
+    \right].
+
+Here :math:`\mu` is the cosine of the center-of-mass emission angle
+relative to the incident neutron, :math:`a` controls the overall angular
+slope, and :math:`r` is the pre-equilibrium fraction. The even
+:math:`\cosh` term describes forward-backward-symmetric emission, while
+the odd :math:`\sinh` term introduces forward bias. ENDF File 6 uses this
+same functional form for LANG=2 distributions [ENDF102]_.
+
+OpenMC calculates :math:`a` from Kalbach's published 1988 systematics and
+multiplies it by one fitted scale factor. The processed ACE data do not retain
+the evaluated :math:`r`, so OpenMC represents it with a bounded logistic
+surrogate,
+
+.. math::
+    :label: recoil-angular-r
+
+    r = \frac{1}{1+\exp(-u)} .
+
+The logistic transformation ensures :math:`0<r<1`. Its input is
+
+.. math::
+
+    u = c_0+c_1x
+        +c_2\ln\left(1+\frac{E_{\mathrm{in}}}{E_0}\right)
+
+.. math::
+
+    \phantom{u={}}
+        +c_3A_D^{-1/3}
+        +c_4\frac{N_D-Z_D}{A_D},
+
+where
+
+.. math::
+
+    x = \frac{E_b^{\mathrm{cm}}}
+             {E_{\max}^{\mathrm{shape}}},
+    \qquad E_0=10\ \mathrm{MeV}.
+
+The predictors describe outgoing-energy fraction :math:`x`, incident
+energy :math:`E_{\mathrm{in}}`, daughter size :math:`A_D`, and
+daughter neutron excess :math:`(N_D-Z_D)/A_D`. Here :math:`N_D`
+and :math:`Z_D` are the daughter's neutron and proton numbers.
+:math:`E_0` is a fixed scale that makes the logarithm dimensionless. This
+logistic equation is empirical; it is not derived from Kalbach's theory.
+
+The coefficients were fitted to 15,839 informative continuum angular targets
+from 380 nuclides and 1,013 distinct evaluations in ENDF/B-VIII.1, JEFF-4.0,
+and TENDL-2025. At each outgoing-energy node, the angular Wasserstein distance
+is
+
+.. math::
+
+    W_{1,\mu} =
+    \int_{-1}^{1}
+    \left|F_\theta(\mu)-F_{\mathrm{eval}}(\mu)\right|
+    \mathop{}\!\mathrm{d}\mu,
+
+and the fitted node loss is defined as
+
+.. math::
+
+    \mathcal{L}_\Omega = W_{1,\mu}
+      +2\left(
+        \langle\mu\rangle_\theta
+        -\langle\mu\rangle_{\mathrm{eval}}
+      \right)^2.
+
+Here :math:`\theta` denotes the six angular parameters, and
+:math:`F(\mu)` is an angular cumulative distribution. Node losses are weighted
+by the probability carried by their outgoing-energy intervals. Target losses
+use cross-section weights and the same deduplication and grouped
+cross-validation principles as the energy calibration. Evaluated laws that
+are isotropic at every energy carry no information about angular trends and
+are excluded from fitting.
+
+The fitted coefficients are
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+
+   * - Parameter
+     - Value
+     - Predictor
+   * - :math:`c_0`
+     - -8.42909
+     - Intercept
+   * - :math:`c_1`
+     - 4.89255
+     - Outgoing-energy fraction
+   * - :math:`c_2`
+     - 9.85086
+     - Incident-energy dependence
+   * - :math:`c_3`
+     - -7.85305
+     - Daughter-size dependence
+   * - :math:`c_4`
+     - 5.69894
+     - Daughter neutron excess
+   * - slope scale
+     - 0.99102
+     - Multiplier on Kalbach's 1988 slope
+
+These coefficients are strongly correlated, so their individual values should
+not be interpreted as measured physical effects.
+
+The angular surrogate is used only for continuum charged-particle channels.
+An MT number in the discrete charged-particle bands (MT=600-849) identifies a
+two-body residual level, but its charged-particle angular distribution is also
+absent from ACE. OpenMC samples those directions isotropically in the
+center-of-mass frame rather than applying a continuum pre-equilibrium model.
+
+Many evaluated LANG=2 distributions contain a contiguous run of exactly zero
+:math:`r` values at the high-energy end, sometimes in a region carrying
+substantial probability. Within-corpus comparisons show that otherwise similar
+subsections without such runs retain nonzero :math:`r` values over the same
+energy range. The calibration therefore treats a terminal zero run as a file
+padding convention rather than as measured angular information. Fits that
+instead interpret every zero literally were also examined as a sensitivity;
+they produce a pre-equilibrium fraction that decreases sharply at high outgoing
+energy and do not improve held-out recoil predictions. Because the ENDF format
+does not label these entries as padding, this interpretation remains a source
+of model uncertainty.
+
+Sampling and event completion
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+OpenMC samples the energy distribution by constructing a fixed-grid cumulative
+distribution from :eq:`recoil-light-ion` in logarithmic probability
+space and inverting it. The number of function evaluations per emitted ion is
+bounded and does not depend on how narrow the spectrum is.
+
+After sampling the energy and angle, OpenMC transforms the ion momentum from
+the center-of-mass frame to the laboratory frame. The emission is accepted only
+if the remaining system can satisfy :eq:`recoil-budget`. Once all emitted
+particles have been constructed, :eq:`recoil-momentum` gives the heavy
+residual. If any required product cannot be placed within the energy budget,
+OpenMC creates no partial residual secondary particle.
+
+Setting ``light_ion_model`` to ``'none'`` disables the light-ion
+surrogate. For a charged-particle reaction, the residual then balances only
+the products available from the processed library; emitted light ions are not
+created.
 
 Fission
 -------
 
-Fission is excluded. Fission-fragment recoil is not modelled.
+Fission-fragment production is outside the present capability, so a fission
+event creates no recoil secondary particles.
 
 .. _methods_recoil_validation:
 
@@ -468,110 +832,110 @@ Fission is excluded. Fission-fragment recoil is not modelled.
 Comparison With NJOY Group Data
 --------------------------------
 
-The usual reference for PKA spectra is a group-wise recoil matrix produced by
-NJOY, as consumed by codes such as SPECTRA-PKA [Gilbert2015]_. OpenMC agrees
-closely with those matrices where both sides derive the recoil from the same
-two-body kinematics, and differs in three understood places.
+Group-wise recoil matrices produced by NJOY are commonly used to generate PKA
+spectra for codes such as SPECTRA-PKA [Gilbert2015]_. OpenMC agrees most closely
+with these matrices when both calculations use the same evaluated two-body
+kinematics.
 
-**Two-body channels agree.** For elastic scattering and for the discrete
-inelastic levels MT = 51-90, NJOY computes the recoil from the evaluated MF=4
-angular distribution and OpenMC subtracts the sampled neutron momentum. Mean
-recoil energies agree to within a few percent over the whole range of
-structural nuclides and incident energies, and the spectra agree in shape over
-six decades, including the diffraction structure near the endpoint.
+**Two-body channels.** For elastic scattering and discrete inelastic levels
+(MT=51-90), NJOY derives the recoil from the evaluated neutron angular
+distribution and OpenMC subtracts the sampled neutron momentum. Tests over
+structural nuclides and incident energies show agreement in both mean energy
+and spectral shape, including forward-angle structure near the endpoint.
 
-**Nuclear-data representation causes a small elastic offset.** OpenMC's
-ACE-derived library and NJOY's ENDF MF=4 Legendre coefficients do not describe
-the same forward-peaked angular distribution to better than a few percent. For
-Fe-56 at 13.9 MeV the mean cosine is 0.8535 from the ACE-derived tabulated
-distribution and 0.8462 as implied by the NJOY recoil matrix built from the same
-evaluation, a 4% difference in :math:`1 - \bar\mu` and therefore in the mean
-elastic recoil energy. This is a data-processing difference upstream of the
-transport code, not a difference between the recoil models.
+**Processed angular distributions.** The ACE-derived angular distribution
+sampled by OpenMC and the Legendre representation processed by NJOY can differ
+slightly even when they originate from the same evaluation. For Fe-56 near
+14 MeV, this produces a several-percent difference in
+:math:`1-\overline{\mu}` and therefore in the mean elastic recoil energy.
+This is a nuclear-data processing difference rather than a disagreement in the
+recoil kinematics.
 
-**Some evaluations store recoil arrays that are inconsistent with momentum
-balance.** Evaluations generated with TALYS can provide an explicit MF=6 recoil
-subsection, which NJOY uses in preference to reconstructing the recoil from the
-emitted neutron. Some TENDL MT = 91 arrays are substantially softer than the
-same evaluation's neutron distribution requires. OpenMC reports the recoil
-obtained by momentum balance against the sampled neutron.
+**Explicit evaluated recoil arrays.** Some TALYS-generated evaluations contain
+an explicit File 6 recoil subsection, which NJOY can use instead of deriving
+the recoil from the emitted neutron. Some TENDL MT=91 arrays are substantially
+softer than momentum balance against the same evaluation's neutron
+distribution. OpenMC reports the momentum-balanced recoil.
 
-Because the light-ion model of :eq:`recoil-light-ion` is a calibrated surrogate
-rather than evaluated data, agreement for charged-particle channels is
-approximate. Validation against evaluated centre-of-mass spectra from several
-general-purpose libraries shows useful agreement in aggregate, but individual
-nuclide-energy-channel combinations can differ substantially, especially near
-threshold. Because the calibration and comparison draw on evaluated spectra,
-they measure consistency with those evaluations rather than accuracy against
-experimental charged-particle measurements.
+**Light charged particles.** The light-ion energy and angular distributions are
+fitted surrogates rather than samples from the transport library. Their
+agreement with ENDF File 6 distributions is therefore approximate. Aggregate
+tests across the calibration libraries show useful agreement, but errors can
+be substantially larger for individual nuclide, incident-energy, and reaction
+combinations, particularly near threshold. Helium-3 and triton channels carry
+little calibration weight and have correspondingly greater uncertainty.
 
 -----------
 Limitations
 -----------
 
-- S(:math:`\alpha,\beta`) and NCrystal thermal scattering produce no recoil
-  record; only free-gas elastic scattering does.
-- The recoil of a bound atom is treated as if it were free; no lattice binding
-  energy is subtracted.
-- De-excitation photon momentum is neglected for every reaction except capture.
+- :math:`S(\alpha,\beta)` and NCrystal thermal-scattering events create no
+  recoil secondary particle; only free-gas elastic scattering is supported.
+- The residual nucleus is treated as free. Lattice binding and subsequent
+  slowing down are not modeled.
+- De-excitation photon momentum is neglected except for radiative capture.
 - Fission fragments are not produced.
-- Reactions whose exit channel cannot be determined from the MT number produce
-  no record at all. In practice this means MT = 5, the ENDF catch-all, which
-  carries inclusive product yields rather than a single recoil. Some
-  evaluations put a substantial part of the charged-particle production there:
-  ENDF/B-VIII.1 Fe-56 has 0.073 b in MT = 5 at 14 MeV against 0.114 b in (n,p),
-  and its (n,alpha) cross section is a tenth of the value other libraries give
-  because the rest of that channel sits in MT = 5.
-- Multi-neutron final states are sampled independently rather than from a
-  correlated joint distribution, and no ordering of the emitted products is
-  implied by the order in which they are constructed.
-- An event whose exit channel cannot be completed produces no record, so a
-  channel with a low sampling success rate is underrepresented in the tally.
-  OpenMC provides no runtime recoil-coverage counter; compare reaction and
-  residual-production tally weights when quantifying coverage.
-- The light-ion model omits optical-model transmission coefficients, explicit
-  level densities, channel competition, direct reactions, and evaluated
-  sequential decay.
-- Recoil excitation, isomeric state, and subsequent gamma recoil are not
-  represented.
-- Atomic electron binding energy is neglected in the mass budget, which leaves
-  a few keV unaccounted for in a charged-particle channel on a heavy target.
-- All massive-particle kinematics are nonrelativistic, which understates the
-  recoil energy by roughly :math:`E / 2 m_n c^2` — under 1% at 14 MeV.
-- Only the continuous-energy transport mode produces recoils.
+- MT=5 and any other reaction whose exclusive exit channel cannot be inferred
+  from the MT number create no recoil secondary particle. These reactions may
+  contain appreciable charged-particle production in some evaluations.
+- Multi-neutron and multiparticle final states are reconstructed from
+  independently sampled marginal distributions rather than a correlated joint
+  distribution.
+- An event whose required exit channel cannot be completed creates no recoil
+  secondary particle. OpenMC does not provide a runtime coverage counter;
+  compare reaction-event and residual-production tally weights when measuring
+  coverage.
+- The light-ion surrogate omits optical-model transmission coefficients,
+  explicit level densities, channel competition, direct-reaction amplitudes,
+  and evaluated sequential decay.
+- Residual excitation, isomeric state, and subsequent gamma recoil are not
+  represented as transported states.
+- Neglecting atomic electron binding introduces a reaction-dependent difference
+  between the approximate and exact nuclear mass balance. This is small relative
+  to the MeV-scale energies considered here but is retained as a model
+  limitation.
+- Massive-particle kinematics are nonrelativistic. The leading neutron
+  correction is approximately :math:`E_{\mathrm{in}}/(2m_nc^2)`, below
+  one percent at 14 MeV.
+- Only continuous-energy transport produces recoil secondary particles.
 
 ----------
 References
 ----------
 
+.. [AME2020] M. Wang, W. J. Huang, F. G. Kondev, G. Audi, and S. Naimi,
+   "The AME 2020 Atomic Mass Evaluation (II). Tables, Graphs and References,"
+   *Chinese Physics C* **45**, 030003 (2021).
+   `<https://doi.org/10.1088/1674-1137/abddaf>`_
+
+.. [ENDF102] A. Trkov, M. Herman, and D. A. Brown, eds., *ENDF-6 Formats
+   Manual: Data Formats and Procedures for the Evaluated Nuclear Data Files
+   ENDF/B-VI, ENDF/B-VII and ENDF/B-VIII*, CSEWG Document ENDF-102,
+   BNL-203218-2018-INRE (2018).
+   `<https://www.nndc.bnl.gov/endfdocs/ENDF-102-2018.pdf>`_
+
+.. [Gamow1928] G. Gamow, "Zur Quantentheorie des Atomkernes,"
+   *Zeitschrift für Physik* **51**, 204-212 (1928).
+   `<https://doi.org/10.1007/BF01343196>`_
+
 .. [Weisskopf1940] V. F. Weisskopf and D. H. Ewing, "On the Yield of Nuclear
    Reactions with Heavy Elements," *Physical Review* **57**, 472-485 (1940).
    `<https://doi.org/10.1103/PhysRev.57.472>`_
 
-.. [HillWheeler1953] D. L. Hill and J. A. Wheeler, "Nuclear Constitution and
-   the Interpretation of Fission Phenomena," *Physical Review* **89**,
-   1102-1145 (1953). `<https://doi.org/10.1103/PhysRev.89.1102>`_
-
-.. [Kalbach1988] C. Kalbach, "Systematics of continuum angular distributions:
-   Extensions to higher energies," *Physical Review C* **37**, 2350-2370 (1988).
-   `<https://doi.org/10.1103/PhysRevC.37.2350>`_
+.. [Kalbach1988] C. Kalbach, "Systematics of Continuum Angular Distributions:
+   Extensions to Higher Energies," *Physical Review C* **37**, 2350-2370
+   (1988). `<https://doi.org/10.1103/PhysRevC.37.2350>`_
 
 .. [Koning2012] A. J. Koning and D. Rochman, "Modern Nuclear Data Evaluation
-   with the TALYS Code System," *Nuclear Data Sheets* **113**, 2841-2934 (2012).
-   `<https://doi.org/10.1016/j.nds.2012.11.002>`_
+   with the TALYS Code System," *Nuclear Data Sheets* **113**, 2841-2934
+   (2012). `<https://doi.org/10.1016/j.nds.2012.11.002>`_
 
-.. [Gilbert2015] M. R. Gilbert, J. Marian, and J.-Ch. Sublet, "Energy spectra of
-   primary knock-on atoms under neutron irradiation," *Journal of Nuclear
+.. [Gilbert2015] M. R. Gilbert, J. Marian, and J.-Ch. Sublet, "Energy Spectra
+   of Primary Knock-on Atoms Under Neutron Irradiation," *Journal of Nuclear
    Materials* **467**, 121-134 (2015).
    `<https://doi.org/10.1016/j.jnucmat.2015.09.023>`_
 
-.. [MacFarlane2016] R. E. MacFarlane, D. W. Muir, R. M. Boicourt, A. C. Kahler,
-   and J. L. Conlin, "The NJOY Nuclear Data Processing System, Version 2016,"
-   Los Alamos National Laboratory report LA-UR-17-20093 (2016).
+.. [MacFarlane2016] R. E. MacFarlane, D. W. Muir, R. M. Boicourt, A. C.
+   Kahler, and J. L. Conlin, *The NJOY Nuclear Data Processing System, Version
+   2016*, Los Alamos National Laboratory report LA-UR-17-20093 (2016).
    `<https://doi.org/10.2172/1338791>`_
-
-With survival biasing, the implicit absorption recoil is created with the
-absorbed weight but the neutron then continues to a scattering event, so
-:class:`ReactionFilter` reports the scattering MT rather than the absorption
-one. Reaction-resolved absorption PKA tallies should use analog absorption
-(``settings.survival_biasing = False``).

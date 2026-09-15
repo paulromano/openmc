@@ -433,7 +433,7 @@ def test_discrete_level_recoil_is_uniform(run_in_tmpdir):
     """A named level plus isotropic emission makes the recoil energy uniform.
 
     For an exactly two-body exit channel the laboratory recoil energy is affine
-    in the centre-of-mass cosine, E_R = A + B*mu, so sampling mu uniformly
+    in the center-of-mass cosine, E_R = A + B*mu, so sampling mu uniformly
     makes E_R uniform between its kinematic limits. The pre-equilibrium
     systematics that serve the continuum channels would tilt it strongly
     towards one end instead.
@@ -463,7 +463,7 @@ def test_discrete_level_recoil_is_uniform(run_in_tmpdir):
     mean_mu = (0.5 * (lo + hi) - (interior * mid).sum() / interior.sum()) \
         / (0.5 * (hi - lo))
     assert abs(mean_mu) < 0.10, \
-        f'centre-of-mass emission is not isotropic: <mu> = {mean_mu:+.3f}'
+        f'center-of-mass emission is not isotropic: <mu> = {mean_mu:+.3f}'
 
     # And the shape is flat, not merely balanced
     expected = interior.mean()

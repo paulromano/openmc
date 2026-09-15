@@ -16,10 +16,9 @@ namespace openmc {
 //! Recoil (primary knock-on atom) production
 //!
 //! When \ref settings::recoil_production is enabled, each continuous-energy
-//! neutron collision creates additional entries in the local secondary bank
-//! describing the recoil nucleus and, optionally, the light ions that
-//! the reaction emits. These entries are *production records*: they are scored
-//! by ParticleProductionFilter and are not transported.
+//! neutron collision creates secondary particles describing the recoil nucleus
+//! and, optionally, the light ions that the reaction emits. These particles
+//! are scored by ParticleProductionFilter and are not transported.
 //!
 //! Every model here is built on the same nonrelativistic momentum balance,
 //!
@@ -31,7 +30,7 @@ namespace openmc {
 //! samples from evaluated data (the outgoing neutron, capture photons) are used
 //! exactly as sampled; products for which the library carries no distribution
 //! (light charged particles, additional neutrons of a multiplicity > 1 channel)
-//! are modelled subject to the event's remaining energy budget so that
+//! are modeled subject to the event's remaining energy budget so that
 //! \f$\sum_i E_i + E_R \le E_\text{in} + Q\f$ holds by construction.
 //==============================================================================
 
@@ -104,7 +103,7 @@ double mass_difference_q(
 //! contributions to inertia are neglected in this nonrelativistic model.
 double final_state_internal_energy(double E_in, double m_final, double q);
 
-//! Largest centre-of-mass energy ion \p m_b can take from internal energy \p u
+//! Largest center-of-mass energy ion \p m_b can take from internal energy \p u
 //!
 //! \f[ E_{b,\max} = u\,\frac{M_D}{m_b + M_D} \f]
 double two_body_endpoint(double u, double m_b, double m_d);
@@ -134,7 +133,7 @@ double remaining_internal_energy(
 
 //! Endpoint of the channel that emits \p ion alone from \p target, in [eV]
 //!
-//! Sets the shape of the modelled spectrum: the \f$(1-E/E_\text{max})^\nu\f$
+//! Sets the shape of the modeled spectrum: the \f$(1-E/E_\text{max})^\nu\f$
 //! factor is the level density of the daughter that ion would leave if nothing
 //! else were emitted. Built from masses and the entrance CM energy, never from
 //! an evaluated Q, because the MT one would reach for is often a level range.
@@ -146,9 +145,10 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion);
 
 //! Recoil products following an elastic scattering event
 //!
-//! The record contains the neutron momentum transfer and its associated
-//! target-rest-frame kinetic energy. It is not the target's final laboratory
-//! kinetic energy or its signed laboratory kinetic-energy change.
+//! The recoil secondary particle contains the neutron momentum transfer and
+//! its associated target-rest-frame kinetic energy. It is not the target's
+//! final laboratory kinetic energy or its signed laboratory kinetic-energy
+//! change.
 //!
 //! \param[in,out] p        Colliding neutron, after the outgoing state is set
 //! \param[in] nuc          Target nuclide
@@ -164,7 +164,7 @@ void from_elastic(Particle& p, const Nuclide& nuc, double E_in, Direction u_in,
 //! The sampled outgoing neutron is used exactly as transported. Additional
 //! neutrons required by the reaction multiplicity are sampled independently
 //! from the same evaluated distribution, and light charged particles in the
-//! exit channel are modelled, both within the event's energy budget.
+//! exit channel are modeled, both within the event's energy budget.
 //!
 //! \param[in,out] p    Colliding neutron, after the outgoing state is set
 //! \param[in] nuc      Target nuclide
@@ -208,7 +208,7 @@ ParticleType recoil_particle_type(const Nuclide& nuc, int mt);
 //! directly and fail if it returns zero.
 double particle_mass_ev(ParticleType type);
 
-//! Centre-of-mass kinetic energy of a light ion emitted from an excited system
+//! Center-of-mass kinetic energy of a light ion emitted from an excited system
 //!
 //! Samples the empirical evaporation spectrum described in
 //! \ref light_ion_pdf() by inverting a fixed-grid cumulative distribution
@@ -230,7 +230,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 //! Used by transport and by exact-code-path validation of the angular model.
 //!
 //! \param[in] E_in     Incident neutron energy in [eV]
-//! \param[in] E_cm     Emitted particle centre-of-mass energy in [eV]
+//! \param[in] E_cm     Emitted particle center-of-mass energy in [eV]
 //! \param[in] emitted  Charge and mass number of the emitted particle
 //! \param[in] Z_t,A_t  Charge and mass number of the target
 double kalbach_slope(
@@ -294,7 +294,7 @@ struct LightIonParams {
 //! Calibration constants of the light-ion angular distribution
 //!
 //! These constants define the logistic pre-equilibrium fraction used for
-//! continuum channels. Named levels are sampled isotropically in the centre of
+//! continuum channels. Named levels are sampled isotropically in the center of
 //! mass. See the recoil methods documentation for the calibration basis and
 //! expected differences from evaluated MF=6 data.
 struct AngularParams {
@@ -313,7 +313,7 @@ struct AngularParams {
 //!         + c_2\ln\!\left(1 + \frac{E_\text{in}}{10\,\text{MeV}}\right)
 //!         + c_3 A_D^{-1/3} + c_4\frac{N_D - Z_D}{A_D}. \f]
 //!
-//! \param[in] E_cm          Emitted ion centre-of-mass energy in [eV]
+//! \param[in] E_cm          Emitted ion center-of-mass energy in [eV]
 //! \param[in] E_max_shape   Shape endpoint of the ground-state channel in [eV]
 //! \param[in] E_in          Incident neutron energy in [eV]
 //! \param[in] daughter      Charge and mass number of the recoil nucleus

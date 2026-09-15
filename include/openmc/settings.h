@@ -27,7 +27,7 @@ enum class SSWCellType {
 //! How to treat light charged particles that the nuclear data library does not
 //! describe. ACE-derived libraries carry only neutron and photon products, so
 //! the proton, deuteron, triton, helium-3, and alpha ions of channels such as
-//! (n,p), (n,alpha), and (n,np) have to be modelled or ignored.
+//! (n,p), (n,alpha), and (n,np) have to be modeled or ignored.
 enum class RecoilLightIonModel {
   statistical, //!< empirical evaporation spectrum with a Coulomb barrier
   none,        //!< ignore them; the residual recoils against the neutrons only
