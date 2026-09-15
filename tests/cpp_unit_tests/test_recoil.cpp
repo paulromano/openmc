@@ -129,8 +129,7 @@ TEST_CASE("Light-ion spectrum agrees with the Python implementation")
 {
   // Compared in log space. Below the barrier the density itself underflows to
   // zero in both languages, so comparing densities there would confirm only
-  // that both underflowed; the log is finite hundreds of decades down, which
-  // is where an implementation that still clamped its exponent would show up.
+  // that both underflowed. The finite log density tests the sub-barrier shape.
   Fixture fx = read_fixture();
   REQUIRE(fx.found);
   REQUIRE(fx.log_pdf.size() > 100);
@@ -144,11 +143,9 @@ TEST_CASE("Light-ion spectrum agrees with the Python implementation")
     REQUIRE(std::isfinite(got));
     // Relative in the log, so a density of 1e-300 is held to the same standard
     // as one of order unity. A discrepancy of 1e-10 in ln P is a 1e-10
-    // relative discrepancy in the density itself, which is what remains once
-    // both sides use the same masses and only the association order of the
-    // square roots and the softplus differs. Anything larger means a constant
-    // or an expression has drifted apart, which is what happened when the two
-    // carried separate light-ion mass tables: the disagreement was 1.4e-7.
+    // relative discrepancy in the density itself. The tolerance accommodates
+    // differences in association order for the square roots and softplus while
+    // still detecting a drift in constants, masses, or expressions.
     worst = std::max(
       worst, std::fabs(got - r.log_p) / std::max(std::fabs(r.log_p), 1.0));
     REQUIRE(
@@ -247,7 +244,7 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
     double e_in = 14.0e6;
     double budget = e_in + q;
     double e_out = 0.5 * (budget - 1.0);
-    REQUIRE(2.0 * e_out <= budget); // the old predicate accepted this
+    REQUIRE(2.0 * e_out <= budget);
 
     double m_n = MASS_NEUTRON * AMU_EV;
     double pz =
@@ -320,13 +317,11 @@ TEST_CASE("Light-ion emission spectrum")
           0.01 * recoil::light_ion_pdf(9.0e6, E_max, Z_b, A_b, Z_d, A_d));
 
   // Neutral light ions feel no barrier, so the spectrum is
-  // E*(1 - E/E_max)^nu with nu the calibrated endpoint exponent. Written
-  // against LightIonParams rather than a hardcoded exponent so that a refit
-  // does not silently break a test whose subject is the barrier, not nu.
-  const recoil::LightIonParams deployed {};
+  // E*(1 - E/E_max)^nu with the configured endpoint exponent.
+  const recoil::LightIonParams params {};
   double neutral = recoil::light_ion_pdf(0.5 * E_max, E_max, 0, 1, Z_d, A_d);
   REQUIRE(
-    neutral == Approx(0.5 * E_max * std::pow(0.5, deployed.nu)).epsilon(1e-12));
+    neutral == Approx(0.5 * E_max * std::pow(0.5, params.nu)).epsilon(1e-12));
 
   SECTION("sampling reproduces the spectrum mean")
   {
@@ -370,14 +365,11 @@ TEST_CASE("Light-ion emission spectrum")
   }
 }
 
-TEST_CASE("Light-ion spectrum: parameterized overload matches the deployed one")
+TEST_CASE("Light-ion spectrum: default and parameterized forms agree")
 {
-  // The parameterized overload exists so that candidate parameter sets can be
-  // scored against evaluated data through the same code path the transport
-  // kernel uses, rather than against a reimplementation in the fitting
-  // scripts. That is only worth anything if the default-constructed parameters
-  // reproduce the fixed constants bit for bit.
-  const recoil::LightIonParams deployed {};
+  // Exact-code-path validation relies on the default parameter object selecting
+  // the same constants as transport.
+  const recoil::LightIonParams params {};
   for (int Z_b : {1, 2}) {
     for (int A_b : {1, 4}) {
       for (int Z_d : {6, 26, 74}) {
@@ -385,9 +377,8 @@ TEST_CASE("Light-ion spectrum: parameterized overload matches the deployed one")
         double E_max = 12.0e6;
         for (double frac : {0.01, 0.1, 0.35, 0.5, 0.75, 0.95, 0.999}) {
           double E = frac * E_max;
-          REQUIRE(
-            recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d) ==
-            recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed));
+          REQUIRE(recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d) ==
+                  recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params));
         }
       }
     }
@@ -395,16 +386,11 @@ TEST_CASE("Light-ion spectrum: parameterized overload matches the deployed one")
 }
 TEST_CASE("Light-ion spectrum: the endpoint exponent behaves as expected")
 {
-  // A larger nu must soften the spectrum, i.e. lower its mean. The second
-  // field is the dimensionless Gamow strength g; these tests used to pass
-  // 0.8e6 there, which is the Hill-Wheeler diffuseness in eV that the field
-  // held two calibrations ago. At g = 8e5 the exponent is enormous at every
-  // energy and the transmission is a step function at the barrier, so the
-  // tests exercised a model nobody deploys and would have passed whatever the
-  // Gamow form did.
-  const recoil::LightIonParams deployed {};
+  // A larger nu must soften the spectrum, i.e. lower its mean. Preserve the
+  // configured radius and dimensionless Gamow strength while varying nu.
+  const recoil::LightIonParams params {};
   auto mean_of = [&](double nu) {
-    recoil::LightIonParams par {deployed.r0, deployed.g, nu};
+    recoil::LightIonParams par {params.r0, params.g, nu};
     const int N = 4000;
     double E_max = 10.0e6, num = 0.0, den = 0.0, prev_f = 0.0, prev_E = 0.0;
     for (int i = 0; i <= N; ++i) {
@@ -421,14 +407,13 @@ TEST_CASE("Light-ion spectrum: the endpoint exponent behaves as expected")
   };
   REQUIRE(mean_of(2.0) < mean_of(1.0));
   REQUIRE(mean_of(1.0) < mean_of(0.5));
-  REQUIRE(mean_of(deployed.nu) == Approx(mean_of(deployed.nu)).epsilon(1e-12));
 }
 
 TEST_CASE("Light-ion spectrum: log space and the direct form agree")
 {
   // Above the barrier the two must be the same number; below it only the log
   // form has one.
-  const recoil::LightIonParams deployed {};
+  const recoil::LightIonParams params {};
   const double E_max = 12.0e6;
   for (int Z_b : {0, 1, 2}) {
     int A_b = (Z_b == 2) ? 4 : (Z_b == 1 ? 1 : 1);
@@ -437,9 +422,9 @@ TEST_CASE("Light-ion spectrum: log space and the direct form agree")
       for (double frac : {0.2, 0.5, 0.9}) {
         double E = frac * E_max;
         double direct =
-          recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed);
+          recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
         double logged =
-          recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed);
+          recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
         if (direct > 0.0) {
           REQUIRE(std::log(direct) == Approx(logged).epsilon(1e-12));
         }
@@ -451,33 +436,30 @@ TEST_CASE("Light-ion spectrum: log space and the direct form agree")
 
 TEST_CASE("Light-ion spectrum: no exponent floor below the barrier")
 {
-  // The clamped form floored the transmission, so far below the barrier the
-  // spectrum reverted to E (1-E/E_max)^nu and carried no barrier shape at all.
-  // The log form must keep falling.
-  const recoil::LightIonParams deployed {};
+  // Far below the barrier the log density must keep falling rather than
+  // flattening to the E (1-E/E_max)^nu factor.
+  const recoil::LightIonParams params {};
   const double E_max = 20.0e6;
   const int Z_b = 2, A_b = 3, Z_d = 74, A_d = 184; // He-3 on tungsten
 
   auto lp = [&](double E) {
-    return recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, deployed);
+    return recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
   };
   REQUIRE(std::isfinite(lp(0.2e6)));
   REQUIRE(lp(0.2e6) < lp(0.4e6));
   REQUIRE(lp(0.4e6) < lp(0.8e6));
-  // and the fall is steep: with the exponent clamped at 60 the transmission is
-  // the same constant at all three energies and the differences collapse to
-  // the E (1-E/E_max)^nu factor alone, which is under 1.5 in the log
+  // The barrier contribution makes the fall much steeper than the endpoint
+  // factor alone, whose log change is under 1.5 here.
   REQUIRE(lp(0.4e6) - lp(0.2e6) > 5.0);
 
   // Far enough down, the direct form has nothing left. log p reaches -830 at
   // 20 keV, which is well past the -745 where exp() underflows to exactly
-  // zero -- so a spectrum evaluated directly is identically zero across that
-  // whole region and cannot be normalized, which is what the clamp existed to
-  // paper over.
+  // zero. The finite log density is therefore required to normalize this
+  // region without changing its shape.
   REQUIRE(lp(2.0e4) < -745.0);
   REQUIRE(std::isfinite(lp(2.0e4)));
   REQUIRE(
-    recoil::light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, deployed) == 0.0);
+    recoil::light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, params) == 0.0);
 }
 
 TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
@@ -485,7 +467,7 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
   // A distribution test, not a mean test. The sampler inverts a tabulated
   // cumulative, so the thing that can go wrong is the shape between table
   // points, which a mean is largely blind to.
-  const recoil::LightIonParams deployed {};
+  const recoil::LightIonParams params {};
 
   struct Case {
     const char* name;
@@ -516,7 +498,7 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     std::vector<double> f(NQ + 1);
     for (int i = 0; i <= NQ; ++i) {
       f[i] = recoil::light_ion_log_pdf(
-        c.E_limit * i / NQ, c.E_max, c.Z_b, c.A_b, c.Z_d, c.A_d, deployed);
+        c.E_limit * i / NQ, c.E_max, c.Z_b, c.A_b, c.Z_d, c.A_d, params);
       log_peak = std::max(log_peak, f[i]);
     }
     REQUIRE(std::isfinite(log_peak));
@@ -534,16 +516,14 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     uint64_t seed = 20240814ULL;
     const int N = 200000;
     std::vector<int> hist(NQ, 0);
-    double sum = 0.0, max_drawn = 0.0;
-    std::vector<int> repeats(NQ, 0);
+    double max_drawn = 0.0;
     for (int i = 0; i < N; ++i) {
       double E = recoil::sample_light_ion_energy(
-        c.E_max, c.E_limit, c.Z_b, c.A_b, c.Z_d, c.A_d, &seed, deployed);
+        c.E_max, c.E_limit, c.Z_b, c.A_b, c.Z_d, c.A_d, &seed, params);
       REQUIRE(E >= 0.0);
       REQUIRE(E <= c.E_limit);
       int bin = std::min(static_cast<int>(E / c.E_limit * NQ), NQ - 1);
       ++hist[bin];
-      sum += E;
       max_drawn = std::max(max_drawn, E);
     }
 
@@ -557,9 +537,7 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     }
     REQUIRE(ks < 0.01);
 
-    // No point mass. The old fallback returned one particular scan point on
-    // every failed draw, which shows up as a single bin holding a finite
-    // fraction of the sample.
+    // No bin may contain a point mass inconsistent with the continuous CDF.
     int busiest = *std::max_element(hist.begin(), hist.end());
     REQUIRE(busiest < N / 20);
 
@@ -570,19 +548,19 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
 
 TEST_CASE("Light-ion sampler is bounded and never fabricates a value")
 {
-  const recoil::LightIonParams deployed {};
+  const recoil::LightIonParams params {};
   uint64_t seed = 7ULL;
 
   // A channel with no probability anywhere returns zero rather than a guess
   REQUIRE(recoil::sample_light_ion_energy(
-            0.0, 0.0, 2, 4, 24, 52, &seed, deployed) == 0.0);
+            0.0, 0.0, 2, 4, 24, 52, &seed, params) == 0.0);
   REQUIRE(recoil::sample_light_ion_energy(
-            -1.0, 1.0e6, 2, 4, 24, 52, &seed, deployed) == 0.0);
+            -1.0, 1.0e6, 2, 4, 24, 52, &seed, params) == 0.0);
 
   // A limit above the endpoint is clipped to it, not honoured
   for (int i = 0; i < 1000; ++i) {
     double E = recoil::sample_light_ion_energy(
-      5.0e6, 9.0e6, 2, 4, 24, 52, &seed, deployed);
+      5.0e6, 9.0e6, 2, 4, 24, 52, &seed, params);
     REQUIRE(E <= 5.0e6);
   }
 
@@ -595,15 +573,15 @@ TEST_CASE("Light-ion sampler is bounded and never fabricates a value")
   for (double limit : {1.0e3, 1.0e4, 1.0e5}) {
     double lo = limit, hi = 0.0;
     int distinct = 0;
-    double previous = -1.0;
+    double last_energy = -1.0;
     for (int i = 0; i < 2000; ++i) {
       double E = recoil::sample_light_ion_energy(
-        15.0e6, limit, 2, 4, 74, 184, &seed, deployed);
+        15.0e6, limit, 2, 4, 74, 184, &seed, params);
       REQUIRE(E >= 0.0);
       REQUIRE(E <= limit);
-      if (E != previous)
+      if (E != last_energy)
         ++distinct;
-      previous = E;
+      last_energy = E;
       lo = std::min(lo, E);
       hi = std::max(hi, E);
     }

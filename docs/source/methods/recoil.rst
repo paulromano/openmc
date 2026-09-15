@@ -67,11 +67,11 @@ Electron *binding* energy is neglected: it does not cancel exactly in a
 charged-particle Q value, but the residue is 13.6 eV for a proton channel,
 79 eV for an alpha, and a few keV on a heavy target.
 
-Mixing the two conventions is the error worth guarding against. A Q value built
-from atomic targets and nuclear light ions is wrong by :math:`Z_b m_e c^2`,
-which is 1.02 MeV for an alpha channel. A nuclide with no tabulated mass yields
-no budget and therefore no recoil record, rather than a fabricated mass and a Q
-value wrong by tens of MeV.
+All masses in a Q-value calculation use the nuclear convention. Mixing atomic
+target masses with nuclear light-ion masses would introduce a
+:math:`Z_b m_e c^2` offset, equal to 1.02 MeV for an alpha channel. A nuclide
+with no tabulated mass yields no mass-derived budget and therefore no recoil
+record.
 
 The PDG-keyed ``ATOMIC_MASS`` lookup is not itself a nuclear-mass table: most
 nuclide entries are neutral-atom masses, while several light-particle entries
@@ -101,11 +101,10 @@ warns that such a value cannot be relied on for energy-release calculations,
 and it is ``QI`` that both the ACE and the direct-ENDF readers store in
 :attr:`Reaction.q_value`.
 
-For a lumped channel the two agree. For the continuum member of a split
-representation — MT = 649, 699, 749, 799, 849 — ``QI`` lies below the release by
-a median 3.5 keV and by as much as 7.0 MeV, measured over 190 such channels in
-ENDF/B-VIII.1, JEFF-4.0, JENDL-5 and TENDL-2025. Using it as the budget
-truncates the modelled light-ion spectrum well inside the evaluated one.
+For a lumped channel the two generally agree. For the continuum member of a
+split representation — MT = 649, 699, 749, 799, 849 — ``QI`` can lie well below
+the ground-state release, so using it as the event budget can truncate the
+modelled light-ion spectrum inside the evaluated one.
 
 OpenMC therefore uses :eq:`recoil-qm` for continuum, lumped and multiparticle
 channels, and the evaluated ``QI`` only for MT numbers that name one residual
@@ -141,10 +140,9 @@ leaves the daughter recoiling against it, so
     E_{b,\max} = U \frac{M_D}{m_b + M_D} , \qquad
     E_x = U - E_b^\text{cm}\left(1 + \frac{m_b}{M_D}\right) \ge 0 ,
 
-with :math:`M_D` the daughter plus any product not yet emitted. These
-expressions are shared with the offline calibration through a checked-in
-fixture of 374 cases, so the distribution the transport kernel samples is the
-one the surrogate was fitted to.
+with :math:`M_D` the daughter plus any product not yet emitted. The offline
+calibration uses these same expressions so that its spectrum definition
+matches the transport implementation.
 
 Elastic scattering and evaluated one-neutron inelastic laws are exceptions to
 the final-product mass lookup. Their outgoing neutron laws were processed and
@@ -263,9 +261,10 @@ Reconstruction can fail if every auxiliary trial is rejected or if the fixed,
 transported neutron itself leaves no feasible remainder. When it does, neutron
 transport is unchanged and the event produces **no recoil record at all**,
 rather than omitting a neutron or banking an energetically impossible recoil.
-The same rule applies to a light ion that cannot be emitted. Every such event is
-counted, so a channel that fails often is visible rather than merely
-underrepresented.
+The same rule applies to a light ion that cannot be emitted. Such failures can
+underrepresent the channel in a recoil tally; OpenMC does not report a runtime
+coverage counter, so coverage must be checked by comparing reaction and
+residual-production tally weights.
 
 With uncorrelated emission directions the cross terms in :eq:`recoil-momentum`
 average out and the mean recoil approaches
@@ -387,8 +386,7 @@ The decisive feature is the :math:`E^{-1/2}` inside the exponent. Because
 :math:`\eta` grows as :math:`E` falls, so does the decay constant of the
 transmission — which is the widening of the barrier at lower energy. A
 Hill-Wheeler transmission [HillWheeler1953]_ with a fixed diffuseness falls at
-one rate everywhere and cannot reproduce it; the Gamow form replaced it for
-that reason.
+one rate everywhere and therefore does not represent this energy dependence.
 
 The expression is evaluated in log space, as
 :math:`\ln T_C = -\operatorname{softplus}(2\pi g[\eta - \eta_B])`, with no bound
@@ -464,52 +462,30 @@ incident energy and the size and neutron excess of the recoil nucleus,
 calibrated against evaluated MF=6 LANG=2 distributions. Only :math:`r` is a
 substitution.
 
-This applies to continuum channels only. Kalbach's systematics describe a
-channel fed by pre-equilibrium emission, and a named level is not one:
-measured against 25,000 evaluated discrete distributions, carrying the
-systematics onto MT = 600-849 doubles the recoil Wasserstein error relative to
-assuming nothing and biases the first Legendre moment by :math:`+0.12`.
-**Discrete charged-particle levels are therefore sampled isotropically in the
-centre of mass**, which leaves that bias at :math:`-0.04`. No fitted angular
-correction on top of isotropy survived being held out across libraries, so
-none is applied; the residual error there is smaller than the disagreement
-between libraries evaluating the same channel.
+This applies to continuum channels only. Kalbach's systematics describe
+pre-equilibrium emission rather than a named residual level. Because
+ACE-derived libraries provide no charged-particle angle for MT = 600-849,
+**discrete charged-particle levels are sampled isotropically in the centre of
+mass**.
 
 .. _methods_recoil_zero_tails:
 
 Why :math:`r` disagrees with the evaluations near the endpoint
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Anyone comparing the :math:`r` above against evaluated MF=6 LANG=2 data will
-find a large disagreement at high outgoing energy, and it is worth saying
-plainly that the disagreement is expected and that the evaluations are the
-side to distrust.
+Many evaluated MF=6 LANG=2 distributions contain a contiguous run of exactly
+zero :math:`r` through the high-energy endpoint, often covering the mode and
+most of the outgoing-energy probability. The abrupt transition, confinement to
+the end of the table, and occurrence of values clipped at both zero and one are
+consistent with a filled or bounded field rather than resolved angular
+physics.
 
-Across 34,136 subsections of ENDF/B-VIII.1, JEFF-4.0 and TENDL-2025 over the
-stable nuclides, 84% carry a contiguous run of **exactly zero** :math:`r`
-extending to the last tabulated outgoing energy, and those runs hold 79% of the
-probability. They are not tails: in 22,966 of 28,945 cases the run contains the
-*mode* of the spectrum, and the median probability above its start is 0.979. In
-5,423 cases :math:`r` sits at exactly one for several nodes and then steps
-straight to exactly zero, which is a quantity clipped at both of its bounds
-rather than measured. A zero never once occurs in the interior of a spectrum;
-it only ever runs to the end of the table.
-
-The control is the 856 subsections that carry no exact zero anywhere. Compared
-within the two libraries that produce both kinds, filled and unfilled
-subsections agree to within 3% up to :math:`x \approx 0.5` and then diverge by
-a factor of 250: the unfilled ones rise to a plateau at :math:`r \approx 0.82`
-and hold it to the endpoint, which is what pre-equilibrium systematics predict.
-In the two bands above :math:`x = 0.8`, where the fill holds 86% and 91% of the
-weight, the model above predicts 0.823 and 0.816 against the unfilled
-evaluations' 0.819 and 0.815.
-
-So the model agrees with the evaluations that were not filled, and disagrees
-with a fill. Scored only on nodes where the reference is not fill, it gives a
-cosine Wasserstein distance of 0.032 and a recoil log-RMS of 0.058; scored on
-the same channels with the filled nodes included, 0.105 and 0.149. Refitting
-the model against the fill-removed data changes it by less than the
-disagreement between libraries and is not done.
+The logistic prescription is calibrated to the nonzero portion of the
+evaluated data. It can therefore disagree sharply with these zero-filled nodes
+near the endpoint while remaining consistent with evaluated distributions that
+do not contain the fill. This is an expected limitation of comparisons against
+the marginal MF=6 representation, not an eventwise angular correlation supplied
+by the library.
 
 Setting ``light_ion_model`` to ``'none'`` skips this model entirely, in which
 case the recoil of a charged-particle channel recoils against the incident
@@ -547,33 +523,21 @@ evaluation, a 4% difference in :math:`1 - \bar\mu` and therefore in the mean
 elastic recoil energy. This is a data-processing difference upstream of the
 transport code, not a difference between the recoil models.
 
-**Some evaluations store recoil arrays that violate momentum conservation.**
-Evaluations generated with TALYS write an explicit recoil subsection in
-MF=6, and NJOY uses it in preference to computing the recoil. For MT = 91 in
-TENDL those arrays are tabulated on a coarse grid of about twenty uniform bins
-starting at zero recoil energy, and they are systematically softer than the
-evaluation's own neutron distribution requires. For Fe-56 at 14 MeV the stored
-array has a mean of 0.175 MeV where momentum balance against the same file's
-Kalbach-Mann neutron spectrum gives 0.286 MeV, and it places 43% of the recoils
-below 47 keV even though the kinematic minimum is 8 keV. The same pattern holds
-for every TENDL nuclide examined, with stored-to-balanced ratios of 0.28 to
-0.71. The ENDF/B-VIII.1 recoil arrays for the same reaction are consistent with
-momentum balance to within a few percent. OpenMC reports the momentum-conserving
-result in both cases.
+**Some evaluations store recoil arrays that are inconsistent with momentum
+balance.** Evaluations generated with TALYS can provide an explicit MF=6 recoil
+subsection, which NJOY uses in preference to reconstructing the recoil from the
+emitted neutron. Some TENDL MT = 91 arrays are substantially softer than the
+same evaluation's neutron distribution requires. OpenMC reports the recoil
+obtained by momentum balance against the sampled neutron.
 
 Because the light-ion model of :eq:`recoil-light-ion` is a calibrated surrogate
-rather than evaluated data, agreement for the charged-particle channels should
-be treated as approximate. Measured against 37,640 evaluated centre-of-mass
-spectra from ENDF/B-VIII.1, JEFF-4.0 and TENDL-2025 over the stable nuclides,
-the mean light-ion energy reproduces the evaluated value with a
-root-mean-square log scatter of 0.151 and a bias of :math:`+1.9\%`, and the
-spectral Wasserstein distance is 7.6% of the endpoint. Individual
-nuclide-energy-channel combinations can differ by 20% or more, and near
-threshold by considerably more. Held out a library at a time the Wasserstein
-distance is 0.0757 against 0.0757 in sample, so this is not an artifact of any
-one evaluation family -- but the calibration and the comparison do draw on the
-same evaluations, so it measures consistency with them rather than accuracy
-against measured spectra.
+rather than evaluated data, agreement for charged-particle channels is
+approximate. Validation against evaluated centre-of-mass spectra from several
+general-purpose libraries shows useful agreement in aggregate, but individual
+nuclide-energy-channel combinations can differ substantially, especially near
+threshold. Because the calibration and comparison draw on evaluated spectra,
+they measure consistency with those evaluations rather than accuracy against
+experimental charged-particle measurements.
 
 -----------
 Limitations
@@ -596,8 +560,9 @@ Limitations
   correlated joint distribution, and no ordering of the emitted products is
   implied by the order in which they are constructed.
 - An event whose exit channel cannot be completed produces no record, so a
-  channel with a low sampling success rate is underrepresented in the tally by
-  the amount the counters report.
+  channel with a low sampling success rate is underrepresented in the tally.
+  OpenMC provides no runtime recoil-coverage counter; compare reaction and
+  residual-production tally weights when quantifying coverage.
 - The light-ion model omits optical-model transmission coefficients, explicit
   level densities, channel competition, direct reactions, and evaluated
   sequential decay.

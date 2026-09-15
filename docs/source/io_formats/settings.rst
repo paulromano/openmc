@@ -697,7 +697,7 @@ The ``<recoil_production>`` element has no attributes and has an accepted value
 of "true" or "false". If set to "true", supported continuous-energy neutron
 reactions will produce the recoiling residual nucleus and, optionally, the light
 ions emitted by the reaction as secondary particles. Recoil and light-ion
-production can scored by :ref:`particle production filters <filter>`; they are
+production can be scored by :ref:`particle production filters <filter>`; they are
 not transported. Bound :math:`S(\alpha,\beta)` and NCrystal scattering, fission
 fragments, and multigroup transport are currently not handled.
 

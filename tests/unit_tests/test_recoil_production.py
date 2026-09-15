@@ -1,9 +1,4 @@
-"""Physics checks on recoil (primary knock-on atom) production.
-
-These run tiny fixed-source problems and check properties of the recoil
-spectrum that follow from kinematics alone, so they hold for any nuclear data
-library rather than only for the reference one.
-"""
+"""Physics checks on recoil (primary knock-on atom) production."""
 
 import numpy as np
 import pytest
@@ -142,7 +137,6 @@ def test_elastic_recoil_energy_balance(run_in_tmpdir):
 def test_capture_recoil_scale(run_in_tmpdir):
     """Thermal capture recoil is set by the photon kick, not by E_in."""
     energy = 0.0253
-    nuclide = 'Fe56'
     e_bins = np.logspace(0, 4, 121)
     model = _one_collision_model('Fe56', energy, ['Fe57'], e_bins,
                                  mts=['(n,gamma)'], particles=20000,
@@ -198,8 +192,7 @@ def test_discrete_alpha_products_close_the_banked_energy(run_in_tmpdir):
         openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
     budget = energy + lib[800].q_value
 
-    # A 240 eV bin width makes the histogram-derived sum sensitive to the
-    # 1.256 keV excess caused by the former mixed mass convention.
+    # A 240 eV bin width resolves sub-keV departures from energy closure.
     e_bins = np.linspace(0.0, budget * 1.001, 20001)
     model = _one_collision_model(
         nuclide, energy, ['He4', 'Li7'], e_bins, mts=[800],
@@ -329,10 +322,7 @@ def test_fission_does_not_produce_a_nonfission_recoil(run_in_tmpdir):
     """No recoil may be attributed to a fission MT.
 
     Fission fragments are out of scope, so a fission absorption must produce
-    nothing. It used to produce a fabricated capture or (n,alpha) recoil
-    whenever no source site had been banked, because the exit channel was drawn
-    from the nonfission subset while the decision to draw at all was gated on
-    an unrelated flag.
+    no recoil record. Capture on the same nuclide must still produce U-236.
     """
     e_bins = np.logspace(0, np.log10(1.0e6), 61)
     model = _fissionable_model(
@@ -346,13 +336,7 @@ def test_fission_does_not_produce_a_nonfission_recoil(run_in_tmpdir):
 
 
 def test_capture_recoil_survives_a_banked_fission_site(run_in_tmpdir):
-    """Banking a fission site must not suppress a real capture recoil.
-
-    This is the failure that made the feature unusable on any fissionable
-    nuclide in eigenvalue mode: nu is around 2.4, so a site was almost always
-    banked and p.fission() was almost always true, which suppressed every
-    absorption recoil including the captures.
-    """
+    """Fission-site banking must not change capture-recoil production."""
     e_bins = np.logspace(0, np.log10(1.0e6), 61)
 
     def capture_rate(**kw):
@@ -361,10 +345,9 @@ def test_capture_recoil_survives_a_banked_fission_site(run_in_tmpdir):
         return _run(model, run_in_tmpdir).sum()
 
     # Both runs see the same source spectrum; they differ only in whether the
-    # fission sites that spectrum produces are banked, which is precisely the
-    # thing that must not matter. An eigenvalue comparison would not be
-    # like-for-like, because after the first batch its source is the fission
-    # spectrum rather than the thermal point source.
+    # fission sites that spectrum produces are banked. An eigenvalue comparison
+    # would not be like-for-like, because after the first batch its source is the
+    # fission spectrum rather than the thermal point source.
     without_sites = capture_rate(create_fission_neutrons=False)
     with_sites = capture_rate(create_fission_neutrons=True)
 
@@ -375,14 +358,11 @@ def test_capture_recoil_survives_a_banked_fission_site(run_in_tmpdir):
 
 
 def test_capture_recoil_is_produced_in_eigenvalue_mode(run_in_tmpdir):
-    """The same thing again where p.fission() was true on almost every event.
+    """Capture recoils are produced on a fissionable nuclide in eigenvalue mode.
 
-    Nu is around 2.4, so a site was banked at essentially every fission and the
-    flag suppressed every absorption recoil on the nuclide, captures included.
-    A rate comparison against fixed source would not be like-for-like -- the
-    eigenvalue source becomes the fission spectrum after the first batch -- so
-    the claim tested here is only that production happens at all, which it did
-    not before.
+    A rate comparison against fixed source would not be like-for-like because
+    the eigenvalue source becomes the fission spectrum after the first batch;
+    this test checks only that capture production occurs.
     """
     e_bins = np.logspace(0, np.log10(1.0e6), 61)
     model = _fissionable_model('U235', 0.0253, ['U236'], e_bins,
@@ -441,8 +421,8 @@ def test_analog_and_survival_biased_production_agree(run_in_tmpdir):
     assert abs(biased - analog) / analog < 0.10, (analog, biased)
 
 
-def test_a_nonfissionable_nuclide_is_unaffected(run_in_tmpdir):
-    """The change must not touch the common case."""
+def test_nonfissionable_capture_produces_the_residual(run_in_tmpdir):
+    """Capture on a nonfissionable nuclide produces its residual."""
     e_bins = np.logspace(0, 4, 61)
     model = _one_collision_model('Fe56', 0.0253, ['Fe57'], e_bins,
                                  mts=['(n,gamma)'], density=7.874)

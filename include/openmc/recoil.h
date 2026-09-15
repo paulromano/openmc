@@ -54,9 +54,8 @@ struct AtomicNumbers {
 //!
 //! Masses are **nuclear**, obtained from the atomic mass as
 //! \f$M_\text{nuc}(Z,A) = M_\text{atom}(Z,A) - Z m_e\f$ with the five light
-//! ions taken from their CODATA values. Mixing conventions is the error to
-//! avoid: a Q value built from atomic targets and nuclear light ions is wrong
-//! by \f$Z_b m_e c^2\f$, which is 1.02 MeV for an alpha channel.
+//! ions taken from their CODATA values. All masses in a Q-value calculation
+//! must use this convention.
 //! Evaluated elastic and one-neutron inelastic laws retain the target AWR with
 //! which their outgoing-neutron kinematics were processed.
 //! @{
@@ -64,9 +63,8 @@ struct AtomicNumbers {
 
 //! Nuclear rest mass of a nuclide or light ion in [eV]
 //!
-//! \return zero when the mass is not tabulated. Callers must check: a
-//!         fabricated mass produces a Q value wrong by tens of MeV, which is
-//!         worse than producing no recoil at all.
+//! \return zero when the mass is not tabulated. Mass-derived Q values require
+//!         tabulated masses and must fail when one is unavailable.
 double nuclear_mass_ev(AtomicNumbers za);
 
 //! Nuclear mass less \f$A\f$ mass units, in [eV]
@@ -85,9 +83,8 @@ double mass_excess_ev(AtomicNumbers za);
 //! where the daughter \f$D\f$ is whatever the emitted particles leave behind.
 //! This is the rest-mass energy release, which is what an event budget needs.
 //! It is *not* what ENDF MF=3 \c QI holds for a continuum, level-range or
-//! summation channel: there \c QI is a threshold-setting value, and across
-//! 418 evaluated channels in four libraries it sits up to 7.0 MeV below
-//! \f$Q_M\f$.
+//! summation channel, where \c QI is a threshold-setting value that can lie
+//! below \f$Q_M\f$.
 //!
 //! \param[in] target     Charge and mass number of the target
 //! \param[in] emitted    Charge and mass number of each emitted particle
@@ -189,10 +186,9 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
 //! \param[in] weight        Weight to assign to the recoil products
 //! \param[in] E_in          Incident neutron energy in [eV]
 //! \param[in] u_in          Incident neutron direction
-//! \param[in] rx            Reaction that was sampled; no products are made
-//!                          if this is nullptr
+//! \param[in] rx            Reaction that was sampled
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
-  Direction u_in, const Reaction* rx);
+  Direction u_in, const Reaction& rx);
 
 //! Identity of the recoil left by a reaction
 //!
@@ -215,7 +211,8 @@ double particle_mass_ev(ParticleType type);
 //! Centre-of-mass kinetic energy of a light ion emitted from an excited system
 //!
 //! Samples the empirical evaporation spectrum described in
-//! \ref light_ion_pdf() by rejection.
+//! \ref light_ion_pdf() by inverting a fixed-grid cumulative distribution
+//! constructed in log space.
 //!
 //! \param[in] E_max     Endpoint that sets the spectrum shape in [eV], namely
 //!                      the kinematic maximum of the channel that emits this
@@ -230,8 +227,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 
 //! Kalbach-Mann slope parameter \f$a\f$ from the 1988 systematics
 //!
-//! Exposed so that angular candidates can be scored through this exact code
-//! path rather than a reimplementation of it.
+//! Used by transport and by exact-code-path validation of the angular model.
 //!
 //! \param[in] E_in     Incident neutron energy in [eV]
 //! \param[in] E_cm     Emitted particle centre-of-mass energy in [eV]
@@ -278,23 +274,17 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //! documentation.
 //!
 //! \note The transmission is evaluated as \f$-\operatorname{softplus}\f$ of
-//!       the exponent, with no bound on it. An earlier implementation clamped
-//!       the exponent at \f$\pm 60\f$ because \f$1/(1+e^x)\f$ underflows to
-//!       exactly zero below the barrier and leaves nothing to normalize. That
-//!       clamp floored the transmission at a constant and flattened the
-//!       spectrum to \f$E(1-E/E_\text{max})^\nu\f$ wherever a channel lay
-//!       deep below the barrier, which erased the barrier shape from the
-//!       helium-3 channels almost entirely.
+//!       the exponent, without an artificial bound. This preserves relative
+//!       probabilities far below the barrier even when the direct density
+//!       underflows.
 double light_ion_pdf(
   double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
 
 //! Calibration constants of the light-ion spectrum
 //!
-//! There is one model and these are its parameters; the struct groups them so
-//! that they are documented and tested in one place, and so that a candidate
-//! set can be scored through the overloads below using this exact code path
-//! rather than a reimplementation of it. Nothing in the transport kernel passes
-//! anything but the defaults.
+//! The struct keeps the authoritative parameters together and permits
+//! exact-code-path validation through the overloads below. Transport uses the
+//! default values.
 struct LightIonParams {
   double r0 {1.36093}; //!< effective barrier radius in [fm]
   double g {0.48566};  //!< scales the WKB barrier exponent
@@ -303,22 +293,10 @@ struct LightIonParams {
 
 //! Calibration constants of the light-ion angular distribution
 //!
-//! The pre-equilibrium fraction of the Kalbach form. The deployed prescription
-//! was \f$r = E/E_{\max,\text{shape}}\f$, which is identically 1 at a
-//! ground-state channel because the shape endpoint is *defined* from that
-//! channel's Q value, so it asserted purely direct emission regardless of the
-//! reaction dynamics. Replaced by a logistic in quantities the transport kernel
-//! already has; see the recoil section of the methods documentation.
-//!
-//! These constants describe a **continuum** channel and are not applied to a
-//! named level, which is sampled isotropically in the centre of mass. Nor were
-//! they refitted when the corpus they were calibrated against was found to
-//! carry an exactly-zero pre-equilibrium fraction over 79% of its probability:
-//! measured on the nodes that are not that fill, they already agree with the
-//! evaluations to three decimal places in the bands where the fill dominates,
-//! and refitting without it moves them by less than the disagreement between
-//! libraries. The apparent discrepancy against evaluated MF=6 is documented in
-//! the methods section so that it is not mistaken for a defect here.
+//! These constants define the logistic pre-equilibrium fraction used for
+//! continuum channels. Named levels are sampled isotropically in the centre of
+//! mass. See the recoil methods documentation for the calibration basis and
+//! expected differences from evaluated MF=6 data.
 struct AngularParams {
   double c0 {-8.42909};         //!< constant
   double c1 {4.89255};          //!< coefficient of E/E_max_shape
@@ -350,8 +328,8 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
 //!     + \nu \ln\!\left(1 - E/E_\text{max}\right) \f]
 //!
 //! This is the primitive; light_ion_pdf() exponentiates it. Sub-barrier the
-//! spectrum spans hundreds of decades, so a code that needs relative
-//! probabilities there -- the sampler, or a fit -- must work here instead.
+//! spectrum spans hundreds of decades, so calculations requiring relative
+//! probabilities there use this representation.
 //!
 //! \return \f$-\infty\f$ outside \f$(0, E_\text{max})\f$
 double light_ion_log_pdf(
@@ -363,9 +341,8 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
 
 //! Unnormalized light-ion emission spectrum with explicit parameters
 //!
-//! \f$ P(E) \propto E\,T_C(E)\,(1 - E/E_\text{max})^\nu \f$. Calling this
-//! with a default-constructed LightIonParams is identical to the fixed-constant
-//! overload above; that equality is asserted in the C++ unit tests.
+//! \f$ P(E) \propto E\,T_C(E)\,(1 - E/E_\text{max})^\nu \f$. A
+//! default-constructed LightIonParams selects the transport parameters.
 double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
   const LightIonParams& par);
 

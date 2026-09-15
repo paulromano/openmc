@@ -269,7 +269,7 @@ class Settings:
         :class:`openmc.ParticleProductionFilter` can score them; they are not
         transported.
 
-        .. versionadded:: 0.15.4
+        .. versionadded:: 0.16.1
     recoil : dict
         Recoil model settings. Accepted keys are:
 
@@ -286,7 +286,7 @@ class Settings:
             (bool, default ``True``). Turning this off keeps only the heavy
             residual, which is all that a PKA or damage-energy tally needs.
 
-        .. versionadded:: 0.15.4
+        .. versionadded:: 0.16.1
     resonance_scattering : dict
         Settings for resonance elastic scattering. Accepted keys are 'enable'
         (bool), 'method' (str), 'energy_min' (float), 'energy_max' (float), and
@@ -1849,7 +1849,9 @@ class Settings:
     def _create_recoil_subelement(self, root):
         if self._recoil:
             element = ET.SubElement(root, "recoil")
-            for key in ('light_ion_model', 'emitted_ions'):
+            keys = itertools.chain(
+                _RECOIL_OPTION_VALUES, sorted(_RECOIL_BOOL_OPTIONS))
+            for key in keys:
                 if key in self._recoil:
                     subelement = ET.SubElement(element, key)
                     value = self._recoil[key]

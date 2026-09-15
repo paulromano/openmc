@@ -26,11 +26,9 @@ namespace {
 //==============================================================================
 // Tunable constants of the light-ion emission model
 //
-// The calibration itself lives in the defaults of LightIonParams and
-// AngularParams, so that a candidate parameter set can be scored through this
-// same code path. It was fitted to 3708 evaluated centre-of-mass spectra drawn
-// from six libraries, 29 nuclides, five light ions and incident energies from
-// 2 to 20 MeV.
+// The authoritative calibration is stored in the defaults of LightIonParams
+// and AngularParams. Parameterized overloads allow validation to exercise the
+// same formulas as transport.
 //==============================================================================
 
 //! Coulomb constant e^2/(4 pi eps0) in [eV fm]
@@ -39,8 +37,7 @@ constexpr double COULOMB_EV_FM = 1.44e6;
 //! Points in the tabulated cumulative the light-ion sampler inverts
 //!
 //! Sixty-four intervals put the sampled mean within 0.1% of the analytic one
-//! for every ion, daughter and truncation tested, at a fixed cost the previous
-//! rejection sampler only matched in its best case.
+//! over the validation cases while keeping the work per sample fixed.
 constexpr int N_TABLE = 64;
 
 //! Negative infinity, for a log density that is identically zero
@@ -243,20 +240,20 @@ struct ChargedProducts {
   AtomicNumbers za[MAX];
   int n {0};
 
-  void add(AtomicNumbers value, int count)
+  bool add(AtomicNumbers value, int count)
   {
-    for (int i = 0; i < count && n < MAX; ++i) {
+    if (count < 0 || count > MAX - n)
+      return false;
+    for (int i = 0; i < count; ++i) {
       za[n++] = value;
     }
+    return true;
   }
 
-  void fill(const EmittedParticles& e)
+  bool fill(const EmittedParticles& e)
   {
-    add({1, 1}, e.proton);
-    add({1, 2}, e.deuteron);
-    add({1, 3}, e.triton);
-    add({2, 3}, e.he3);
-    add({2, 4}, e.alpha);
+    return add({1, 1}, e.proton) && add({1, 2}, e.deuteron) &&
+           add({1, 3}, e.triton) && add({2, 3}, e.he3) && add({2, 4}, e.alpha);
   }
 };
 
@@ -272,7 +269,9 @@ int all_products(const EmittedParticles& e, AtomicNumbers* out, int capacity)
     e.neutron, e.proton, e.deuteron, e.triton, e.he3, e.alpha};
   int n = 0;
   for (int k = 0; k < 6; ++k) {
-    for (int i = 0; i < counts[k] && n < capacity; ++i) {
+    if (counts[k] < 0 || counts[k] > capacity - n)
+      return -1;
+    for (int i = 0; i < counts[k]; ++i) {
       out[n++] = kinds[k];
     }
   }
@@ -394,11 +393,9 @@ bool names_one_level(int mt)
 //! How far an evaluated level Q may sit above the ground-state mass budget
 //!
 //! A level Q above the ground-state budget means a negative excitation, which
-//! is unphysical. Small excesses are mass-table disagreement: across 418
-//! evaluated channels in four libraries, MF=3 \c QM departs from the AME2020
-//! mass difference by at most 90 keV. This threshold is comfortably above that
-//! and far below a real inconsistency, so an excess inside it is absorbed by
-//! capping and an excess beyond it means the evaluation cannot be reconciled.
+//! is unphysical. This tolerance accommodates differences between evaluated
+//! and AME2020 masses while remaining well below a physical level spacing that
+//! would indicate an inconsistent evaluation.
 constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
 
 //! Rest-mass energy release available to an event, in [eV]
@@ -406,11 +403,9 @@ constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
 //! ENDF stores two Q values and OpenMC keeps only one of them. \c Reaction::
 //! q_value_ is MF=3 \c QI, the Q of the lowest state the MT represents, or an
 //! effective value chosen to put the threshold in the right place when the MT
-//! names no unique state. For a discrete level that is exactly the budget
-//! wanted. For a continuum, level range or summation channel it is not: over
-//! the 190 split-representation channels of the calibration libraries it lies
-//! a median 3.5 keV and up to 7.0 MeV *below* the mass-difference Q, and using
-//! it truncates the modelled spectrum inside the evaluated one.
+//! names no unique state. It is the required budget for a discrete level but
+//! can truncate continuum, level-range, and summation channels below their
+//! ground-state mass-difference Q.
 //!
 //! \param[in] nuc      Target nuclide
 //! \param[in] rx       Reaction that was sampled
@@ -425,6 +420,10 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
   AtomicNumbers target {nuc.Z_, nuc.A_};
   AtomicNumbers products[ChargedProducts::MAX + 4];
   int n = all_products(emitted, products, ChargedProducts::MAX + 4);
+  if (n < 0) {
+    ok = false;
+    return 0.0;
+  }
 
   bool have_masses = false;
   double q_mass = mass_difference_q(target, products, n, have_masses);
@@ -433,8 +432,8 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
     if (have_masses)
       return q_mass;
     // No tabulated mass for this daughter. QI is then the only budget on
-    // offer; it is the right one for a lumped channel, where QI and QM agree
-    // in every evaluation examined, and too small for a split continuum.
+    // offer. It is suitable for a lumped channel but may be conservative for a
+    // split continuum.
     return rx.q_value_;
   }
 
@@ -534,7 +533,7 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
   double q = mass_difference_q(target, &ion, 1, ok);
   if (!ok)
     return 0.0;
-  AtomicNumbers daughter {target.Z + 0 - ion.Z, target.A + 1 - ion.A};
+  AtomicNumbers daughter {target.Z - ion.Z, target.A + 1 - ion.A};
   double m_b = nuclear_mass_ev(ion);
   double m_d = nuclear_mass_ev(daughter);
   double u = final_state_internal_energy(E_in, m_b + m_d, q);
@@ -646,16 +645,10 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
 
 //! Nuclear mass in [amu] for the Gamow reduced mass
 //!
-//! Deferred to the kinematic contract rather than tabulated separately here,
-//! which is how this came to hold a proton mass differing from the contract's
-//! in its eighth digit and a daughter mass of A neutron masses. Neither
-//! mattered physically -- the reduced mass moved by 1e-4 -- but two mass
-//! tables in one file is one too many, and the cross-language fixture caught
-//! the disagreement.
-//!
-//! Falls back on the mass number when the nuclide is not tabulated, which is
-//! acceptable here and only here: the reduced mass enters through a square
-//! root and a heavy daughter's contribution to it is already saturated.
+//! Uses the shared nuclear-mass contract. A missing tabulated mass falls back
+//! to the mass number only for this reduced-mass calculation, where the mass
+//! enters through a square root and the heavy-daughter contribution is already
+//! saturated.
 double gamow_mass_amu(AtomicNumbers za)
 {
   double m = nuclear_mass_ev(za);
@@ -689,14 +682,9 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
       (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
 
     // log T_C = -log(1 + e^arg) = -softplus(arg), evaluated so that neither
-    // limb overflows. There is no bound on the exponent here, and its absence
-    // is the point: the exponent diverges as E -> 0, and clamping it at 60 --
-    // which the direct form needed, because 1/(1+e^arg) underflows to exactly
-    // zero and leaves nothing to normalize -- floors the transmission at a
-    // constant and flattens the spectrum to E (1-E/E_max)^nu wherever a
-    // channel lies deep below the barrier. That erased the barrier shape from
-    // the He-3 channels almost entirely. In log space the relative
-    // probabilities survive to any depth.
+    // limb overflows. The exponent diverges as E -> 0 and must not be clamped:
+    // an artificial floor would flatten the sub-barrier spectrum. Log space
+    // preserves the relative probabilities even when the density underflows.
     log_p -= softplus(arg);
   }
   return log_p;
@@ -728,20 +716,10 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   if (!(E_limit > 0.0) || E_limit > E_max)
     E_limit = E_max;
 
-  // Tabulate the spectrum in log space, then invert its cumulative.
-  //
-  // The previous sampler scanned 33 points for a maximum, inflated it by 10%,
-  // and rejected up to 200 times; if all attempts failed it returned the scan
-  // maximizer, putting a point mass into the distribution. Nothing guaranteed
-  // that the inflated scan maximum bounded the true one, and a broad check
-  // that it happened to for the deployed parameters is not a property of the
-  // method. Inversion has neither problem: the work is exactly N_TABLE
-  // evaluations however peaked the spectrum is, there is no envelope to be
-  // wrong about, and there is no fallback.
-  //
-  // What it approximates instead is the shape between table points, by a
-  // straight line. That error is controlled and shrinks as N^-2, where a point
-  // mass is not controlled at all.
+  // Tabulate the spectrum in log space, then invert its cumulative. The work
+  // is exactly N_TABLE evaluations regardless of how peaked the spectrum is.
+  // Piecewise-linear interpolation between nodes gives a controlled error that
+  // decreases quadratically with the grid spacing.
   double f[N_TABLE + 1];
   double log_peak = -INFTY;
   const double dE = E_limit / N_TABLE;
@@ -885,12 +863,9 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     if (m_b <= 0.0 || m_d <= 0.0 || d.A <= 0 || d.Z < 0 || d.Z > d.A)
       return false;
 
-    // Kinematic endpoint allowed by this event and by the pure channel that
-    // emits this ion alone. The latter sets the spectrum shape. Both go
-    // through the kinematic contract, so both remove the translational energy
-    // of the entrance channel; the shape endpoint used to keep it, which made
-    // the distribution the transport kernel sampled differ from the one the
-    // calibration was fitted to.
+    // Kinematic endpoints for this event and for the pure channel that emits
+    // this ion alone. The latter sets the spectrum shape. Both use the same
+    // kinematic contract and remove the entrance-channel translational energy.
     double E_max_event = two_body_endpoint(state.internal, m_b, m_d);
     if (E_max_event <= 0.0 || !std::isfinite(E_max_event))
       return false;
@@ -913,13 +888,10 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 
     double mu;
     if (is_discrete_charged_level(rx.mt_)) {
-      // Kalbach's systematics describe a continuum channel fed by
-      // pre-equilibrium emission, and carrying them onto a named level makes
-      // the recoil distribution worse than assuming nothing: against 25,000
-      // evaluated discrete distributions the systematics double the recoil
-      // Wasserstein error and bias the first Legendre moment by +0.12, while
-      // isotropy leaves it at -0.04. Nothing fitted on top of isotropy
-      // survived being held out.
+      // Kalbach's systematics describe continuum pre-equilibrium emission, not
+      // a named residual level. With no evaluated charged-particle angle for
+      // these two-body channels, sample the centre-of-mass direction
+      // isotropically.
       mu = 2.0 * prn(seed) - 1.0;
     } else {
       AngularParams ang {};
@@ -954,6 +926,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 }
 
 //! Sample an outgoing neutron from a reaction, converting CM to LAB if needed
+// Keep this transformation in functional parity with the transported-neutron
+// path in inelastic_scatter().
 void sample_reaction_neutron(const Nuclide& nuc, const Reaction& rx,
   double E_in, Direction u_in, uint64_t* seed, double& E_out, Direction& u_out)
 {
@@ -1004,7 +978,7 @@ struct PhotonKick {
 //! sample_secondary_photons().
 //!
 //! \param[in,out] kick    Cascade momentum and energy, scaled in place
-//! \param[in] p_in        Momentum carried into the reaction in [sqrt(amu eV)]
+//! \param[in] p_in        Momentum carried into the reaction in [eV]
 //! \param[in] mass        Mass of the recoiling compound nucleus in [eV]
 //! \param[in] budget      Energy available to the exit channel in [eV]
 void constrain_photon_kick(
@@ -1083,10 +1057,8 @@ void finish_event(Particle& p, const Nuclide& nuc, const Reaction& rx,
     EmissionState trial = state;
     if (!emit_light_ions(
           p, nuc, rx, E_in, u_in, ions, trial, sampled, n_sampled)) {
-      // The exit channel could not be completed. Banking the recoil anyway --
-      // which is what this did -- leaves a record labelled with a nuclide that
-      // is lighter than the momentum balance it carries by exactly the ions
-      // that were dropped.
+      // The exit channel could not be completed. A partial event would assign
+      // the recoil an identity inconsistent with its mass and momentum.
       return;
     }
     state = trial;
@@ -1162,7 +1134,8 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   ParticleType recoil = recoil_particle_type(nuc, rx.mt_);
 
   ChargedProducts ions;
-  ions.fill(emitted);
+  if (!ions.fill(emitted))
+    return;
 
   // Additional neutrons of a multiplicity > 1 channel. OpenMC transports only
   // one sampled neutron, so the others are sampled independently from the same
@@ -1230,9 +1203,8 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
       }
     }
     if (!accepted) {
-      // The recoil's identity says this neutron left. Dropping it and banking
-      // the recoil anyway -- which is what a `continue` here did -- makes the
-      // record's mass number one higher than the momentum it carries.
+      // The recoil identity requires this neutron. Do not bank a partial event
+      // whose mass number and momentum describe different exit channels.
       return;
     }
   }
@@ -1242,28 +1214,27 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
 }
 
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
-  Direction u_in, const Reaction* rx)
+  Direction u_in, const Reaction& rx)
 {
   if (!settings::recoil_production || weight <= 0.0)
     return;
 
-  if (!rx)
-    return;
   const auto& nuc {data::nuclides[i_nuclide]};
 
   EmittedParticles emitted;
-  if (!emitted_particles(rx->mt_, emitted)) {
+  if (!emitted_particles(rx.mt_, emitted)) {
     return; // unknown exit channel; see the note in from_inelastic()
   }
   bool budget_ok = false;
-  double q = event_q(*nuc, *rx, emitted, budget_ok);
+  double q = event_q(*nuc, rx, emitted, budget_ok);
   if (!budget_ok)
     return; // see the note in from_inelastic()
 
-  ParticleType recoil = recoil_particle_type(*nuc, rx->mt_);
+  ParticleType recoil = recoil_particle_type(*nuc, rx.mt_);
 
   ChargedProducts ions;
-  ions.fill(emitted);
+  if (!ions.fill(emitted))
+    return;
 
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
@@ -1284,8 +1255,8 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   // is kinematically exact for a fully specified single-photon final state but
   // model-dependent for a cascade because the processed data do not provide
   // inter-photon correlations.
-  if (rx->mt_ == N_GAMMA) {
-    PhotonKick kick = sample_photon_kick(*rx, E_in, u_in, p.current_seed());
+  if (rx.mt_ == N_GAMMA) {
+    PhotonKick kick = sample_photon_kick(rx, E_in, u_in, p.current_seed());
     constrain_photon_kick(kick, state.momentum, state.mass, budget);
     state.momentum -= kick.momentum;
     state.emitted_kin += kick.energy;
@@ -1295,7 +1266,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
     return;
   }
 
-  finish_event(p, *nuc, *rx, weight, E_in, u_in, ions, state, recoil, budget,
+  finish_event(p, *nuc, rx, weight, E_in, u_in, ions, state, recoil, budget,
     include_ions || ions.n == 0);
 }
 
