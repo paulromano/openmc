@@ -2,7 +2,9 @@ from __future__ import annotations
 from collections import defaultdict, namedtuple, Counter
 from collections.abc import Iterable
 from copy import deepcopy
-from functools import reduce
+from functools import cache, reduce
+from importlib import resources
+import json
 from numbers import Real
 from pathlib import Path
 import re
@@ -45,7 +47,46 @@ _BECQUEREL_PER_CURIE = 3.7e10
 # results in a warning from Material.get_photon_contact_dose_rate()
 _MIN_ATTENUATION_MASS_FRACTION = 1e-6
 
+_MATERIAL_LIBRARIES = {
+    'pnnl_v2': 'material_libraries/pnnl_v2.json',
+}
+
 NuclideTuple = namedtuple('NuclideTuple', ['name', 'percent', 'percent_type'])
+
+
+@cache
+def _load_material_library(library):
+    """Load a material library bundled with OpenMC."""
+    try:
+        filename = _MATERIAL_LIBRARIES[library]
+    except KeyError:
+        available = ', '.join(sorted(_MATERIAL_LIBRARIES))
+        raise ValueError(
+            f"Unknown material library '{library}'. Available libraries: "
+            f"{available}"
+        ) from None
+
+    path = resources.files('openmc.data').joinpath(filename)
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Could not load material library '{library}'"
+        ) from exc
+
+    if data.get('schema_version') != 1:
+        raise RuntimeError(
+            f"Material library '{library}' has an unsupported schema version"
+        )
+    if not isinstance(data.get('materials'), dict):
+        raise RuntimeError(
+            f"Material library '{library}' does not contain valid materials"
+        )
+    if data.get('density_units') != 'g/cm3' or data.get('percent_type') != 'ao':
+        raise RuntimeError(
+            f"Material library '{library}' uses unsupported units"
+        )
+    return data
 
 
 class Material(IDManagerMixin):
@@ -694,6 +735,61 @@ class Material(IDManagerMixin):
                 name = fullname.decode().strip()
                 material.add_macroscopic(name)
 
+        return material
+
+    @classmethod
+    def from_library(cls, name: str, library: str = 'pnnl_v2') -> Material:
+        """Create a material from a library bundled with OpenMC.
+
+        Natural elements in a library are expanded according to the nuclides
+        available in the cross section library indicated by
+        :data:`openmc.config`. Compositions that are explicitly isotopic in the
+        source library retain their specified nuclides.
+
+        .. versionadded:: 0.17.0
+
+        Parameters
+        ----------
+        name : str
+            Name of the material in the library. Names are case sensitive.
+        library : str, optional
+            Name of the material library. Defaults to ``'pnnl_v2'``, the
+            `PNNL Compendium of Material Composition Data for Radiation
+            Transport Modeling <https://doi.org/10.2172/1782721>`_.
+
+        Returns
+        -------
+        openmc.Material
+            Material with the library composition and density.
+
+        Raises
+        ------
+        ValueError
+            If `library` or `name` is not found.
+
+        """
+        cv.check_type('material name', name, str)
+        cv.check_type('material library', library, str)
+
+        library_data = _load_material_library(library)
+        try:
+            material_data = library_data['materials'][name]
+        except KeyError:
+            raise ValueError(
+                f"Material '{name}' not found in library '{library}'"
+            ) from None
+
+        material = cls(name=name)
+        components = {
+            **material_data.get('elements', {}),
+            **material_data.get('nuclides', {}),
+        }
+        material.add_components(
+            components, percent_type=library_data['percent_type']
+        )
+        material.set_density(
+            library_data['density_units'], material_data['density']
+        )
         return material
 
     @classmethod

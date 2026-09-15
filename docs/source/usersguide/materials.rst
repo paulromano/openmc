@@ -83,6 +83,39 @@ what cross sections you will be using (through the
 put isotopes in your model for which you have cross section data. In the case of
 oxygen in ENDF/B-VII.1, the abundance of O18 would end up being lumped with O16.
 
+--------------------------
+Bundled Material Libraries
+--------------------------
+
+OpenMC includes material compositions from Revision 2 of the `PNNL Compendium
+of Material Composition Data for Radiation Transport Modeling
+<https://doi.org/10.2172/1782721>`_. A material can be created from this library
+with :meth:`Material.from_library`, for example::
+
+   sodium_oxide = openmc.Material.from_library('Sodium Oxide')
+
+Material names are case sensitive. The default and currently available library
+is ``'pnnl_v2'``. Each call returns a new, independent material with the density
+and composition reported in the compendium.
+
+The bundled values are taken from the machine-readable JSON download provided
+by the PNNL Materials Compendium website, which is treated as the source of
+record for this library. The JSON data and the published Revision 2 PDF have
+known differences, most noticeably the density and elemental composition of
+Lutetium Yttrium OxyorthoSilicate (LYSO).
+
+Natural compositions in the PNNL library are stored as elemental atom fractions
+and expanded using :meth:`Material.add_element`. As described above, OpenMC will
+account for the nuclides available in the cross section library indicated by
+:envvar:`OPENMC_CROSS_SECTIONS`. Materials that are explicitly isotopic in the
+compendium, such as enriched uranium or He-3 proportional gas, retain those
+specified nuclides. OpenMC cannot substitute for a required isotope if it is
+absent from the selected nuclear data library.
+
+The compendium values are representative material definitions; actual density
+and composition can vary. Users should confirm that a library material is
+appropriate for their application.
+
 -----------------------
 Thermal Scattering Data
 -----------------------
@@ -258,4 +291,3 @@ been generated, you can tell OpenMC to use this file either by setting
    materials.cross_sections = '/path/to/cross_sections.xml'
 
 .. _MCNP: https://mcnp.lanl.gov/
-
