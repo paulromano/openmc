@@ -748,16 +748,16 @@ class Material(IDManagerMixin):
         :data:`openmc.config`. Compositions that are explicitly isotopic in the
         source library retain their specified nuclides.
 
-        .. versionadded:: 0.17.0
+        .. versionadded:: 0.16.1
 
         Parameters
         ----------
         material_name : str
             Name of the material in the library. Names are case sensitive.
         library : str, optional
-            Name of the material library. Defaults to ``'pnnl_v2'``, the
-            `PNNL Compendium of Material Composition Data for Radiation
-            Transport Modeling <https://doi.org/10.2172/1782721>`_.
+            Name of the material library. Defaults to ``'pnnl_v2'``, the `PNNL
+            Compendium of Material Composition Data for Radiation Transport
+            Modeling <https://doi.org/10.2172/1782721>`_.
         **kwargs
             Keyword arguments passed to :class:`openmc.Material`. The material
             name, composition, density, density units, and percent type from the
@@ -772,6 +772,15 @@ class Material(IDManagerMixin):
         ------
         ValueError
             If `library` or `material_name` is not found.
+
+        Notes
+        -----
+        For the 'pnnl_v2' library, the bundled values are taken from the
+        machine-readable JSON download provided by the PNNL Materials Compendium
+        website, which is treated as the source of record for this library. The
+        JSON data and the published Revision 2 PDF have known differences, most
+        noticeably the density and elemental composition of Lutetium Yttrium
+        OxyorthoSilicate (LYSO).
 
         """
         cv.check_type('material name', material_name, str)
