@@ -98,11 +98,22 @@ OpenMC represents that nucleus in its ground state.
 Energy release and excitation
 -----------------------------
 
-The ground-state Q value is the rest-mass energy released by the reaction. If
-:math:`M_T` is the target nuclear mass, :math:`m_n` is the neutron
-mass, :math:`M_R` is the ground-state mass of the final residual, and
-:math:`m_j` are the masses of all other final particles, mass-energy
-balance gives
+Reconstructing a recoil requires knowing how much energy the reaction products
+may share. The incident neutron supplies kinetic energy
+:math:`E_{\mathrm{in}}`, while conversion between the initial and final rest
+masses can release additional energy or consume some of it. The Q value
+measures that rest-mass contribution. A positive Q value adds energy to the
+products; a negative Q value uses part of the incident energy and gives the
+reaction an energy threshold. OpenMC therefore needs Q both to limit sampled
+product energies and to decide whether a reconstructed final state is
+physically possible. It enters the event energy balance in
+:eq:`recoil-budget`.
+
+The ground-state Q value is the rest-mass energy released when all products
+are left in their ground states. If :math:`M_T` is the target nuclear mass,
+:math:`m_n` is the neutron mass, :math:`M_R` is the ground-state mass of
+the final residual, and :math:`m_j` are the masses of all other final
+particles, mass-energy balance gives
 
 .. math::
     :label: recoil-qm
