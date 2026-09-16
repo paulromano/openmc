@@ -478,11 +478,9 @@ The surrogate has two goals:
   and momentum conservation event by event.
 
 The model is not a replacement for an optical-model, Hauser-Feshbach, exciton,
-or direct-reaction calculation. It borrows physically motivated functional forms
-from those theories and fits their coefficients to evaluated data. Consequently,
-agreement with ENDF distributions measures consistency with nuclear-data
-evaluations, many of which themselves use reaction models; it is not equivalent
-to validation against experimental double-differential measurements.
+or direct-reaction calculation. It uses compact, physically motivated
+functional forms whose fixed coefficients were fitted to evaluated ENDF
+charged-particle distributions.
 
 When several products are missing, OpenMC emits them sequentially in the rest
 frame of the undecayed system. The transported neutron, if present, is used
@@ -608,73 +606,10 @@ compound-nucleus level density to the entire spectrum makes it too soft. The
 fitted exponent :math:`\nu` provides a compact compromise among those
 components.
 
-Energy-model fitting
-~~~~~~~~~~~~~~~~~~~~
+Energy-model parameters
+~~~~~~~~~~~~~~~~~~~~~~~
 
-The energy coefficients :math:`r_0`, :math:`g`, and
-:math:`\nu` were fitted to evaluated ENDF File 6 center-of-mass
-charged-particle spectra. The adopted dataset contains 37,368 deduplicated
-targets from 388 stable or long-lived nuclides and 1,029 distinct evaluations
-in ENDF/B-VIII.1, JEFF-4.0, and TENDL-2025. A target is one combination of
-evaluation, nuclide, emitted-ion species, and incident-energy node.
-
-Each target is weighted by the square root of its reaction cross section. This
-compromise prevents the largest channels from completely dominating the fit
-without giving a microbarn channel the same influence as a barn-scale channel.
-Numerically identical evaluations adopted by more than one library are
-deduplicated.
-
-The primary shape metric is the normalized one-dimensional Wasserstein
-distance. For model and evaluated cumulative distributions
-:math:`F_\theta(E)` and :math:`F_{\mathrm{eval}}(E)`, respectively,
-where :math:`\theta` denotes the three fitted parameters, the per-target
-distance is
-
-.. math::
-    :label: recoil-energy-wasserstein
-
-    W_1 =
-    \frac{1}{E_{\max}^{\mathrm{event}}}
-    \int_0^{E_{\max}^{\mathrm{event}}}
-    \left|F_\theta(E)-F_{\mathrm{eval}}(E)\right|
-    \mathop{}\!\mathrm{d}E .
-
-This is the area between the two cumulative distributions divided by the
-energy range, so spectra with different endpoints can be compared on the same
-scale. The per-target objective is defined as
-
-.. math::
-
-    \mathcal{L}_E = W_1 + 0.25\delta_1^2 + 0.10\delta_2^2,
-
-where
-
-.. math::
-
-    \delta_1 =
-    \ln\left(\frac{\langle E\rangle_\theta}
-                   {\langle E\rangle_{\mathrm{eval}}}\right),
-    \qquad
-    \delta_2 =
-    \ln\left(\frac{\langle E^2\rangle_\theta}
-                   {\langle E^2\rangle_{\mathrm{eval}}}\right).
-
-Thus, spectral shape is the primary fitting criterion, while the two smaller
-terms discourage a model from obtaining a good cumulative shape with biased
-first or second moments. The fitted parameters minimize the weighted mean of
-:math:`\mathcal{L}_E` over the fitting targets.
-
-Grouped cross-validation was used while comparing candidate functional forms and
-assessing how well a fitted model transfers beyond the evaluations used to fit
-it. In one set of folds, an entire nuclear data library was held out; in
-another, groups of elements were held out. Neighboring incident-energy points
-from the same evaluation were never split between fitting and validation,
-because they are strongly correlated. This procedure was not needed merely
-because the selected model has three parameters, nor does it permanently reserve
-part of the dataset. After the functional form was selected, the three reported
-coefficients were fitted using the complete 37,368-target dataset.
-
-The fitted values used by transport are
+The parameter values used by transport are
 
 .. list-table::
    :header-rows: 1
@@ -692,10 +627,6 @@ The fitted values used by transport are
    * - :math:`\nu`
      - 1.18221
      - Exponent of the empirical endpoint factor
-
-The parameters are correlated fit coefficients, not independently measured
-nuclear properties. In particular, changes in :math:`r_0` can be partly
-compensated by changes in :math:`\nu`.
 
 Angular distribution
 ~~~~~~~~~~~~~~~~~~~~
@@ -757,36 +688,7 @@ and :math:`Z_D` are the daughter's neutron and proton numbers.
 :math:`E_0` is a fixed scale that makes the logarithm dimensionless. This
 logistic equation is empirical; it is not derived from Kalbach's theory.
 
-The coefficients were fitted to 15,839 informative continuum angular targets
-from 380 nuclides and 1,013 distinct evaluations in ENDF/B-VIII.1, JEFF-4.0,
-and TENDL-2025. At each outgoing-energy node, the angular Wasserstein distance
-is
-
-.. math::
-
-    W_{1,\mu} =
-    \int_{-1}^{1}
-    \left|F_\theta(\mu)-F_{\mathrm{eval}}(\mu)\right|
-    \mathop{}\!\mathrm{d}\mu,
-
-and the fitted node loss is defined as
-
-.. math::
-
-    \mathcal{L}_\Omega = W_{1,\mu}
-      +2\left(
-        \langle\mu\rangle_\theta
-        -\langle\mu\rangle_{\mathrm{eval}}
-      \right)^2.
-
-Here :math:`\theta` denotes the six angular parameters, and :math:`F(\mu)` is an
-angular cumulative distribution. Node losses are weighted by the probability
-carried by their outgoing-energy intervals. Target losses use cross-section
-weights and the same deduplication and grouped cross-validation strategy as the
-energy-model fit. Evaluated laws that are isotropic at every energy carry no
-information about angular trends and are excluded from fitting.
-
-The fitted coefficients are
+The parameter values used by transport are
 
 .. list-table::
    :header-rows: 1
@@ -814,26 +716,11 @@ The fitted coefficients are
      - 0.99102
      - Multiplier on Kalbach's 1988 slope
 
-These coefficients are strongly correlated, so their individual values should
-not be interpreted as measured physical effects.
-
 The angular surrogate is used only for continuum charged-particle channels.
 An MT number in the discrete charged-particle bands (MT=600-849) identifies a
 two-body residual level, but its charged-particle angular distribution is also
 absent from ACE. OpenMC samples those directions isotropically in the
 center-of-mass frame rather than applying a continuum pre-equilibrium model.
-
-Many evaluated LANG=2 distributions contain a contiguous run of exactly zero
-:math:`r` values at the high-energy end, sometimes in a region carrying
-substantial probability. Within-corpus comparisons show that otherwise similar
-subsections without such runs retain nonzero :math:`r` values over the same
-energy range. The fitting procedure therefore treats a terminal zero run as a
-file padding convention rather than as measured angular information. Fits that
-instead interpret every zero literally were also examined as a sensitivity; they
-produce a pre-equilibrium fraction that decreases sharply at high outgoing
-energy and do not improve held-out recoil predictions. Because the ENDF format
-does not label these entries as padding, this interpretation remains a source of
-model uncertainty.
 
 Sampling and event completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -894,11 +781,10 @@ distribution. OpenMC reports the momentum-balanced recoil.
 
 **Light charged particles.** The light-ion energy and angular distributions are
 fitted surrogates rather than samples from the transport library. Their
-agreement with ENDF File 6 distributions is therefore approximate. Aggregate
-tests across the libraries used for fitting show useful agreement, but errors
+agreement with ENDF File 6 distributions is therefore approximate, and errors
 can be substantially larger for individual nuclide, incident-energy, and
-reaction combinations, particularly near threshold. Helium-3 and triton channels
-carry little fitting weight and have correspondingly greater uncertainty.
+reaction combinations, particularly near threshold. Helium-3 and triton
+channels are less well constrained than proton, deuteron, and alpha channels.
 
 -----------
 Limitations
