@@ -320,15 +320,6 @@ motion. It therefore cannot be used as the nonnegative energy of a produced
 PKA. OpenMC reports :eq:`elastic-target-rest-energy`; target motion still
 affects it through the sampled outgoing neutron.
 
-For a stationary target of neutron-mass ratio
-:math:`A=M_T/m_n`, the greatest transfer occurs in a head-on collision in
-which the neutron reverses direction in the center-of-mass frame. Solving
-momentum and kinetic-energy conservation for that limiting case gives
-
-.. math::
-
-    E_{R,\max} = \frac{4A}{(A+1)^2}E_{\mathrm{in}} .
-
 One-neutron inelastic scattering
 --------------------------------
 
@@ -367,43 +358,9 @@ Reconstruction fails when the transported neutron is already incompatible with
 the energy budget or when no acceptable auxiliary sample is found. In that
 case, neutron transport is unchanged and no residual secondary particle is
 created. OpenMC never creates a residual whose nuclide identity assumes an
-emitted neutron that was omitted from its momentum balance.
-
-The approximate mean recoil energy can be derived directly from
-:eq:`recoil-momentum`. Let
-
-.. math::
-
-    \mathbf{V}_{\mathrm{cm}} =
-    \frac{\mathbf{p}_{n,\mathrm{in}}}{m_n+M_T}
-
-be the velocity of the entrance-channel center of mass, and let
-:math:`\mathbf{k}_i` be emitted-neutron momentum :math:`i` in that
-frame. The residual laboratory momentum is
-
-.. math::
-
-    \mathbf{p}_R =
-    M_R\mathbf{V}_{\mathrm{cm}}-\sum_i\mathbf{k}_i .
-
-If the emission directions are independent and have zero mean, then
-:math:`\langle\mathbf{k}_i\rangle=0` and
-:math:`\langle\mathbf{k}_i\mathbin{\cdot}\mathbf{k}_j\rangle=0` for
-:math:`i\ne j`. Expanding :math:`|\mathbf{p}_R|^2` in
-:eq:`recoil-energy` then gives
-
-.. math::
-
-    \langle E_R\rangle \simeq
-    \frac{M_Rm_nE_{\mathrm{in}}}{(m_n+M_T)^2}
-    + \frac{m_n}{M_R}
-      \sum_i\langle E_i^{\mathrm{cm}}\rangle .
-
-The first term is translation of the center of mass. The second is the average
-recoil caused by the independently directed emitted neutrons, where
-:math:`E_i^{\mathrm{cm}}` is the center-of-mass kinetic energy of neutron
-:math:`i`. Correlations missing from the evaluated marginal would contribute
-additional cross terms.
+emitted neutron that was omitted from its momentum balance. Because the
+evaluated data do not describe correlations among the emitted neutrons, the
+reconstructed recoil distribution is approximate.
 
 Radiative capture
 -----------------
