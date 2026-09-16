@@ -10,7 +10,7 @@
     "data_mirror_url": "https://raw.githubusercontent.com/pyne/materials-compendium/ae2f6c43f422737d659a8b19081586fb0bad09aa/src/materials_compendium/MaterialsCompendium.json",
     "site_version": "0.1.1",
     "data_sha256": "5db6f9ca58793659e73c66cfd624736ffa59846239cd423c11eb6dbe5a56607b",
-    "note": "Values are taken from the PNNL downloadable JSON, which is authoritative for this library. The Rev. 2 PDF has known differences, notably for LYSO."
+    "note": "Values are taken from the PNNL downloadable JSON except for LYSO. Its density and elemental atom fractions are taken from material 206 in the Rev. 2 PDF so that the composition includes the specified 0.5 atom% Ce dopant."
   },
   "density_units": "g/cm3",
   "percent_type": "ao",
@@ -2053,13 +2053,15 @@
       }
     },
     "Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)": {
-      "density": 7.3,
+      "density": 7.25,
       "elements": {
-        "O": 0.5,
-        "Si": 0.1,
-        "Y": 0.2,
-        "Lu": 0.2
-      }
+        "O": 0.621875,
+        "Si": 0.124375,
+        "Y": 0.012438,
+        "Lu": 0.236313,
+        "Ce": 0.005
+      },
+      "source_note": "Density and elemental atom fractions are taken from material 206 in PNNL-15870 Rev. 2 rather than the downloadable JSON."
     },
     "Magnesium": {
       "density": 1.74,

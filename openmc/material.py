@@ -777,10 +777,9 @@ class Material(IDManagerMixin):
         -----
         For the 'pnnl_v2' library, the bundled values are taken from the
         machine-readable JSON download provided by the PNNL Materials Compendium
-        website, which is treated as the source of record for this library. The
-        JSON data and the published Revision 2 PDF have known differences, most
-        noticeably the density and elemental composition of Lutetium Yttrium
-        OxyorthoSilicate (LYSO).
+        website. The one exception is Lutetium Yttrium OxyorthoSilicate (LYSO),
+        whose density and elemental composition are taken from the published
+        Revision 2 PDF so that the material includes its cerium dopant.
 
         """
         cv.check_type('material name', material_name, str)

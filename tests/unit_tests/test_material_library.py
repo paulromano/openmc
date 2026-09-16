@@ -11,7 +11,11 @@ import openmc
 def cross_sections(tmp_path):
     """Cross section index covering the natural elements used in tests."""
     root = ET.Element('cross_sections')
-    for nuclide in ('O16', 'O17', 'Na23', 'Cs133', 'Y89', 'Cl35', 'Cl37'):
+    for nuclide in (
+        'O16', 'O17', 'Na23', 'Si28', 'Si29', 'Si30', 'Cl35', 'Cl37',
+        'Y89', 'Ce136', 'Ce138', 'Ce140', 'Ce142', 'Cs133', 'Lu175',
+        'Lu176'
+    ):
         ET.SubElement(
             root,
             'library',
@@ -69,6 +73,28 @@ def test_isotopic_components(cross_sections):
     )
     assert 'Am241' in aged_pu.get_nuclides()
     assert sum(nuc.percent for nuc in aged_pu.nuclides) == pytest.approx(1.0)
+
+
+def test_lyso_uses_pdf_composition(cross_sections):
+    """LYSO includes the cerium dopant specified in the Rev. 2 PDF."""
+    with openmc.config.patch('cross_sections', cross_sections):
+        lyso = openmc.Material.from_library(
+            'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)'
+        )
+
+    fractions = {nuc.name: nuc.percent for nuc in lyso.nuclides}
+    assert lyso.density == pytest.approx(7.25)
+    assert fractions['O16'] + fractions['O17'] == pytest.approx(0.621875)
+    assert sum(
+        fraction for name, fraction in fractions.items()
+        if name.startswith('Si')
+    ) == pytest.approx(0.124375)
+    assert fractions['Y89'] == pytest.approx(0.012438)
+    assert fractions['Lu175'] + fractions['Lu176'] == pytest.approx(0.236313)
+    assert sum(
+        fraction for name, fraction in fractions.items()
+        if name.startswith('Ce')
+    ) == pytest.approx(0.005)
 
 
 def test_independent_materials():
@@ -130,6 +156,18 @@ def test_pnnl_data():
     assert data['source']['data_sha256'] == (
         '5db6f9ca58793659e73c66cfd624736ffa59846239cd423c11eb6dbe5a56607b'
     )
+    lyso = data['materials'][
+        'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)'
+    ]
+    assert lyso['density'] == 7.25
+    assert lyso['elements'] == {
+        'O': 0.621875,
+        'Si': 0.124375,
+        'Y': 0.012438,
+        'Lu': 0.236313,
+        'Ce': 0.005,
+    }
+    assert 'PNNL-15870 Rev. 2' in lyso['source_note']
     assert len(data['materials']) == 411
     assert sum('nuclides' in mat for mat in data['materials'].values()) == 45
 

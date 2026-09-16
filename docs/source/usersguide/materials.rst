@@ -104,6 +104,12 @@ Material names are case sensitive. The default and currently available library
 is ``'pnnl_v2'``. Each call returns a new, independent material with the density
 and composition reported in the compendium.
 
+The bundled values are taken from the machine-readable PNNL compendium JSON.
+The one exception is Lutetium Yttrium OxyorthoSilicate (LYSO), whose density and
+elemental composition are taken from material 206 in the published Revision 2
+PDF. This definition includes the 0.5 atom% cerium dopant indicated by the
+material's name and intended scintillator use.
+
 Natural compositions in the PNNL library are stored as elemental atom fractions
 and expanded using :meth:`Material.add_element`. As described above, OpenMC will
 account for the nuclides available in the cross section library indicated by
