@@ -147,13 +147,15 @@ containing an elemental composition is shown below:
      }
    }
 
-Schema version 1 uses atom fractions and densities in g/cm³. Each material can
-contain ``elements``, ``nuclides``, or both. Elemental components are expanded
-using :meth:`Material.add_element` and ``openmc.config['cross_sections']``.
-Nuclide components retain their explicitly specified isotopic composition.
-Component fractions must be positive and sum to one. Additional provenance
-metadata, such as a top-level ``source`` or a per-material note, is permitted
-and ignored when constructing a material.
+Each material can contain ``elements``, ``nuclides``, or both. Elemental
+components are expanded using :meth:`Material.add_element` and
+``openmc.config['cross_sections']``. Nuclide components retain their explicitly
+specified isotopic composition. The top-level ``percent_type`` and
+``density_units`` values are passed to :class:`Material`, which validates them
+along with the density and components when a material is created. Component
+values can be relative amounts and do not need to sum to one. Additional
+provenance metadata, such as a top-level ``source`` or a per-material note, is
+permitted and ignored when constructing a material.
 
 -----------------------
 Thermal Scattering Data

@@ -177,7 +177,7 @@ def test_register_library(
 
 
 def test_register_invalid_library(tmp_path, material_library_registry):
-    """Registration validates names, files, schemas, and material data."""
+    """Registration validates names, files, and top-level schemas."""
     valid_data = {
         'schema_version': 1,
         'density_units': 'g/cm3',
@@ -214,15 +214,16 @@ def test_register_invalid_library(tmp_path, material_library_registry):
     invalid_data = {
         **valid_data,
         'materials': {
-            'Hydrogen': {
+            'Invalid element': {
                 'density': 0.1,
-                'nuclides': {'H1': 0.5},
+                'elements': {'Xx': 1.0},
             },
         },
     }
     invalid_path.write_text(json.dumps(invalid_data))
-    with pytest.raises(RuntimeError, match='do not sum to one'):
-        openmc.Material.register_library('invalid', invalid_path)
+    openmc.Material.register_library('invalid', invalid_path)
+    with pytest.raises(ValueError, match='not recognised'):
+        openmc.Material.from_library('Invalid element', library='invalid')
 
     with pytest.raises(ValueError, match="Unknown material library 'missing'"):
         openmc.Material.get_library_material_names('missing')

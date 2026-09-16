@@ -5,7 +5,6 @@ from copy import deepcopy
 from functools import cache, reduce
 from importlib import resources
 import json
-from math import isfinite
 from numbers import Real
 from pathlib import Path
 import re
@@ -83,12 +82,6 @@ def _read_material_library(library, path):
             f"Could not load material library '{library}'"
         ) from exc
 
-    _validate_material_library(library, data)
-    return data
-
-
-def _validate_material_library(library, data):
-    """Validate the schema and contents of a material library."""
     if not isinstance(data, dict):
         raise RuntimeError(
             f"Material library '{library}' does not contain a JSON object"
@@ -101,75 +94,7 @@ def _validate_material_library(library, data):
         raise RuntimeError(
             f"Material library '{library}' does not contain valid materials"
         )
-    if data.get('density_units') != 'g/cm3' or data.get('percent_type') != 'ao':
-        raise RuntimeError(
-            f"Material library '{library}' uses unsupported units"
-        )
-
-    element_symbols = set(openmc.data.ATOMIC_SYMBOL.values())
-    for name, material in data['materials'].items():
-        if not isinstance(name, str) or not name.strip():
-            raise RuntimeError(
-                f"Material library '{library}' contains an invalid material "
-                "name"
-            )
-        if not isinstance(material, dict):
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' is not a JSON "
-                "object"
-            )
-
-        density = material.get('density')
-        if (not isinstance(density, Real) or isinstance(density, bool)
-                or not isfinite(density) or density <= 0.0):
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' does not have a "
-                "positive density"
-            )
-
-        elements = material.get('elements', {})
-        nuclides = material.get('nuclides', {})
-        if not isinstance(elements, dict) or not isinstance(nuclides, dict):
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' has invalid "
-                "components"
-            )
-        if not elements and not nuclides:
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' has no components"
-            )
-
-        invalid_elements = set(elements) - element_symbols
-        if invalid_elements:
-            symbol = min(invalid_elements)
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' has an invalid "
-                f"element '{symbol}'"
-            )
-        for nuclide in nuclides:
-            try:
-                openmc.data.zam(nuclide)
-            except (TypeError, ValueError) as exc:
-                raise RuntimeError(
-                    f"Material '{name}' in library '{library}' has an "
-                    f"invalid nuclide '{nuclide}'"
-                ) from exc
-
-        fractions = [*elements.values(), *nuclides.values()]
-        if any(
-            not isinstance(value, Real) or isinstance(value, bool)
-            or not isfinite(value) or value <= 0.0
-            for value in fractions
-        ):
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' has invalid "
-                "component fractions"
-            )
-        if abs(sum(fractions) - 1.0) > 5.0e-6:
-            raise RuntimeError(
-                f"Material '{name}' in library '{library}' has component "
-                "fractions that do not sum to one"
-            )
+    return data
 
 
 class Material(IDManagerMixin):
@@ -852,8 +777,8 @@ class Material(IDManagerMixin):
     def register_library(library: str, path: PathLike):
         """Register a material library from a JSON file.
 
-        The registration applies to the current Python process. The file is
-        read and validated before the library is registered.
+        The registration applies to the current Python process. The file and
+        its top-level schema are validated before the library is registered.
 
         .. versionadded:: 0.16.1
 
@@ -869,7 +794,7 @@ class Material(IDManagerMixin):
         ValueError
             If `library` is empty or already registered.
         RuntimeError
-            If the file cannot be read or contains invalid library data.
+            If the file cannot be read or has an unsupported schema.
 
         """
         cv.check_type('material library', library, str)
