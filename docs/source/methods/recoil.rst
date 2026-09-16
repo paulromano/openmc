@@ -10,15 +10,22 @@ When :attr:`Settings.recoil_production` is enabled, supported
 continuous-energy neutron reactions create the residual nucleus left by the
 reaction as a secondary particle. OpenMC can also create emitted protons,
 deuterons, tritons, helium-3 nuclei, and alpha particles. A
-:class:`ParticleProductionFilter` can score the energy and direction of
-these secondary particles to obtain primary knock-on atom (PKA) and gas-
-production spectra.
+:class:`ParticleProductionFilter` can score their production as a function of
+particle type and energy to obtain primary knock-on atom (PKA) and
+gas-production spectra.
 
-Recoil production has two complementary parts:
+Recoil production has three complementary parts:
 
-1. OpenMC uses exact two-body kinematics when the processed nuclear data
-   describe the emitted neutron or identify a discrete two-body final state.
-2. When the processed data omit a required product distribution, OpenMC
+1. When processed nuclear data supply an outgoing neutron, OpenMC uses that
+   sample unchanged and obtains the residual momentum by subtraction. This is
+   an exact two-body construction for elastic scattering and discrete
+   one-neutron levels; continuum and multi-neutron reactions require the
+   qualifications described below.
+2. When an MT number identifies a discrete two-body charged-particle level,
+   energy conservation fixes the light-ion energy. Because its evaluated angle
+   is absent from the processed data, OpenMC samples its direction
+   isotropically in the center-of-mass frame.
+3. When the processed data omit a required product distribution, OpenMC
    reconstructs a physically admissible event. In particular, a fitted
    **surrogate model** supplies the energy and direction of emitted light
    charged particles. Momentum conservation then determines the heavy
@@ -112,14 +119,14 @@ physically possible. It enters the event energy balance in
 The ground-state Q value is the rest-mass energy released when all products
 are left in their ground states. If :math:`M_T` is the target nuclear mass,
 :math:`m_n` is the neutron mass, :math:`M_R` is the ground-state mass of
-the final residual, and :math:`m_j` are the masses of all other final
+the final residual, and :math:`m_i` are the masses of all other final
 particles, mass-energy balance gives
 
 .. math::
     :label: recoil-qm
 
     Q_M =
-    \left(M_T + m_n - M_R - \sum_j m_j\right)c^2 .
+    \left(M_T + m_n - M_R - \sum_i m_i\right)c^2 .
 
 The tabulated target and residual masses are based on AME2020 [AME2020]_.
 OpenMC uses bare nuclear masses consistently in the Q value and the subsequent
@@ -134,6 +141,9 @@ release. OpenMC therefore uses :math:`Q_M` for continuum, lumped, and
 multiparticle channels. It uses the evaluated ``QI`` for an MT number that names
 one residual level, because that value includes the excitation energy of the
 named level.
+
+In the equations that follow, :math:`Q` denotes the event Q value selected by
+these rules.
 
 The total ground-state rest mass of the final particles is
 
@@ -206,6 +216,13 @@ more kinetic energy than the reaction provides. In an exact two-body channel,
 the two product kinetic energies exhaust the available energy and
 :math:`E_x=0`, apart from numerical roundoff.
 
+This running energy budget is enforced when OpenMC constructs a complete final
+state from modeled or independently sampled products, including multiparticle
+and capture events. It is not used to reject an evaluated one-neutron-only
+sample. In that case, the sampled neutron remains authoritative, and OpenMC
+reports its momentum complement using the target mass ratio with which the
+outgoing-neutron law was processed.
+
 Maximum emission energy
 -----------------------
 
@@ -217,24 +234,25 @@ leave too little energy for the remaining products and their recoil.
 Suppose a light particle :math:`b` of mass :math:`m_b` is emitted
 from a system with current available energy :math:`U` from
 :eq:`recoil-running-budget`. Let
-:math:`M_D` be the combined mass of the daughter and any products not yet
-emitted. In the two-body center-of-mass frame, the two sides have equal and
-opposite momentum :math:`p`. Their kinetic energies are
+:math:`M_{\mathrm{after}}` be the combined mass of everything that remains after
+the emission, including products that have not yet been emitted. In the
+two-body center-of-mass frame, the emitted particle and remaining system have
+equal and opposite momentum :math:`p`. Their kinetic energies are
 
 .. math::
 
     E_b^{\mathrm{cm}} = \frac{p^2}{2m_b},
     \qquad
-    E_D^{\mathrm{cm}} = \frac{p^2}{2M_D}
-      = \frac{m_b}{M_D}E_b^{\mathrm{cm}} .
+    E_{\mathrm{after}}^{\mathrm{cm}} = \frac{p^2}{2M_{\mathrm{after}}}
+      = \frac{m_b}{M_{\mathrm{after}}}E_b^{\mathrm{cm}} .
 
 Requiring
-:math:`E_b^{\mathrm{cm}}+E_D^{\mathrm{cm}}\leq U` gives
+:math:`E_b^{\mathrm{cm}}+E_{\mathrm{after}}^{\mathrm{cm}}\leq U` gives
 
 .. math::
     :label: recoil-max-energy
 
-    E_{b,\max} = U\frac{M_D}{m_b+M_D}.
+    E_{b,\max} = U\frac{M_{\mathrm{after}}}{m_b+M_{\mathrm{after}}}.
 
 For an exact two-body channel, the emitted particle and residual must use all
 of :math:`U`, so OpenMC assigns :math:`E_b^{\mathrm{cm}}=E_{b,\max}`. If the
@@ -248,15 +266,16 @@ remaining system is
 
 .. math::
 
-    U_D =
-    U - E_b^{\mathrm{cm}}\left(1+\frac{m_b}{M_D}\right) \geq 0 .
+    U_{\mathrm{after}} =
+    U - E_b^{\mathrm{cm}}
+        \left(1+\frac{m_b}{M_{\mathrm{after}}}\right) \geq 0 .
 
 This energy is not discarded. If another product still needs to be emitted,
-:math:`U_D` becomes the value of :math:`U` used to calculate that product's
-maximum energy. If no products remain, the remaining system is the residual nucleus
-and :math:`U_D` becomes its final bookkeeping excitation :math:`E_x`. Thus,
-the maximum-energy equation both bounds each sample and updates the running
-energy budget for a sequence of emissions.
+:math:`U_{\mathrm{after}}` becomes the value of :math:`U` used to calculate that
+product's maximum energy. If no products remain, the remaining system is the
+residual nucleus and :math:`U_{\mathrm{after}}` becomes its final bookkeeping
+excitation :math:`E_x`. Thus, the maximum-energy equation both bounds each
+sample and updates the running energy budget for a sequence of emissions.
 
 -----------------
 Reaction Families
@@ -439,15 +458,15 @@ kinetic energy :math:`E` is
 
     P(E)\mathop{}\!\mathrm{d}E
     \propto
-    E\,\sigma_{\mathrm{inv}}(E)\,\rho_D(E_x)
+    E\,\sigma_{\mathrm{inv}}(E)\,\rho_D(E_D^*)
     \mathop{}\!\mathrm{d}E .
 
 Here :math:`E` is the light ion's center-of-mass kinetic energy,
 :math:`\sigma_{\mathrm{inv}}(E)` is the cross section for the inverse reaction
-in which the ion is absorbed by the daughter, and :math:`\rho_D(E_x)` is the
-density of daughter states at remaining excitation :math:`E_x`. The factor
-:math:`E` follows from phase space and detailed balance in the Weisskopf-Ewing
-derivation.
+in which the ion is absorbed by the daughter, and :math:`\rho_D(E_D^*)` is the
+density of daughter states at excitation :math:`E_D^*` immediately after this
+emission. The factor :math:`E` follows from phase space and detailed balance in
+the Weisskopf-Ewing derivation.
 
 OpenMC does not calculate the inverse cross section or a detailed daughter level
 density. Instead, it retains the phase-space factor :math:`E` and uses two
@@ -522,15 +541,15 @@ tunneling through a Coulomb potential gives the Gamow dependence
 
     \eta(E) =
     \alpha Z_bZ_D
-    \sqrt{\frac{\mu c^2}{2E}} .
+    \sqrt{\frac{m_{\mathrm{red}}c^2}{2E}} .
 
 In this expression, :math:`\alpha` is the fine-structure constant, :math:`Z_b`
-and :math:`Z_D` are the atomic numbers of the ion and daughter, and :math:`\mu`
-is their reduced mass,
+and :math:`Z_D` are the atomic numbers of the ion and daughter, and
+:math:`m_b` and :math:`M_D` are their nuclear masses. Their reduced mass is
 
 .. math::
 
-    \mu = \frac{m_bM_D}{m_b+M_D}.
+    m_{\mathrm{red}} = \frac{m_bM_D}{m_b+M_D}.
 
 The approximate height of the Coulomb barrier at the touching radius is
 
@@ -615,15 +634,20 @@ slope, and :math:`r` is the pre-equilibrium fraction. The even
 the odd :math:`\sinh` term introduces forward bias. ENDF File 6 uses this
 same functional form for LANG=2 distributions [ENDF102]_.
 
-OpenMC calculates :math:`a` from Kalbach's published 1988 systematics and
-multiplies it by one fitted scale factor. The processed ACE data do not retain
-the evaluated :math:`r`, so OpenMC must supply a surrogate for the balance
-between symmetric compound emission and forward-biased pre-equilibrium
-emission. Fast outgoing particles are more likely to escape before the nuclear
-system equilibrates and therefore retain more memory of the incident-neutron
-direction. The pre-equilibrium contribution also generally increases with
-incident energy [Kalbach1988]_ [Koning2012]_. These considerations motivate the
-two energy predictors used below.
+Let :math:`a_{\mathrm{K88}}` denote the slope calculated from Kalbach's
+published 1988 systematics. OpenMC applies one fitted scale factor,
+
+.. math::
+
+    a = s_a a_{\mathrm{K88}}.
+
+The processed ACE data do not retain the evaluated :math:`r`, so OpenMC must
+supply a surrogate for the balance between symmetric compound emission and
+forward-biased pre-equilibrium emission. Fast outgoing particles are more
+likely to escape before the nuclear system equilibrates and therefore retain
+more memory of the incident-neutron direction. The pre-equilibrium contribution
+also generally increases with incident energy [Kalbach1988]_ [Koning2012]_.
+These considerations motivate the two energy predictors used below.
 
 Because :math:`r` is a fraction, OpenMC models its log odds,
 
@@ -702,7 +726,7 @@ The parameter values used by transport are
    * - :math:`c_4`
      - 5.69894
      - Daughter neutron excess
-   * - slope scale
+   * - :math:`s_a`
      - 0.99102
      - Multiplier on Kalbach's 1988 slope
 
