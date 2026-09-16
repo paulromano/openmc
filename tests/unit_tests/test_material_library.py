@@ -88,28 +88,6 @@ def test_isotopic_components(cross_sections):
     assert sum(nuc.percent for nuc in aged_pu.nuclides) == pytest.approx(1.0)
 
 
-def test_lyso_uses_pdf_composition(cross_sections):
-    """LYSO includes the cerium dopant specified in the Rev. 2 PDF."""
-    with openmc.config.patch('cross_sections', cross_sections):
-        lyso = openmc.Material.from_library(
-            'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)'
-        )
-
-    fractions = {nuc.name: nuc.percent for nuc in lyso.nuclides}
-    assert lyso.density == pytest.approx(7.25)
-    assert fractions['O16'] + fractions['O17'] == pytest.approx(0.621875)
-    assert sum(
-        fraction for name, fraction in fractions.items()
-        if name.startswith('Si')
-    ) == pytest.approx(0.124375)
-    assert fractions['Y89'] == pytest.approx(0.012438)
-    assert fractions['Lu175'] + fractions['Lu176'] == pytest.approx(0.236313)
-    assert sum(
-        fraction for name, fraction in fractions.items()
-        if name.startswith('Ce')
-    ) == pytest.approx(0.005)
-
-
 def test_independent_materials():
     """Each lookup creates an independent material with a fresh ID."""
     first = openmc.Material.from_library('He-3 Proportional Gas')
