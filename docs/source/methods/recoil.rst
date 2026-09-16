@@ -429,8 +429,10 @@ reduces the internal energy according to :eq:`recoil-max-energy`.
 Energy distribution
 ~~~~~~~~~~~~~~~~~~~
 
-The starting point is the Weisskopf-Ewing statistical-emission spectrum
-[Weisskopf1940]_,
+Statistical particle-emission theory provides a useful framework for constructing
+the energy surrogate. In the Weisskopf-Ewing model [Weisskopf1940]_, the
+probability of emitting a light ion with center-of-mass kinetic energy
+:math:`E` is
 
 .. math::
     :label: recoil-weisskopf
@@ -447,10 +449,11 @@ reaction in which the ion is absorbed by the daughter, and
 excitation :math:`E_x`. The factor :math:`E` follows from phase
 space and detailed balance in the Weisskopf-Ewing derivation.
 
-A transport collision kernel cannot evaluate the inverse cross section and
-detailed daughter level density for every event. OpenMC instead uses a compact
-empirical distribution motivated by two separate features of nuclear-reaction
-models:
+OpenMC does not calculate the inverse cross section or a detailed daughter
+level density. Instead, it retains the phase-space factor :math:`E` and uses
+two empirical factors: :math:`T_C(E)` represents Coulomb suppression at low
+energy, while a power of the energy remaining in the daughter suppresses
+emission near the maximum allowed energy. The resulting distribution is
 
 .. math::
     :label: recoil-light-ion
@@ -465,40 +468,55 @@ with
 
     0\leq E\leq E_{\max}^{\mathrm{event}} .
 
-Here :math:`T_C(E)` is a dimensionless factor that suppresses emission below
-the Coulomb barrier and increases toward unity above the barrier. Its
-definition is given below. The factor
-:math:`(1-E/E_{\max}^{\mathrm{shape}})^\nu` represents the decreasing
-probability of emission as the ion takes more of the available energy and less
-energy remains in the daughter nucleus. It also makes the probability vanish
-when the ion reaches the maximum energy allowed for the single-ion channel.
-This power-law form is motivated by uniform-spacing particle-hole state-density
-models, in which the number of available daughter configurations varies as a
-power of the remaining excitation energy [Ericson1960]_ [Williams1971]_. Since
-that remaining energy is proportional to
-:math:`E_{\max}^{\mathrm{shape}}-E`, normalization gives a factor of the form
-:math:`(1-E/E_{\max}^{\mathrm{shape}})^\nu`. The exponent :math:`\nu` controls
-how rapidly this decrease occurs.
+This expression is a fitted surrogate rather than a complete
+Weisskopf-Ewing, Hauser-Feshbach, or pre-equilibrium calculation. No single
+theory derives its full form. The physical motivation and role of each
+empirical factor are described next.
 
-The equation contains two maximum energies with different purposes.
+**Available daughter states and energy limits.** The two maximum energies in
+:eq:`recoil-light-ion` serve different purposes.
 :math:`E_{\max}^{\mathrm{shape}}` is the two-body maximum for a channel that
-emits this ion alone; it sets the energy scale over which the distribution
-falls. :math:`E_{\max}^{\mathrm{event}}` is calculated from the energy that
-remains in the particular reconstructed event and is the upper limit on the
-sampled value of :math:`E`. The two values are equal for a one-ion channel.
-The event-specific maximum can be lower after another product has consumed
-some of the available energy.
+emits this ion alone and sets the scale in the power-law factor.
+:math:`E_{\max}^{\mathrm{event}}` is calculated from the energy remaining in
+the event being reconstructed and is the upper limit on the sampled value of
+:math:`E`. The two values are equal for a one-ion channel. The event-specific
+maximum can be lower when another product has already consumed some of the
+available energy.
 
-Equation :eq:`recoil-light-ion` is not a complete Weisskopf-Ewing,
-Hauser-Feshbach, or pre-equilibrium calculation, and no single theory derives
-its full form. Its two empirical factors have distinct motivations. First, an
-inverse reaction involving a charged ion is strongly suppressed below the
-Coulomb barrier. Statistical evaporation models commonly obtain the
-inverse-reaction cross section from optical-model transmission coefficients;
-simple barrier transmission captures only their leading Coulomb suppression
+As the emitted ion takes a larger share of the available energy, less
+excitation remains in the daughter nucleus and fewer daughter configurations
+are available. Uniform-spacing particle-hole models represent this state
+density as a power of the remaining excitation energy [Ericson1960]_
+[Williams1971]_. For the single-ion channel, that energy is proportional to
+:math:`E_{\max}^{\mathrm{shape}}-E`. Apart from a constant removed by
+normalization, the corresponding energy dependence is
+
+.. math::
+
+    \left(E_{\max}^{\mathrm{shape}}-E\right)^\nu
+    \propto
+    \left(1-\frac{E}{E_{\max}^{\mathrm{shape}}}\right)^\nu .
+
+This factor makes the probability vanish at the maximum energy for the
+single-ion channel. The exponent :math:`\nu` controls how quickly the
+probability decreases as that maximum is approached.
+
+The power law is not the conventional equilibrium daughter level density used
+in a complete Weisskopf-Ewing calculation, and the fitted exponent
+:math:`\nu` should not be interpreted as a measured exciton number. Evaluated
+charged-particle spectra combine compound, pre-equilibrium, and direct emission
+[Koning2012]_; the power law is an empirical way to represent their combined
+energy dependence with one coefficient.
+
+**Coulomb suppression.** An inverse reaction involving a charged ion is
+strongly suppressed when the ion has insufficient energy to overcome the
+Coulomb repulsion from the daughter nucleus. Statistical evaporation models
+commonly calculate the inverse-reaction cross section using optical-model
+transmission coefficients. A simple barrier model does not reproduce that full
+calculation, but it captures the leading low-energy suppression
 [Alexander1990]_. Quantum tunneling through a Coulomb potential gives the
-Gamow factor :math:`\exp[-2\pi\eta(E)]` [Gamow1928]_, where the Sommerfeld
-parameter is
+Gamow dependence :math:`\exp[-2\pi\eta(E)]` [Gamow1928]_, where the
+Sommerfeld parameter is
 
 .. math::
     :label: recoil-sommerfeld
@@ -531,24 +549,23 @@ electrostatic potential energy of charges :math:`Z_be` and :math:`Z_De`
 separated by the assumed touching distance
 :math:`r_0(A_b^{1/3}+A_D^{1/3})`.
 
-OpenMC uses a smooth surrogate that has the WKB energy dependence and equals
-one half at the nominal barrier:
+OpenMC uses the following smooth, dimensionless approximation to this
+suppression:
 
 .. math::
     :label: recoil-barrier
 
     T_C(E) =
     \left[
-      1+\exp\left(
-        2\pi g\,[\eta(E)-\eta(V_C)]
-      \right)
+      1+\exp\left(2\pi g\,[\eta(E)-\eta(V_C)]\right)
     \right]^{-1}.
 
-The dimensionless fitted coefficient :math:`g` adjusts the strength of
+The factor :math:`T_C(E)` equals one half at :math:`E=V_C`, suppresses
+emission below the barrier, and increases above it toward its high-energy
+limit. The dimensionless fitted coefficient :math:`g` adjusts the strength of
 the idealized Coulomb exponent to account empirically for effects omitted by a
-one-dimensional barrier. Equation :eq:`recoil-barrier` is therefore
-inspired by WKB tunneling, not asserted to be an exact optical-model
-transmission coefficient.
+one-dimensional barrier. Thus, :eq:`recoil-barrier` is inspired by WKB
+tunneling but is not an optical-model transmission coefficient.
 
 At very low energy, the exponential argument can exceed the floating-point
 range even though ratios of probabilities remain meaningful. The
@@ -557,13 +574,6 @@ numerically stable evaluation of :math:`\ln(1+\exp x)`. This avoids
 artificially flattening the sub-barrier spectrum. The term sometimes called
 the *softplus* function is only a numerical device; it does not add another
 physical assumption.
-
-The maximum-energy factor is not the conventional equilibrium daughter level
-density used in a complete Weisskopf-Ewing calculation, and the fitted exponent
-:math:`\nu` should not be interpreted as a measured exciton number. Evaluated
-charged-particle spectra combine compound, pre-equilibrium, and direct emission
-[Koning2012]_; this factor is an empirical way to represent their aggregate
-energy dependence with one coefficient.
 
 Energy-model parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
