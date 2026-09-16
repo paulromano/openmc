@@ -472,7 +472,13 @@ definition is given below. The factor
 probability of emission as the ion takes more of the available energy and less
 energy remains in the daughter nucleus. It also makes the probability vanish
 when the ion reaches the maximum energy allowed for the single-ion channel.
-The exponent :math:`\nu` controls how rapidly this decrease occurs.
+This power-law form is motivated by uniform-spacing particle-hole state-density
+models, in which the number of available daughter configurations varies as a
+power of the remaining excitation energy [Ericson1960]_ [Williams1971]_. Since
+that remaining energy is proportional to
+:math:`E_{\max}^{\mathrm{shape}}-E`, normalization gives a factor of the form
+:math:`(1-E/E_{\max}^{\mathrm{shape}})^\nu`. The exponent :math:`\nu` controls
+how rapidly this decrease occurs.
 
 The equation contains two maximum energies with different purposes.
 :math:`E_{\max}^{\mathrm{shape}}` is the two-body maximum for a channel that
@@ -552,16 +558,12 @@ artificially flattening the sub-barrier spectrum. The term sometimes called
 the *softplus* function is only a numerical device; it does not add another
 physical assumption.
 
-Second, the maximum-energy factor makes the probability vanish when the
-emitted ion exhausts the available energy. A power of the remaining energy occurs in
-uniform-spacing particle-hole state densities used by exciton models
-[Ericson1960]_ [Williams1971]_, providing a qualitative physical motivation
-for this choice. It is not the conventional equilibrium daughter level
-density used in a complete Weisskopf-Ewing calculation, however, and the
-fitted exponent :math:`\nu` should not be interpreted as a measured exciton
-number. Evaluated charged-particle spectra combine compound, pre-equilibrium,
-and direct emission [Koning2012]_; this factor is an empirical way to represent
-their aggregate energy dependence with one coefficient.
+The maximum-energy factor is not the conventional equilibrium daughter level
+density used in a complete Weisskopf-Ewing calculation, and the fitted exponent
+:math:`\nu` should not be interpreted as a measured exciton number. Evaluated
+charged-particle spectra combine compound, pre-equilibrium, and direct emission
+[Koning2012]_; this factor is an empirical way to represent their aggregate
+energy dependence with one coefficient.
 
 Energy-model parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
