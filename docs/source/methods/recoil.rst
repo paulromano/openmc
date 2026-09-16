@@ -478,12 +478,11 @@ The surrogate has two goals:
   and momentum conservation event by event.
 
 The model is not a replacement for an optical-model, Hauser-Feshbach, exciton,
-or direct-reaction calculation. It borrows physically motivated functional
-forms from those theories and calibrates their coefficients against evaluated
-data. Consequently, agreement with ENDF distributions measures consistency
-with nuclear-data evaluations, many of which themselves use reaction models;
-it is not equivalent to validation against experimental double-differential
-measurements.
+or direct-reaction calculation. It borrows physically motivated functional forms
+from those theories and fits their coefficients to evaluated data. Consequently,
+agreement with ENDF distributions measures consistency with nuclear-data
+evaluations, many of which themselves use reaction models; it is not equivalent
+to validation against experimental double-differential measurements.
 
 When several products are missing, OpenMC emits them sequentially in the rest
 frame of the undecayed system. The transported neutron, if present, is used
@@ -609,8 +608,8 @@ compound-nucleus level density to the entire spectrum makes it too soft. The
 fitted exponent :math:`\nu` provides a compact compromise among those
 components.
 
-Energy-model calibration
-~~~~~~~~~~~~~~~~~~~~~~~~
+Energy-model fitting
+~~~~~~~~~~~~~~~~~~~~
 
 The energy coefficients :math:`r_0`, :math:`g`, and
 :math:`\nu` were fitted to evaluated ENDF File 6 center-of-mass
@@ -663,10 +662,17 @@ where
 Thus, spectral shape is the primary fitting criterion, while the two smaller
 terms discourage a model from obtaining a good cumulative shape with biased
 first or second moments. The fitted parameters minimize the weighted mean of
-:math:`\mathcal{L}_E` over the calibration targets. Targets are held out by
-nuclear data library and by groups of elements during cross-validation;
-neighboring incident-energy points from the same evaluation are never split
-between training and validation.
+:math:`\mathcal{L}_E` over the fitting targets.
+
+Grouped cross-validation was used while comparing candidate functional forms and
+assessing how well a fitted model transfers beyond the evaluations used to fit
+it. In one set of folds, an entire nuclear data library was held out; in
+another, groups of elements were held out. Neighboring incident-energy points
+from the same evaluation were never split between fitting and validation,
+because they are strongly correlated. This procedure was not needed merely
+because the selected model has three parameters, nor does it permanently reserve
+part of the dataset. After the functional form was selected, the three reported
+coefficients were fitted using the complete 37,368-target dataset.
 
 The fitted values used by transport are
 
@@ -773,13 +779,12 @@ and the fitted node loss is defined as
         -\langle\mu\rangle_{\mathrm{eval}}
       \right)^2.
 
-Here :math:`\theta` denotes the six angular parameters, and
-:math:`F(\mu)` is an angular cumulative distribution. Node losses are weighted
-by the probability carried by their outgoing-energy intervals. Target losses
-use cross-section weights and the same deduplication and grouped
-cross-validation principles as the energy calibration. Evaluated laws that
-are isotropic at every energy carry no information about angular trends and
-are excluded from fitting.
+Here :math:`\theta` denotes the six angular parameters, and :math:`F(\mu)` is an
+angular cumulative distribution. Node losses are weighted by the probability
+carried by their outgoing-energy intervals. Target losses use cross-section
+weights and the same deduplication and grouped cross-validation strategy as the
+energy-model fit. Evaluated laws that are isotropic at every energy carry no
+information about angular trends and are excluded from fitting.
 
 The fitted coefficients are
 
@@ -822,13 +827,13 @@ Many evaluated LANG=2 distributions contain a contiguous run of exactly zero
 :math:`r` values at the high-energy end, sometimes in a region carrying
 substantial probability. Within-corpus comparisons show that otherwise similar
 subsections without such runs retain nonzero :math:`r` values over the same
-energy range. The calibration therefore treats a terminal zero run as a file
-padding convention rather than as measured angular information. Fits that
-instead interpret every zero literally were also examined as a sensitivity;
-they produce a pre-equilibrium fraction that decreases sharply at high outgoing
+energy range. The fitting procedure therefore treats a terminal zero run as a
+file padding convention rather than as measured angular information. Fits that
+instead interpret every zero literally were also examined as a sensitivity; they
+produce a pre-equilibrium fraction that decreases sharply at high outgoing
 energy and do not improve held-out recoil predictions. Because the ENDF format
-does not label these entries as padding, this interpretation remains a source
-of model uncertainty.
+does not label these entries as padding, this interpretation remains a source of
+model uncertainty.
 
 Sampling and event completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -890,10 +895,10 @@ distribution. OpenMC reports the momentum-balanced recoil.
 **Light charged particles.** The light-ion energy and angular distributions are
 fitted surrogates rather than samples from the transport library. Their
 agreement with ENDF File 6 distributions is therefore approximate. Aggregate
-tests across the calibration libraries show useful agreement, but errors can
-be substantially larger for individual nuclide, incident-energy, and reaction
-combinations, particularly near threshold. Helium-3 and triton channels carry
-little calibration weight and have correspondingly greater uncertainty.
+tests across the libraries used for fitting show useful agreement, but errors
+can be substantially larger for individual nuclide, incident-energy, and
+reaction combinations, particularly near threshold. Helium-3 and triton channels
+carry little fitting weight and have correspondingly greater uncertainty.
 
 -----------
 Limitations
