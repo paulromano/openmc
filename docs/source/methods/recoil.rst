@@ -176,8 +176,8 @@ Before any product is assigned, :math:`\mathcal{S}` is empty,
 :math:`\mathbf{P}_{\mathrm{rem}}=\mathbf{p}_{n,\mathrm{in}}`, and
 :math:`M_{\mathrm{rem}}=M_{\mathrm{final}}`, so
 :eq:`recoil-running-budget` reduces to the definition of :math:`U_0`. Each
-subsequent emission reduces :math:`U`, which then determines the kinematic
-endpoint for the next emission.
+subsequent emission reduces :math:`U`, which then determines the maximum
+kinetic energy available to the next emitted particle.
 
 After every emitted particle has been assigned, the remaining system is simply
 the residual nucleus: the reaction product left after the neutron, photons, or
@@ -206,14 +206,13 @@ more kinetic energy than the reaction provides. In an exact two-body channel,
 the two product kinetic energies exhaust the available energy and
 :math:`E_x=0`, apart from numerical roundoff.
 
-Emission endpoint
------------------
+Maximum emission energy
+-----------------------
 
 When OpenMC models an emitted light particle, it must first determine the
 largest kinetic energy that the current event can give that particle. This
-upper limit is the **kinematic endpoint**. It prevents the surrogate model from
-sampling an energy that would leave too little energy for the remaining
-products and their recoil.
+upper limit prevents the surrogate model from sampling an energy that would
+leave too little energy for the remaining products and their recoil.
 
 Suppose a light particle :math:`b` of mass :math:`m_b` is emitted
 from a system with current available energy :math:`U` from
@@ -233,7 +232,7 @@ Requiring
 :math:`E_b^{\mathrm{cm}}+E_D^{\mathrm{cm}}\leq U` gives
 
 .. math::
-    :label: recoil-endpoint
+    :label: recoil-max-energy
 
     E_{b,\max} = U\frac{M_D}{m_b+M_D}.
 
@@ -244,7 +243,7 @@ that level is already included in the level-specific Q value; no additional
 unaccounted excitation remains.
 
 For a continuum or multiparticle channel, the surrogate may sample an energy
-below the endpoint. After the emission, the internal energy left in the
+below this maximum. After the emission, the internal energy left in the
 remaining system is
 
 .. math::
@@ -254,10 +253,10 @@ remaining system is
 
 This energy is not discarded. If another product still needs to be emitted,
 :math:`U_D` becomes the value of :math:`U` used to calculate that product's
-endpoint. If no products remain, the remaining system is the residual nucleus
+maximum energy. If no products remain, the remaining system is the residual nucleus
 and :math:`U_D` becomes its final bookkeeping excitation :math:`E_x`. Thus,
-the endpoint equation both bounds each sample and updates the running energy
-budget for a sequence of emissions.
+the maximum-energy equation both bounds each sample and updates the running
+energy budget for a sequence of emissions.
 
 -----------------
 Reaction Families
@@ -406,10 +405,9 @@ Purpose and scope
 ACE-derived neutron libraries do not contain the evaluated energy-angle
 distributions of emitted protons, deuterons, tritons, helium-3 nuclei, or alpha
 particles. OpenMC therefore cannot sample these products directly even though
-the original ENDF evaluation may describe them in File 6. The light-ion model
-is explicitly a **surrogate** for those missing distributions.
-
-The surrogate has two goals:
+the original ENDF evaluation may describe them in File 6. The light-ion model is
+explicitly a surrogate for those missing distributions. The surrogate has two
+goals:
 
 - reproduce the broad energy and angular trends in evaluated charged-particle
   distributions with a small, evaluation-independent set of coefficients; and
@@ -426,7 +424,7 @@ frame of the undecayed system. The transported neutron, if present, is used
 first because its evaluated sample must remain unchanged. The missing products
 are then placed in random order so that the algorithm does not systematically
 give the first product more of the available energy. Each accepted emission
-reduces the internal energy according to :eq:`recoil-endpoint`.
+reduces the internal energy according to :eq:`recoil-max-energy`.
 
 Energy distribution
 ~~~~~~~~~~~~~~~~~~~
@@ -450,8 +448,9 @@ excitation :math:`E_x`. The factor :math:`E` follows from phase
 space and detailed balance in the Weisskopf-Ewing derivation.
 
 A transport collision kernel cannot evaluate the inverse cross section and
-detailed daughter level density for every event. OpenMC replaces them with a
-Coulomb transmission factor and an empirical endpoint factor:
+detailed daughter level density for every event. OpenMC instead uses a compact
+empirical distribution motivated by two separate features of nuclear-reaction
+models:
 
 .. math::
     :label: recoil-light-ion
@@ -466,17 +465,33 @@ with
 
     0\leq E\leq E_{\max}^{\mathrm{event}} .
 
-The two endpoints have different purposes.
-:math:`E_{\max}^{\mathrm{shape}}` is the two-body endpoint for the channel
-that emits this ion alone and determines the shape of the distribution.
-:math:`E_{\max}^{\mathrm{event}}` is calculated from the energy remaining
-in the current reconstructed event and limits the sampled energy. The endpoints
-are equal for a one-ion channel and differ after another product has consumed
-part of the available energy.
+Here :math:`T_C(E)` is a dimensionless factor that suppresses emission below
+the Coulomb barrier and increases toward unity above the barrier. Its
+definition is given below. The factor
+:math:`(1-E/E_{\max}^{\mathrm{shape}})^\nu` represents the decreasing
+probability of emission as the ion takes more of the available energy and less
+energy remains in the daughter nucleus. It also makes the probability vanish
+when the ion reaches the maximum energy allowed for the single-ion channel.
+The exponent :math:`\nu` controls how rapidly this decrease occurs.
 
-For a charged ion, the inverse reaction is strongly suppressed below the
-Coulomb barrier. Quantum tunneling through a Coulomb potential gives the Gamow
-factor :math:`\exp[-2\pi\eta(E)]` [Gamow1928]_, where the Sommerfeld
+The equation contains two maximum energies with different purposes.
+:math:`E_{\max}^{\mathrm{shape}}` is the two-body maximum for a channel that
+emits this ion alone; it sets the energy scale over which the distribution
+falls. :math:`E_{\max}^{\mathrm{event}}` is calculated from the energy that
+remains in the particular reconstructed event and is the upper limit on the
+sampled value of :math:`E`. The two values are equal for a one-ion channel.
+The event-specific maximum can be lower after another product has consumed
+some of the available energy.
+
+Equation :eq:`recoil-light-ion` is not a complete Weisskopf-Ewing,
+Hauser-Feshbach, or pre-equilibrium calculation, and no single theory derives
+its full form. Its two empirical factors have distinct motivations. First, an
+inverse reaction involving a charged ion is strongly suppressed below the
+Coulomb barrier. Statistical evaporation models commonly obtain the
+inverse-reaction cross section from optical-model transmission coefficients;
+simple barrier transmission captures only their leading Coulomb suppression
+[Alexander1990]_. Quantum tunneling through a Coulomb potential gives the
+Gamow factor :math:`\exp[-2\pi\eta(E)]` [Gamow1928]_, where the Sommerfeld
 parameter is
 
 .. math::
@@ -537,13 +552,16 @@ artificially flattening the sub-barrier spectrum. The term sometimes called
 the *softplus* function is only a numerical device; it does not add another
 physical assumption.
 
-The endpoint power in :eq:`recoil-light-ion` approximates the effect of
-the daughter level density. It is empirical rather than a literal nuclear
-level-density formula. Evaluated charged-particle spectra combine compound,
-pre-equilibrium, and direct emission [Koning2012]_, so applying a pure
-compound-nucleus level density to the entire spectrum makes it too soft. The
-fitted exponent :math:`\nu` provides a compact compromise among those
-components.
+Second, the maximum-energy factor makes the probability vanish when the
+emitted ion exhausts the available energy. A power of the remaining energy occurs in
+uniform-spacing particle-hole state densities used by exciton models
+[Ericson1960]_ [Williams1971]_, providing a qualitative physical motivation
+for this choice. It is not the conventional equilibrium daughter level
+density used in a complete Weisskopf-Ewing calculation, however, and the
+fitted exponent :math:`\nu` should not be interpreted as a measured exciton
+number. Evaluated charged-particle spectra combine compound, pre-equilibrium,
+and direct emission [Koning2012]_; this factor is an empirical way to represent
+their aggregate energy dependence with one coefficient.
 
 Energy-model parameters
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -565,7 +583,7 @@ The parameter values used by transport are
      - Scale on the WKB-inspired exponent
    * - :math:`\nu`
      - 1.18221
-     - Exponent of the empirical endpoint factor
+     - Exponent of the empirical maximum-energy factor
 
 Angular distribution
 ~~~~~~~~~~~~~~~~~~~~
@@ -751,3 +769,16 @@ References
 .. [Koning2012] A. J. Koning and D. Rochman, "Modern Nuclear Data Evaluation
    with the TALYS Code System," *Nuclear Data Sheets* **113**, 2841-2934
    (2012). `<https://doi.org/10.1016/j.nds.2012.11.002>`_
+
+.. [Alexander1990] J. M. Alexander, M. T. Magda, and S. Landowne, "Inverse
+   Reactions and the Statistical Evaporation Model: Ingoing-Wave
+   Boundary-Condition and Optical Models," *Physical Review C* **42**,
+   1092-1100 (1990). `<https://doi.org/10.1103/PhysRevC.42.1092>`_
+
+.. [Ericson1960] T. Ericson, "The Statistical Model and Nuclear Level
+   Densities," *Advances in Physics* **9**, 425-511 (1960).
+   `<https://doi.org/10.1080/00018736000101239>`_
+
+.. [Williams1971] F. C. Williams, "Particle-Hole State Density in the Uniform
+   Spacing Model," *Nuclear Physics A* **166**, 231-240 (1971).
+   `<https://doi.org/10.1016/0375-9474(71)90426-X>`_
