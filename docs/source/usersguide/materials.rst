@@ -87,8 +87,8 @@ with O16.
 Material Libraries
 ------------------
 
-OpenMC includes material compositions from Revision 2 of the `PNNL Compendium
-of Material Composition Data for Radiation Transport Modeling
+OpenMC includes material compositions from Revision 2 of the `PNNL Compendium of
+Material Composition Data for Radiation Transport Modeling
 <https://doi.org/10.2172/1782721>`_. A material can be created from this library
 with :meth:`Material.from_library`, for example::
 
@@ -100,19 +100,12 @@ a material ID or temperature::
    salt_water = openmc.Material.from_library(
        'Salt Water', material_id=10, temperature=293.15)
 
-Material names are case sensitive. The default bundled library is
-``'pnnl_v2'``. Each call returns a new, independent material with the density
-and composition reported in the compendium.
-
-The available material names can be retrieved without creating any materials::
+Material names are case sensitive. The default bundled library is ``'pnnl_v2'``.
+Each call returns a new, independent material with the density and composition
+reported in the compendium. The available material names can be retrieved
+without creating any materials::
 
    names = openmc.Material.get_library_material_names()
-
-The bundled values are taken from the machine-readable PNNL compendium JSON.
-The one exception is Lutetium Yttrium OxyorthoSilicate (LYSO), whose density and
-elemental composition are taken from material 206 in the published Revision 2
-PDF. This definition includes the 0.5 atom% cerium dopant indicated by the
-material's name and intended scintillator use.
 
 Natural compositions in the PNNL library are stored as elemental atom fractions
 and expanded using :meth:`Material.add_element`. As described above, OpenMC will
@@ -154,13 +147,13 @@ containing an elemental composition is shown below:
      }
    }
 
-Schema version 1 uses atom fractions and densities in g/cm3. Each material can
+Schema version 1 uses atom fractions and densities in g/cm³. Each material can
 contain ``elements``, ``nuclides``, or both. Elemental components are expanded
-using :meth:`Material.add_element` and
-``openmc.config['cross_sections']``. Nuclide components retain their explicitly
-specified isotopic composition. Component fractions must be positive and sum
-to one. Additional provenance metadata, such as a top-level ``source`` or a
-per-material note, is permitted and ignored when constructing a material.
+using :meth:`Material.add_element` and ``openmc.config['cross_sections']``.
+Nuclide components retain their explicitly specified isotopic composition.
+Component fractions must be positive and sum to one. Additional provenance
+metadata, such as a top-level ``source`` or a per-material note, is permitted
+and ignored when constructing a material.
 
 -----------------------
 Thermal Scattering Data
