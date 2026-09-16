@@ -83,9 +83,9 @@ to only put isotopes in your model for which you have cross section data. In the
 case of oxygen in ENDF/B-VII.1, the abundance of O18 would end up being lumped
 with O16.
 
---------------------------
-Bundled Material Libraries
---------------------------
+------------------
+Material Libraries
+------------------
 
 OpenMC includes material compositions from Revision 2 of the `PNNL Compendium
 of Material Composition Data for Radiation Transport Modeling
@@ -100,9 +100,13 @@ a material ID or temperature::
    salt_water = openmc.Material.from_library(
        'Salt Water', material_id=10, temperature=293.15)
 
-Material names are case sensitive. The default and currently available library
-is ``'pnnl_v2'``. Each call returns a new, independent material with the density
+Material names are case sensitive. The default bundled library is
+``'pnnl_v2'``. Each call returns a new, independent material with the density
 and composition reported in the compendium.
+
+The available material names can be retrieved without creating any materials::
+
+   names = openmc.Material.get_library_material_names()
 
 The bundled values are taken from the machine-readable PNNL compendium JSON.
 The one exception is Lutetium Yttrium OxyorthoSilicate (LYSO), whose density and
@@ -121,6 +125,42 @@ absent from the selected nuclear data library.
 The compendium values are representative material definitions; actual density
 and composition can vary. Users should confirm that a library material is
 appropriate for their application.
+
+Custom libraries can be registered from local JSON files. Registration applies
+to the current Python process and cannot replace a library with the same name::
+
+   openmc.Material.register_library('custom', 'custom_materials.json')
+   names = openmc.Material.get_library_material_names('custom')
+   material = openmc.Material.from_library(
+       'My Material', library='custom', temperature=600.0)
+
+Custom files use the same schema as the bundled library. A minimal library
+containing an elemental composition is shown below:
+
+.. code-block:: json
+
+   {
+     "schema_version": 1,
+     "density_units": "g/cm3",
+     "percent_type": "ao",
+     "materials": {
+       "My Material": {
+         "density": 1.0,
+         "elements": {
+           "H": 0.666667,
+           "O": 0.333333
+         }
+       }
+     }
+   }
+
+Schema version 1 uses atom fractions and densities in g/cm3. Each material can
+contain ``elements``, ``nuclides``, or both. Elemental components are expanded
+using :meth:`Material.add_element` and
+``openmc.config['cross_sections']``. Nuclide components retain their explicitly
+specified isotopic composition. Component fractions must be positive and sum
+to one. Additional provenance metadata, such as a top-level ``source`` or a
+per-material note, is permitted and ignored when constructing a material.
 
 -----------------------
 Thermal Scattering Data

@@ -5,6 +5,19 @@ import lxml.etree as ET
 import pytest
 
 import openmc
+import openmc.material as material_module
+
+
+@pytest.fixture
+def material_library_registry():
+    """Restore the material library registry and cache after a test."""
+    registry = material_module._MATERIAL_LIBRARIES.copy()
+    try:
+        yield
+    finally:
+        material_module._MATERIAL_LIBRARIES.clear()
+        material_module._MATERIAL_LIBRARIES.update(registry)
+        material_module._load_material_library.cache_clear()
 
 
 @pytest.fixture
@@ -12,9 +25,9 @@ def cross_sections(tmp_path):
     """Cross section index covering the natural elements used in tests."""
     root = ET.Element('cross_sections')
     for nuclide in (
-        'O16', 'O17', 'Na23', 'Si28', 'Si29', 'Si30', 'Cl35', 'Cl37',
-        'Y89', 'Ce136', 'Ce138', 'Ce140', 'Ce142', 'Cs133', 'Lu175',
-        'Lu176'
+        'H1', 'H2', 'O16', 'O17', 'Na23', 'Si28', 'Si29', 'Si30', 'Cl35',
+        'Cl37', 'Y89', 'Ce136', 'Ce138', 'Ce140', 'Ce142', 'Cs133',
+        'Lu175', 'Lu176'
     ):
         ET.SubElement(
             root,
@@ -126,6 +139,115 @@ def test_constructor_kwargs():
     assert material.depletable
     assert material.density == pytest.approx(0.0001252645124733361)
     assert material.nuclides == [('He3', 1.0, 'ao')]
+
+
+def test_library_material_names():
+    """Library names are sorted and do not consume a material ID."""
+    next_id = openmc.Material.next_id
+    names = openmc.Material.get_library_material_names()
+
+    assert isinstance(names, tuple)
+    assert names == tuple(sorted(names))
+    assert len(names) == 411
+    assert 'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)' in names
+    assert 'Sodium Oxide' in names
+    assert openmc.Material.next_id == next_id
+
+
+def test_register_library(
+    tmp_path, cross_sections, material_library_registry
+):
+    """A custom library can be registered, listed, and loaded."""
+    path = tmp_path / 'custom_materials.json'
+    path.write_text(json.dumps({
+        'schema_version': 1,
+        'density_units': 'g/cm3',
+        'percent_type': 'ao',
+        'materials': {
+            'Custom Water': {
+                'density': 0.95,
+                'elements': {'H': 0.666667, 'O': 0.333333},
+            },
+        },
+    }))
+
+    openmc.Material.register_library('custom', path)
+    assert openmc.Material.get_library_material_names('custom') == (
+        'Custom Water',
+    )
+
+    with openmc.config.patch('cross_sections', cross_sections):
+        material = openmc.Material.from_library(
+            'Custom Water',
+            library='custom',
+            material_id=987653,
+            temperature=600.0,
+        )
+
+    assert material.id == 987653
+    assert material.temperature == 600.0
+    assert material.density == pytest.approx(0.95)
+    fractions = {nuc.name: nuc.percent for nuc in material.nuclides}
+    assert fractions['H1'] + fractions['H2'] == pytest.approx(0.666667)
+    assert fractions['O16'] + fractions['O17'] == pytest.approx(0.333333)
+
+    with pytest.raises(ValueError, match='already registered'):
+        openmc.Material.register_library('custom', path)
+    assert openmc.Material.get_library_material_names('custom') == (
+        'Custom Water',
+    )
+
+
+def test_register_invalid_library(tmp_path, material_library_registry):
+    """Registration validates names, files, schemas, and material data."""
+    valid_data = {
+        'schema_version': 1,
+        'density_units': 'g/cm3',
+        'percent_type': 'ao',
+        'materials': {
+            'Hydrogen': {
+                'density': 0.1,
+                'nuclides': {'H1': 1.0},
+            },
+        },
+    }
+
+    valid_path = tmp_path / 'valid.json'
+    valid_path.write_text(json.dumps(valid_data))
+    with pytest.raises(ValueError, match='cannot be empty'):
+        openmc.Material.register_library('', valid_path)
+    with pytest.raises(ValueError, match='already registered'):
+        openmc.Material.register_library('pnnl_v2', valid_path)
+
+    with pytest.raises(RuntimeError, match='Could not load'):
+        openmc.Material.register_library('missing', tmp_path / 'missing.json')
+
+    malformed_path = tmp_path / 'malformed.json'
+    malformed_path.write_text('{')
+    with pytest.raises(RuntimeError, match='Could not load'):
+        openmc.Material.register_library('malformed', malformed_path)
+
+    schema_path = tmp_path / 'schema.json'
+    schema_path.write_text(json.dumps({**valid_data, 'schema_version': 2}))
+    with pytest.raises(RuntimeError, match='unsupported schema version'):
+        openmc.Material.register_library('schema', schema_path)
+
+    invalid_path = tmp_path / 'invalid.json'
+    invalid_data = {
+        **valid_data,
+        'materials': {
+            'Hydrogen': {
+                'density': 0.1,
+                'nuclides': {'H1': 0.5},
+            },
+        },
+    }
+    invalid_path.write_text(json.dumps(invalid_data))
+    with pytest.raises(RuntimeError, match='do not sum to one'):
+        openmc.Material.register_library('invalid', invalid_path)
+
+    with pytest.raises(ValueError, match="Unknown material library 'missing'"):
+        openmc.Material.get_library_material_names('missing')
 
 
 def test_unknown_library_and_material():

@@ -5,6 +5,7 @@ from copy import deepcopy
 from functools import cache, reduce
 from importlib import resources
 import json
+from math import isfinite
 from numbers import Real
 from pathlib import Path
 import re
@@ -56,9 +57,9 @@ NuclideTuple = namedtuple('NuclideTuple', ['name', 'percent', 'percent_type'])
 
 @cache
 def _load_material_library(library):
-    """Load a material library bundled with OpenMC."""
+    """Load a registered material library."""
     try:
-        filename = _MATERIAL_LIBRARIES[library]
+        location = _MATERIAL_LIBRARIES[library]
     except KeyError:
         available = ', '.join(sorted(_MATERIAL_LIBRARIES))
         raise ValueError(
@@ -66,14 +67,32 @@ def _load_material_library(library):
             f"{available}"
         ) from None
 
-    path = resources.files('openmc.data').joinpath(filename)
+    if isinstance(location, Path):
+        path = location
+    else:
+        path = resources.files('openmc.data').joinpath(location)
+    return _read_material_library(library, path)
+
+
+def _read_material_library(library, path):
+    """Read and validate material library data from a path."""
     try:
         data = json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError(
             f"Could not load material library '{library}'"
         ) from exc
 
+    _validate_material_library(library, data)
+    return data
+
+
+def _validate_material_library(library, data):
+    """Validate the schema and contents of a material library."""
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"Material library '{library}' does not contain a JSON object"
+        )
     if data.get('schema_version') != 1:
         raise RuntimeError(
             f"Material library '{library}' has an unsupported schema version"
@@ -86,7 +105,71 @@ def _load_material_library(library):
         raise RuntimeError(
             f"Material library '{library}' uses unsupported units"
         )
-    return data
+
+    element_symbols = set(openmc.data.ATOMIC_SYMBOL.values())
+    for name, material in data['materials'].items():
+        if not isinstance(name, str) or not name.strip():
+            raise RuntimeError(
+                f"Material library '{library}' contains an invalid material "
+                "name"
+            )
+        if not isinstance(material, dict):
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' is not a JSON "
+                "object"
+            )
+
+        density = material.get('density')
+        if (not isinstance(density, Real) or isinstance(density, bool)
+                or not isfinite(density) or density <= 0.0):
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' does not have a "
+                "positive density"
+            )
+
+        elements = material.get('elements', {})
+        nuclides = material.get('nuclides', {})
+        if not isinstance(elements, dict) or not isinstance(nuclides, dict):
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' has invalid "
+                "components"
+            )
+        if not elements and not nuclides:
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' has no components"
+            )
+
+        invalid_elements = set(elements) - element_symbols
+        if invalid_elements:
+            symbol = min(invalid_elements)
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' has an invalid "
+                f"element '{symbol}'"
+            )
+        for nuclide in nuclides:
+            try:
+                openmc.data.zam(nuclide)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Material '{name}' in library '{library}' has an "
+                    f"invalid nuclide '{nuclide}'"
+                ) from exc
+
+        fractions = [*elements.values(), *nuclides.values()]
+        if any(
+            not isinstance(value, Real) or isinstance(value, bool)
+            or not isfinite(value) or value <= 0.0
+            for value in fractions
+        ):
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' has invalid "
+                "component fractions"
+            )
+        if abs(sum(fractions) - 1.0) > 5.0e-6:
+            raise RuntimeError(
+                f"Material '{name}' in library '{library}' has component "
+                "fractions that do not sum to one"
+            )
 
 
 class Material(IDManagerMixin):
@@ -737,11 +820,77 @@ class Material(IDManagerMixin):
 
         return material
 
+    @staticmethod
+    def get_library_material_names(
+        library: str = 'pnnl_v2'
+    ) -> tuple[str, ...]:
+        """Return the material names available in a registered library.
+
+        .. versionadded:: 0.16.1
+
+        Parameters
+        ----------
+        library : str, optional
+            Name of the material library. Defaults to ``'pnnl_v2'``.
+
+        Returns
+        -------
+        tuple of str
+            Material names in alphabetical order.
+
+        Raises
+        ------
+        ValueError
+            If `library` is not registered.
+
+        """
+        cv.check_type('material library', library, str)
+        library_data = _load_material_library(library)
+        return tuple(sorted(library_data['materials']))
+
+    @staticmethod
+    def register_library(library: str, path: PathLike):
+        """Register a material library from a JSON file.
+
+        The registration applies to the current Python process. The file is
+        read and validated before the library is registered.
+
+        .. versionadded:: 0.16.1
+
+        Parameters
+        ----------
+        library : str
+            Name used to identify the material library.
+        path : path-like
+            Path to a material library JSON file.
+
+        Raises
+        ------
+        ValueError
+            If `library` is empty or already registered.
+        RuntimeError
+            If the file cannot be read or contains invalid library data.
+
+        """
+        cv.check_type('material library', library, str)
+        cv.check_type('material library path', path, PathLike)
+        if not library.strip():
+            raise ValueError('Material library name cannot be empty')
+        if library in _MATERIAL_LIBRARIES:
+            raise ValueError(
+                f"Material library '{library}' is already registered"
+            )
+
+        path = Path(path).resolve()
+        _read_material_library(library, path)
+        _MATERIAL_LIBRARIES[library] = path
+        _load_material_library.cache_clear()
+
     @classmethod
     def from_library(
         cls, material_name: str, library: str = 'pnnl_v2', **kwargs
     ) -> Material:
-        """Create a material from a library bundled with OpenMC.
+        """Create a material from a registered material library.
 
         Natural elements in a library are expanded according to the nuclides
         available in the cross section library indicated by
