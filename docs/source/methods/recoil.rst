@@ -206,8 +206,14 @@ more kinetic energy than the reaction provides. In an exact two-body channel,
 the two product kinetic energies exhaust the available energy and
 :math:`E_x=0`, apart from numerical roundoff.
 
-Two-body emission endpoint
---------------------------
+Emission endpoint
+-----------------
+
+When OpenMC models an emitted light particle, it must first determine the
+largest kinetic energy that the current event can give that particle. This
+upper limit is the **kinematic endpoint**. It prevents the surrogate model from
+sampling an energy that would leave too little energy for the remaining
+products and their recoil.
 
 Suppose a light particle :math:`b` of mass :math:`m_b` is emitted
 from a system with current available energy :math:`U` from
@@ -231,17 +237,27 @@ Requiring
 
     E_{b,\max} = U\frac{M_D}{m_b+M_D}.
 
-For a sampled energy below this endpoint, the energy left as excitation is
+For an exact two-body channel, the emitted particle and residual must use all
+of :math:`U`, so OpenMC assigns :math:`E_b^{\mathrm{cm}}=E_{b,\max}`. If the
+MT number identifies an excited residual level, the energy needed to populate
+that level is already included in the level-specific Q value; no additional
+unaccounted excitation remains.
+
+For a continuum or multiparticle channel, the surrogate may sample an energy
+below the endpoint. After the emission, the internal energy left in the
+remaining system is
 
 .. math::
 
-    E_x =
+    U_D =
     U - E_b^{\mathrm{cm}}\left(1+\frac{m_b}{M_D}\right) \geq 0 .
 
-The same expressions are used by the OpenMC transport implementation and by
-the separate Python fitting and validation programs. In this documentation,
-**calibration** refers to those Python analyses of raw ENDF evaluations; no
-fitting occurs while OpenMC is running.
+This energy is not discarded. If another product still needs to be emitted,
+:math:`U_D` becomes the value of :math:`U` used to calculate that product's
+endpoint. If no products remain, the remaining system is the residual nucleus
+and :math:`U_D` becomes its final bookkeeping excitation :math:`E_x`. Thus,
+the endpoint equation both bounds each sample and updates the running energy
+budget for a sequence of emissions.
 
 -----------------
 Reaction Families
