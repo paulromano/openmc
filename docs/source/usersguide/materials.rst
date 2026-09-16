@@ -100,10 +100,10 @@ a material ID or temperature::
    salt_water = openmc.Material.from_library(
        'Salt Water', material_id=10, temperature=293.15)
 
-Material names are case sensitive. The default bundled library is ``'pnnl_v2'``.
-Each call returns a new, independent material with the density and composition
-reported in the compendium. The available material names can be retrieved
-without creating any materials::
+Material names are case sensitive, but whitespace is normalized when looking up
+a name. The default bundled library is ``'pnnl_v2'``. Each call returns a new,
+independent material with the density and composition reported in the compendium.
+The available material names can be retrieved without creating any materials::
 
    names = openmc.Material.get_library_material_names()
 

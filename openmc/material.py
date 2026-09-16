@@ -99,6 +99,10 @@ def _read_material_library(library, path):
         raise RuntimeError(
             f"Material library '{library}' does not contain valid materials"
         )
+    data['materials'] = {
+        _normalize_material_name(name): material
+        for name, material in data['materials'].items()
+    }
     return data
 
 
@@ -832,7 +836,8 @@ class Material(IDManagerMixin):
         Parameters
         ----------
         material_name : str
-            Name of the material in the library. Names are case sensitive.
+            Name of the material in the library. Names are case sensitive, but
+            whitespace is normalized for lookup.
         library : str, optional
             Name of the material library. Defaults to ``'pnnl_v2'``, the `PNNL
             Compendium of Material Composition Data for Radiation Transport
@@ -865,25 +870,20 @@ class Material(IDManagerMixin):
         cv.check_type('material library', library, str)
 
         library_data = _load_material_library(library)
+        requested_name = material_name
         normalized_name = _normalize_material_name(material_name)
-        stored_name = next(
-            (
-                name for name in library_data['materials']
-                if _normalize_material_name(name) == normalized_name
-            ),
-            None,
-        )
-        if stored_name is None:
+        try:
+            material_data = library_data['materials'][normalized_name]
+        except KeyError:
             raise ValueError(
-                f"Material '{material_name}' not found in library '{library}'"
-            )
-        material_data = library_data['materials'][stored_name]
+                f"Material '{requested_name}' not found in library '{library}'"
+            ) from None
 
         components = {
             **material_data.get('elements', {}),
             **material_data.get('nuclides', {}),
         }
-        kwargs.setdefault('name', material_name)
+        kwargs.setdefault('name', requested_name)
         kwargs.setdefault('components', components)
         kwargs.setdefault('percent_type', library_data['percent_type'])
         kwargs.setdefault('density', material_data['density'])

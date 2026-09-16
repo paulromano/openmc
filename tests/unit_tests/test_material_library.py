@@ -128,6 +128,8 @@ def test_library_material_names():
     assert names == tuple(sorted(names))
     assert len(names) == 411
     assert 'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)' in names
+    assert 'Glass Scintillator, Li Doped  (GS1, GS2, GS3)' not in names
+    assert 'Glass Scintillator, Li Doped (GS1, GS2, GS3)' in names
     assert 'Sodium Oxide' in names
     assert openmc.Material.next_id == next_id
 
@@ -186,7 +188,7 @@ def test_register_library(
         'density_units': 'g/cm3',
         'percent_type': 'ao',
         'materials': {
-            'Custom Water': {
+            'Custom  Water': {
                 'density': 0.95,
                 'elements': {'H': 0.666667, 'O': 0.333333},
             },
