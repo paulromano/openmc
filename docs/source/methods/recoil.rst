@@ -329,11 +329,6 @@ momentum and kinetic-energy conservation for that limiting case gives
 
     E_{R,\max} = \frac{4A}{(A+1)^2}E_{\mathrm{in}} .
 
-At the fast energies used in the principal recoil comparisons, thermal-motion
-effects are negligible. NJOY GROUPR recoil matrices do not contain an
-event-by-event sampled target momentum, so comparison with them uses the same
-stationary-target-equivalent convention.
-
 One-neutron inelastic scattering
 --------------------------------
 
@@ -346,8 +341,9 @@ Momentum from later de-excitation photons is neglected.
 Continuum inelastic scattering (MT=91) uses the same momentum balance against
 the sampled outgoing neutron. The evaluated distribution is inclusive over
 unresolved residual states, so the inferred residual excitation varies from
-event to event. The result can differ from an explicit recoil subsection stored
-by an evaluation; see :ref:`methods_recoil_validation`.
+event to event. OpenMC does not sample an explicit recoil subsection that may
+also be stored in the evaluation; it reports the residual implied by momentum
+balance against the sampled neutron.
 
 Reactions emitting several neutrons
 -----------------------------------
@@ -434,20 +430,6 @@ This procedure preserves the sampled multiplicity and enforces energy and
 momentum conservation. It is exact for a fully specified single-photon final
 state. A multiphoton recoil spectrum remains model dependent because the
 processed data do not supply correlations among cascade photons.
-
-For comparison, when explicit recoil data are absent, NJOY HEATR
-[MacFarlane2016]_ estimates the mean using
-
-.. math::
-
-    \overline{E_R} =
-    \frac{E_{\mathrm{in}}}{A+1}
-    + \frac{\overline{\sum_k E_{\gamma,k}^2}}
-           {2(A+1)m_nc^2},
-
-where :math:`A` is the target-to-neutron mass ratio. Matching this mean
-does not determine the spectral shape, which also depends on photon-energy and
-angular correlations. The overbar denotes an average over capture events.
 
 With survival biasing, OpenMC creates the implicit nonfission absorption
 secondary with the corresponding absorbed weight and then continues the
@@ -748,44 +730,6 @@ Fission
 Fission-fragment production is outside the present capability, so a fission
 event creates no recoil secondary particles.
 
-.. _methods_recoil_validation:
-
---------------------------------
-Comparison With NJOY Group Data
---------------------------------
-
-Group-wise recoil matrices produced by NJOY are commonly used to generate PKA
-spectra for codes such as SPECTRA-PKA [Gilbert2015]_. OpenMC agrees most closely
-with these matrices when both calculations use the same evaluated two-body
-kinematics.
-
-**Two-body channels.** For elastic scattering and discrete inelastic levels
-(MT=51-90), NJOY derives the recoil from the evaluated neutron angular
-distribution and OpenMC subtracts the sampled neutron momentum. Tests over
-structural nuclides and incident energies show agreement in both mean energy
-and spectral shape, including forward-angle structure near the endpoint.
-
-**Processed angular distributions.** The ACE-derived angular distribution
-sampled by OpenMC and the Legendre representation processed by NJOY can differ
-slightly even when they originate from the same evaluation. For Fe-56 near
-14 MeV, this produces a several-percent difference in
-:math:`1-\overline{\mu}` and therefore in the mean elastic recoil energy.
-This is a nuclear-data processing difference rather than a disagreement in the
-recoil kinematics.
-
-**Explicit evaluated recoil arrays.** Some TALYS-generated evaluations contain
-an explicit File 6 recoil subsection, which NJOY can use instead of deriving
-the recoil from the emitted neutron. Some TENDL MT=91 arrays are substantially
-softer than momentum balance against the same evaluation's neutron
-distribution. OpenMC reports the momentum-balanced recoil.
-
-**Light charged particles.** The light-ion energy and angular distributions are
-fitted surrogates rather than samples from the transport library. Their
-agreement with ENDF File 6 distributions is therefore approximate, and errors
-can be substantially larger for individual nuclide, incident-energy, and
-reaction combinations, particularly near threshold. Helium-3 and triton
-channels are less well constrained than proton, deuteron, and alpha channels.
-
 -----------
 Limitations
 -----------
@@ -850,13 +794,3 @@ References
 .. [Koning2012] A. J. Koning and D. Rochman, "Modern Nuclear Data Evaluation
    with the TALYS Code System," *Nuclear Data Sheets* **113**, 2841-2934
    (2012). `<https://doi.org/10.1016/j.nds.2012.11.002>`_
-
-.. [Gilbert2015] M. R. Gilbert, J. Marian, and J.-Ch. Sublet, "Energy Spectra
-   of Primary Knock-on Atoms Under Neutron Irradiation," *Journal of Nuclear
-   Materials* **467**, 121-134 (2015).
-   `<https://doi.org/10.1016/j.jnucmat.2015.09.023>`_
-
-.. [MacFarlane2016] R. E. MacFarlane, D. W. Muir, R. M. Boicourt, A. C.
-   Kahler, and J. L. Conlin, *The NJOY Nuclear Data Processing System, Version
-   2016*, Los Alamos National Laboratory report LA-UR-17-20093 (2016).
-   `<https://doi.org/10.2172/1338791>`_
