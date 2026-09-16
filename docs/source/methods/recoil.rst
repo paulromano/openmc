@@ -121,50 +121,29 @@ particles, mass-energy balance gives
     Q_M =
     \left(M_T + m_n - M_R - \sum_j m_j\right)c^2 .
 
-The mass inputs are neutral ground-state atomic masses from AME2020
-[AME2020]_. OpenMC converts each to an approximate nuclear mass by subtracting
-:math:`Z` electron masses; electron binding energy is neglected. It then
-evaluates :eq:`recoil-qm` through the corresponding nuclear mass excesses.
-Using mass excesses avoids subtracting several nearly equal nuclear masses to
-obtain a much smaller Q value.
+ENDF File 3 distinguishes the mass-difference value ``QM`` from the reaction
+value ``QI`` [ENDF102]_. For a lumped channel (reactions that represent the sum
+over all final states, e.g., MT=103), ``QI`` and ``QM`` generally agree. For a
+continuum member of a split representation (e.g., MT=649), ``QI`` is an
+effective threshold value and can be several MeV below the ground-state energy
+release. OpenMC therefore uses :math:`Q_M` for continuum, lumped, and
+multiparticle channels. It uses the evaluated ``QI`` for an MT number that names
+one residual level, because that value includes the excitation energy of the
+named level.
 
-ENDF File 3 distinguishes the mass-difference value ``QM`` from the
-reaction value ``QI`` [ENDF102]_. A **lumped reaction channel** is an MT
-number that represents the sum over all final states of a reaction type rather
-than one named residual level. For a lumped channel, ``QI`` and ``QM``
-generally agree. For a continuum member of a split representation
-(MT=649, 699, 749, 799, or 849), ``QI`` is an effective threshold value and
-can be several MeV below the ground-state energy release.
-
-OpenMC therefore uses :math:`Q_M` for continuum, lumped, and
-multiparticle channels. It uses the evaluated ``QI`` for an MT number that
-names one residual level, because that value includes the excitation energy of
-the named level. A level-specific Q value should not exceed
-:math:`Q_M`. Small positive differences can arise because the evaluation
-and OpenMC use different mass tables, so OpenMC caps an excess of at most
-0.25 MeV at :math:`Q_M`. A larger difference is treated as inconsistent,
-and no secondary recoil particle is created.
-
-The 0.25 MeV tolerance is not a frequent correction in the calibration data.
-An audit of 418 channels in ENDF/B-VIII.1, JEFF-4.0, JENDL-5, and TENDL-2025
-found a median difference of 0.1 keV, a 90th percentile of 2.2 keV, and a
-maximum of 90 keV between evaluated ``QM`` and the AME2020 mass-derived
-value. None exceeded 0.25 MeV. The tolerance is consequently a guard against
-inconsistent input, not an approximation expected to affect ordinary results.
-
-The additive ground-state mass of the complete final system is
+The total ground-state rest mass of the final particles is
 
 .. math::
     :label: recoil-final-mass
 
     M_{\mathrm{final}} = M_R + \sum_i m_i ,
 
-where the sum includes every emitted massive particle. For a stationary target,
-the incident neutron and target have total laboratory momentum
-:math:`\mathbf{p}_{n,\mathrm{in}}`. The kinetic energy associated with
-motion of the final system's center of mass is therefore
-:math:`|\mathbf{p}_{n,\mathrm{in}}|^2/(2M_{\mathrm{final}})`. Subtracting
-that translational energy from the laboratory energy balance gives the energy
+where the sum includes every emitted particle with mass. For a stationary
+target, the incident neutron and target have total laboratory momentum
+:math:`\mathbf{p}_{n,\mathrm{in}}`. The kinetic energy associated with motion of
+the final system's center of mass is therefore
+:math:`|\mathbf{p}_{n,\mathrm{in}}|^2/(2M_{\mathrm{final}})`. Subtracting that
+translational energy from the laboratory energy balance gives the energy
 available for relative motion and excitation in the center-of-mass frame:
 
 .. math::
@@ -173,22 +152,6 @@ available for relative motion and excitation in the center-of-mass frame:
     U_0 = E_{\mathrm{in}} + Q
         - \frac{|\mathbf{p}_{n,\mathrm{in}}|^2}
                {2M_{\mathrm{final}}}.
-
-Here :math:`E_{\mathrm{in}}` is the incident neutron kinetic energy and
-:math:`Q` is the channel Q value selected as described above.
-
-A fully relativistic treatment would use the invariant masses of the actual
-excited parent and final systems. Relative to the ground-state masses used
-here, those masses contain corrections on the scale of :math:`Q/c^2` and
-:math:`E_x/c^2`, where :math:`E_x` is the excitation energy. OpenMC instead
-uses fixed ground-state masses for inertia and carries :math:`Q` and
-:math:`E_x` only in the energy balance. This is the Newtonian, or Galilean,
-approximation: velocities combine by vector addition between the
-center-of-mass and laboratory frames, and each massive particle has kinetic
-energy :math:`p^2/(2m)`. Expanding the relativistic kinetic-energy relation
-in powers of :math:`p/(mc)` shows that its leading fractional correction is
-approximately :math:`E/(2mc^2)`. For a 14 MeV neutron, that correction is
-below one percent.
 
 After the secondary-particle kinetic energies are selected, the remaining
 excitation energy is
