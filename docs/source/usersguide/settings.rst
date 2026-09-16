@@ -891,10 +891,10 @@ Recoil Production
 -----------------
 
 Setting :attr:`Settings.recoil_production` makes supported continuous-energy
-neutron reactions record the recoiling residual nucleus -- the primary
-knock-on atom -- and the light ions the reaction emits. The records are added
-to the secondary bank so that a :class:`openmc.ParticleProductionFilter` can
-score them; they are not transported.
+neutron reactions create the recoiling residual nucleus (the primary knock-on
+atom) and any light ions the reaction emits as secondary particles. They are
+added to the secondary bank so that a :class:`openmc.ParticleProductionFilter`
+can score them; they are not transported.
 
 .. code-block:: python
 
@@ -910,22 +910,13 @@ score them; they are not transported.
 
 The ``'events'`` score is required: the production filter applies the *secondary
 particle's* weight rather than the colliding particle's. Combining it with a
-:class:`openmc.ReactionFilter` gives reaction-resolved PKA spectra, which needs
-analog absorption (``settings.survival_biasing = False``) for the absorption
-channels to be tagged with the right MT.
+:class:`openmc.ReactionFilter` gives reaction-resolved PKA spectra. Note that
+analog absorption (``settings.survival_biasing = False``) is needed for the
+absorption channels to be tagged with the right MT.
 
 Bound thermal scattering described by :math:`S(\alpha,\beta)` data or by
 NCrystal, fission fragments, and multi-group transport are outside the current
-recoil-production scope and do not create recoil records. OpenMC does not
-provide runtime recoil-coverage diagnostics. Validation calculations should
-compare reaction-event tally weight with heavy-residual production tally weight
-for every reaction included in an accuracy result.
-
-For free-gas elastic scattering, the recorded energy is the kinetic energy
-associated with the neutron momentum transfer in the incident target's rest
-frame. It is not the target's final laboratory kinetic energy or its signed
-laboratory kinetic-energy change. See :ref:`methods_recoil` for the precise
-definition and its relationship to thermal target motion.
+recoil-production scope and do not create recoil secondary particles.
 
 Two options control the model:
 
@@ -945,8 +936,8 @@ against the incident neutron alone. ``emitted_ions`` decides whether those ions
 are banked alongside the heavy residual; a PKA or damage-energy tally needs only
 the residual, while a helium- or hydrogen-production tally needs the ions.
 
-See :ref:`methods_recoil` for the models and for a comparison against NJOY
-group-wise recoil matrices.
+See :ref:`methods_recoil` for further details on the underlying models and
+limitations.
 
 -----------------------
 Restarting a Simulation
