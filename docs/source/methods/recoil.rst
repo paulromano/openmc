@@ -617,15 +617,30 @@ same functional form for LANG=2 distributions [ENDF102]_.
 
 OpenMC calculates :math:`a` from Kalbach's published 1988 systematics and
 multiplies it by one fitted scale factor. The processed ACE data do not retain
-the evaluated :math:`r`, so OpenMC represents it with a bounded logistic
-surrogate,
+the evaluated :math:`r`, so OpenMC must supply a surrogate for the balance
+between symmetric compound emission and forward-biased pre-equilibrium
+emission. Fast outgoing particles are more likely to escape before the nuclear
+system equilibrates and therefore retain more memory of the incident-neutron
+direction. The pre-equilibrium contribution also generally increases with
+incident energy [Kalbach1988]_ [Koning2012]_. These considerations motivate the
+two energy predictors used below.
+
+Because :math:`r` is a fraction, OpenMC models its log odds,
+
+.. math::
+
+    u = \ln\left(\frac{r}{1-r}\right),
+
+as a linear function of dimensionless reaction variables. Solving this
+definition for :math:`r` gives the logistic transformation
 
 .. math::
     :label: recoil-angular-r
 
     r = \frac{1}{1+\exp(-u)} .
 
-The logistic transformation ensures :math:`0<r<1`. Its input is
+This transformation ensures :math:`0<r<1` for any value of the linear
+predictor :math:`u`. OpenMC uses
 
 .. math::
 
@@ -646,12 +661,22 @@ where
              {E_{\max}^{\mathrm{shape}}},
     \qquad E_0=10\ \mathrm{MeV}.
 
-The predictors describe outgoing-energy fraction :math:`x`, incident
-energy :math:`E_{\mathrm{in}}`, daughter size :math:`A_D`, and
-daughter neutron excess :math:`(N_D-Z_D)/A_D`. Here :math:`N_D`
-and :math:`Z_D` are the daughter's neutron and proton numbers.
-:math:`E_0` is a fixed scale that makes the logarithm dimensionless. This
-logistic equation is empirical; it is not derived from Kalbach's theory.
+The outgoing-energy fraction :math:`x` allows the pre-equilibrium fraction to
+increase for faster emitted ions. The logarithmic incident-energy term allows
+pre-equilibrium emission to become more important as the bombarding energy
+rises without making the predictor grow linearly at high energy; the fixed
+scale :math:`E_0` makes its argument dimensionless. The remaining terms allow
+the trend to vary with the daughter nucleus. Because nuclear radius scales
+approximately as :math:`A_D^{1/3}`, :math:`A_D^{-1/3}` supplies an inverse-size
+dependence associated with surface emission. The asymmetry
+:math:`(N_D-Z_D)/A_D` allows for differences in particle-hole populations and
+charged-particle separation energies between neutron-rich and neutron-poor
+nuclei. Here :math:`N_D` and :math:`Z_D` are the daughter's neutron and proton
+numbers.
+
+The selected predictors encode physically expected trends, but their linear
+combination and fitted coefficients are empirical; they are not derived from
+Kalbach's theory or an event-specific pre-equilibrium calculation.
 
 The parameter values used by transport are
 
@@ -691,21 +716,16 @@ Sampling and event completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 OpenMC samples the energy distribution by constructing a fixed-grid cumulative
-distribution from :eq:`recoil-light-ion` in logarithmic probability
-space and inverting it. The number of function evaluations per emitted ion is
-bounded and does not depend on how narrow the spectrum is.
+distribution from :eq:`recoil-light-ion` in logarithmic probability space and
+inverting it. The number of function evaluations per emitted ion is bounded and
+does not depend on how narrow the spectrum is.
 
-After sampling the energy and angle, OpenMC transforms the ion momentum from
-the center-of-mass frame to the laboratory frame. The emission is accepted only
-if the remaining system can satisfy :eq:`recoil-budget`. Once all emitted
-particles have been constructed, :eq:`recoil-momentum` gives the heavy
-residual. If any required product cannot be placed within the energy budget,
-OpenMC creates no partial residual secondary particle.
-
-Setting ``light_ion_model`` to ``'none'`` disables the light-ion
-surrogate. For a charged-particle reaction, the residual then balances only
-the products available from the processed library; emitted light ions are not
-created.
+After sampling the energy and angle, OpenMC transforms the ion momentum from the
+center-of-mass frame to the laboratory frame. The emission is accepted only if
+the remaining system can satisfy :eq:`recoil-budget`. Once all emitted particles
+have been constructed, :eq:`recoil-momentum` gives the heavy residual. If any
+required product cannot be placed within the energy budget, OpenMC creates no
+partial residual secondary particle.
 
 Fission
 -------
@@ -730,9 +750,7 @@ Limitations
   independently sampled marginal distributions rather than a correlated joint
   distribution.
 - An event whose required exit channel cannot be completed creates no recoil
-  secondary particle. OpenMC does not provide a runtime coverage counter;
-  compare reaction-event and residual-production tally weights when measuring
-  coverage.
+  secondary particle.
 - The light-ion surrogate omits optical-model transmission coefficients,
   explicit level densities, channel competition, direct-reaction amplitudes,
   and evaluated sequential decay.
