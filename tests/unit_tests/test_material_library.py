@@ -132,6 +132,50 @@ def test_library_material_names():
     assert openmc.Material.next_id == next_id
 
 
+@pytest.mark.parametrize('stored_name, query_name', [
+    (
+        'Glass Scintillator, Li Doped (GS1, GS2, GS3)',
+        'Glass Scintillator, Li Doped  (GS1, GS2, GS3)',
+    ),
+    (
+        'Glass Scintillator, Li Doped (GS10, GS20, GS30)',
+        'Glass Scintillator, Li Doped  (GS10, GS20, GS30)',
+    ),
+    (
+        'Glass Scintillator, Li Doped (GSF1, GSF2, and GSF3)',
+        'Glass Scintillator, Li Doped  (GSF1, GSF2, and GSF3)',
+    ),
+    (
+        'Glass Scintillator, Li Doped (KG1, KG2, KG3)',
+        'Glass Scintillator, Li Doped  (KG1, KG2, KG3)',
+    ),
+    (
+        'Lutetium Yttrium OxyorthoSilicate: 0.5 atom% Cerium (LYSO)',
+        'Lutetium Yttrium OxyorthoSilicate:  0.5 atom% Cerium (LYSO)',
+    ),
+    (
+        'Radiochromic Dye Film, Nylon Base (RDF: NB)',
+        'Radiochromic Dye Film, Nylon Base  (RDF: NB)',
+    ),
+    (
+        'Tissue Equivalent-Gas, methane based (TEG: MB)',
+        'Tissue Equivalent-Gas, methane based  (TEG: MB)',
+    ),
+    (
+        'Tissue Equivalent-Gas, propane based (TEG: PB)',
+        'Tissue Equivalent-Gas, propane based  (TEG: PB)',
+    ),
+])
+def test_library_name_whitespace(stored_name, query_name):
+    """Whitespace differences do not prevent material lookup."""
+    stored = openmc.Material.from_library(stored_name)
+    queried = openmc.Material.from_library(query_name)
+
+    assert queried.name == query_name
+    assert queried.density == stored.density
+    assert queried.get_nuclides() == stored.get_nuclides()
+
+
 def test_register_library(
     tmp_path, cross_sections, material_library_registry
 ):

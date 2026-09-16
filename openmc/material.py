@@ -54,6 +54,11 @@ _MATERIAL_LIBRARIES = {
 NuclideTuple = namedtuple('NuclideTuple', ['name', 'percent', 'percent_type'])
 
 
+def _normalize_material_name(name):
+    """Normalize whitespace for material-library name lookup."""
+    return ' '.join(name.split())
+
+
 @cache
 def _load_material_library(library):
     """Load a registered material library."""
@@ -860,12 +865,19 @@ class Material(IDManagerMixin):
         cv.check_type('material library', library, str)
 
         library_data = _load_material_library(library)
-        try:
-            material_data = library_data['materials'][material_name]
-        except KeyError:
+        normalized_name = _normalize_material_name(material_name)
+        stored_name = next(
+            (
+                name for name in library_data['materials']
+                if _normalize_material_name(name) == normalized_name
+            ),
+            None,
+        )
+        if stored_name is None:
             raise ValueError(
                 f"Material '{material_name}' not found in library '{library}'"
-            ) from None
+            )
+        material_data = library_data['materials'][stored_name]
 
         components = {
             **material_data.get('elements', {}),
