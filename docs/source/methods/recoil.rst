@@ -121,6 +121,10 @@ particles, mass-energy balance gives
     Q_M =
     \left(M_T + m_n - M_R - \sum_j m_j\right)c^2 .
 
+The tabulated target and residual masses are based on AME2020 [AME2020]_.
+OpenMC uses bare nuclear masses consistently in the Q value and the subsequent
+kinematic calculations.
+
 ENDF File 3 distinguishes the mass-difference value ``QM`` from the reaction
 value ``QI`` [ENDF102]_. For a lumped channel (reactions that represent the sum
 over all final states, e.g., MT=103), ``QI`` and ``QM`` generally agree. For a
@@ -153,25 +157,61 @@ available for relative motion and excitation in the center-of-mass frame:
         - \frac{|\mathbf{p}_{n,\mathrm{in}}|^2}
                {2M_{\mathrm{final}}}.
 
-After the secondary-particle kinetic energies are selected, the remaining
-excitation energy is
+Thus, :math:`U_0` initializes the energy available for recoil reconstruction.
+As products are assigned kinetic energies and momenta, OpenMC tracks the
+corresponding energy :math:`U` of the system that remains to be divided into
+products. If :math:`\mathcal{S}` is the set of products already assigned,
+:math:`\mathbf{P}_{\mathrm{rem}}` is the momentum of the remaining system, and
+:math:`M_{\mathrm{rem}}` is its total rest mass, the laboratory energy balance
+gives
+
+.. math::
+    :label: recoil-running-budget
+
+    U = E_{\mathrm{in}} + Q
+        - \sum_{i\in\mathcal{S}} E_i
+        - \frac{|\mathbf{P}_{\mathrm{rem}}|^2}{2M_{\mathrm{rem}}}.
+
+Before any product is assigned, :math:`\mathcal{S}` is empty,
+:math:`\mathbf{P}_{\mathrm{rem}}=\mathbf{p}_{n,\mathrm{in}}`, and
+:math:`M_{\mathrm{rem}}=M_{\mathrm{final}}`, so
+:eq:`recoil-running-budget` reduces to the definition of :math:`U_0`. Each
+subsequent emission reduces :math:`U`, which then determines the kinematic
+endpoint for the next emission.
+
+After every emitted particle has been assigned, the remaining system is simply
+the residual nucleus: the reaction product left after the neutron, photons, or
+light ions have departed. OpenMC does not sample its momentum or kinetic energy
+independently. Momentum conservation, :eq:`recoil-momentum`, fixes its momentum
+:math:`\mathbf{p}_R`; its kinetic energy then follows from :eq:`recoil-energy`
+as :math:`E_R=|\mathbf{p}_R|^2/(2M_R)`. OpenMC creates the residual nucleus as a
+secondary particle with that energy and direction.
+
+At this final stage,
+:math:`\mathbf{P}_{\mathrm{rem}}=\mathbf{p}_R` and
+:math:`M_{\mathrm{rem}}=M_R`. Substituting these values into
+:eq:`recoil-running-budget` gives the residual excitation energy
 
 .. math::
     :label: recoil-budget
 
-    E_x = E_{\mathrm{in}} + Q - \sum_i E_i - E_R .
+    E_x = E_{\mathrm{in}} + Q - \sum_i E_i - E_R,
 
-The purpose of :math:`E_x` is energy bookkeeping. OpenMC does not create
-an excited residual or transport its later decay; it requires
-:math:`E_x \geq 0` to ensure that the sampled final state does not spend
-more energy than the reaction provides. Exact two-body channels have
+where the sum now includes every emitted particle. Thus, :math:`E_x` is simply
+the part of the reaction energy not carried as kinetic energy by an emitted
+particle or by the residual nucleus. OpenMC uses :math:`E_x` for energy
+bookkeeping but does not create an excited nuclear state or simulate its later
+decay. Requiring :math:`E_x\geq0` prevents a reconstructed event from assigning
+more kinetic energy than the reaction provides. In an exact two-body channel,
+the two product kinetic energies exhaust the available energy and
 :math:`E_x=0`, apart from numerical roundoff.
 
 Two-body emission endpoint
 --------------------------
 
 Suppose a light particle :math:`b` of mass :math:`m_b` is emitted
-from a system with available center-of-mass energy :math:`U`. Let
+from a system with current available energy :math:`U` from
+:eq:`recoil-running-budget`. Let
 :math:`M_D` be the combined mass of the daughter and any products not yet
 emitted. In the two-body center-of-mass frame, the two sides have equal and
 opposite momentum :math:`p`. Their kinetic energies are
