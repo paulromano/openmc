@@ -152,7 +152,7 @@ def test_capture_recoil_scale(run_in_tmpdir):
 
 
 def test_light_ion_model_none(run_in_tmpdir):
-    """light_ion_model='none' suppresses the emitted-ion records."""
+    """light_ion_model='none' suppresses emitted-ion secondary particles."""
     energy = 14.0e6
     e_bins = np.logspace(0, np.log10(2.0e7), 101)
 
@@ -322,7 +322,8 @@ def test_fission_does_not_produce_a_nonfission_recoil(run_in_tmpdir):
     """No recoil may be attributed to a fission MT.
 
     Fission fragments are out of scope, so a fission absorption must produce
-    no recoil record. Capture on the same nuclide must still produce U-236.
+    no recoil secondary particle. Capture on the same nuclide must still
+    produce U-236.
     """
     e_bins = np.logspace(0, np.log10(1.0e6), 61)
     model = _fissionable_model(
@@ -331,7 +332,8 @@ def test_fission_does_not_produce_a_nonfission_recoil(run_in_tmpdir):
     mean = _run(model, run_in_tmpdir).reshape(2, 2, -1)
 
     # axis 0 is the reaction filter in the order given
-    assert mean[0].sum() == 0.0, "fission must produce no recoil record"
+    assert mean[0].sum() == 0.0, (
+        "fission must produce no recoil secondary particle")
     assert mean[1, 0].sum() > 0.0, "capture must still produce U-236"
 
 
@@ -476,10 +478,10 @@ def test_discrete_level_recoil_is_uniform(run_in_tmpdir):
 def test_recoil_production_does_not_perturb_transport(run_in_tmpdir):
     """Banking recoils must not change the neutron solution.
 
-    Recoils are production-only records: they are scored and never transported
-    unless asked for. Sampling one consumes random numbers, so the two runs
-    diverge in their streams and cannot agree bit for bit -- what has to hold
-    is that they agree within statistics, bin by bin.
+    Recoils are production-only secondary particles: they are scored when
+    requested and never transported. Sampling one consumes random numbers, so
+    the two runs diverge in their streams and cannot agree bit for bit -- what
+    has to hold is that they agree within statistics, bin by bin.
     """
     def run(recoil_on, particles=40000):
         steel = openmc.Material()

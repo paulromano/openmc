@@ -86,9 +86,9 @@ double Particle::mass() const
 bool Particle::create_secondary(
   double wgt, Direction u, double E, ParticleType type)
 {
-  // Recoil production creates records for nuclei that OpenMC cannot transport.
-  // They exist only so that ParticleProductionFilter can score them and are
-  // removed from the secondary bank at the end of the collision.
+  // Recoil production creates secondary particles for nuclei that OpenMC cannot
+  // transport. They exist only so that ParticleProductionFilter can score them
+  // and are removed from the secondary bank at the end of the collision.
   int idx = type.transport_index();
   bool production_only = (idx == C_NONE);
   if (production_only && !(settings::recoil_production && type.is_nucleus())) {
@@ -460,7 +460,7 @@ void Particle::event_collide()
   // distinct from the number of created neutrons n_bank() above!
   n_secondaries() = 0;
 
-  // Recoil production records have now been scored by any
+  // Recoil secondary particles have now been scored by any
   // ParticleProductionFilter, so discard them: OpenMC has no transport model
   // for heavy ions and reviving them would only waste an event apiece.
   if (settings::recoil_production) {

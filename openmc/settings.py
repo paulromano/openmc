@@ -255,11 +255,11 @@ class Settings:
 
         .. versionadded:: 0.15.0
     recoil_production : bool
-        Whether each neutron collision should produce a record of the recoiling
-        residual nucleus (the primary knock-on atom) and the light ions emitted
-        by the reaction. The records are added to the secondary bank so that
-        :class:`openmc.ParticleProductionFilter` can score them; they are not
-        transported.
+        Whether each neutron collision should produce the recoiling residual
+        nucleus (the primary knock-on atom) and the light ions emitted by the
+        reaction as secondary particles. They are added to the secondary bank
+        so that :class:`openmc.ParticleProductionFilter` can score them; they
+        are not transported.
 
         .. versionadded:: 0.16.1
     recoil : dict
