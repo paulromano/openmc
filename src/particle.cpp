@@ -90,14 +90,14 @@ bool Particle::create_secondary(
   // transport. They exist only so that ParticleProductionFilter can score them
   // and are removed from the secondary bank at the end of the collision.
   int idx = type.transport_index();
-  bool production_only = (idx == C_NONE);
-  if (production_only && !(settings::recoil_production && type.is_nucleus())) {
+  bool transportable = (idx != C_NONE);
+  if (!transportable && !(settings::recoil_production && type.is_nucleus())) {
     return false;
   }
 
   // If energy is below cutoff for this particle, don't create secondary
   // particle
-  if (!production_only && E < settings::energy_cutoff[idx]) {
+  if (transportable && E < settings::energy_cutoff[idx]) {
     return false;
   }
 
@@ -113,7 +113,7 @@ bool Particle::create_secondary(
   bank.time = time();
   bank_second_E() += bank.E;
   bank.parent_id = current_work();
-  if (settings::use_shared_secondary_bank && !production_only) {
+  if (settings::use_shared_secondary_bank && transportable) {
     bank.progeny_id = n_progeny()++;
   }
   bank.wgt_born = wgt_born();
