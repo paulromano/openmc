@@ -1248,7 +1248,7 @@ void read_surfaces(pugi::xml_node node,
 {
   // Count the number of surfaces
   int n_surfaces = 0;
-  for (pugi::xml_node surf_node : node.children("surface")) {
+  for ([[maybe_unused]] pugi::xml_node surf_node : node.children("surface")) {
     n_surfaces++;
   }
 

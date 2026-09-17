@@ -230,6 +230,13 @@ endif()
 # Set compile/link flags based on which compiler is being used
 #===============================================================================
 
+# Use -Wunused-variable to catch unused variables in the code
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag(-Wunused-variable SUPPORTS_UNUSED_VARIABLE)
+if(SUPPORTS_UNUSED_VARIABLE)
+  list(APPEND cxxflags -Wunused-variable)
+endif()
+
 # When OPENMC_ENABLE_STRICT_FP is enabled, disable compiler optimizations that change
 # floating-point results relative to -O0, improving cross-platform and
 # cross-optimization-level reproducibility for regression testing:
@@ -239,7 +246,6 @@ endif()
 # By default (OFF), the compiler is free to use all optimizations for best
 # performance.
 if(OPENMC_ENABLE_STRICT_FP)
-  include(CheckCXXCompilerFlag)
   check_cxx_compiler_flag(-ffp-contract=off SUPPORTS_FP_CONTRACT_OFF)
   if(SUPPORTS_FP_CONTRACT_OFF)
     list(APPEND cxxflags -ffp-contract=off)

@@ -1536,7 +1536,7 @@ RegularMesh::RegularMesh(pugi::xml_node node) : StructuredMesh {node}
     fatal_error("Must specify either <upper_right> or <width> on a mesh.");
   }
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -1572,7 +1572,7 @@ RegularMesh::RegularMesh(hid_t group) : StructuredMesh {group}
     fatal_error("Must specify either upper_right dataset on a mesh.");
   }
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -1739,7 +1739,7 @@ RectilinearMesh::RectilinearMesh(pugi::xml_node node) : StructuredMesh {node}
   grid_[1] = get_node_array<double>(node, "y_grid");
   grid_[2] = get_node_array<double>(node, "z_grid");
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -1752,7 +1752,7 @@ RectilinearMesh::RectilinearMesh(hid_t group) : StructuredMesh {group}
   read_dataset(group, "y_grid", grid_[1]);
   read_dataset(group, "z_grid", grid_[2]);
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -1887,7 +1887,7 @@ CylindricalMesh::CylindricalMesh(pugi::xml_node node)
   grid_[2] = get_node_array<double>(node, "z_grid");
   origin_ = get_node_position(node, "origin");
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -1900,7 +1900,7 @@ CylindricalMesh::CylindricalMesh(hid_t group) : PeriodicStructuredMesh {group}
   read_dataset(group, "z_grid", grid_[2]);
   read_dataset(group, "origin", origin_);
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -2184,7 +2184,7 @@ SphericalMesh::SphericalMesh(pugi::xml_node node)
   grid_[2] = get_node_array<double>(node, "phi_grid");
   origin_ = get_node_position(node, "origin");
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }
@@ -2198,7 +2198,7 @@ SphericalMesh::SphericalMesh(hid_t group) : PeriodicStructuredMesh {group}
   read_dataset(group, "phi_grid", grid_[2]);
   read_dataset(group, "origin", origin_);
 
-  if (int err = set_grid()) {
+  if (set_grid()) {
     fatal_error(get_errmsg());
   }
 }

@@ -1000,7 +1000,7 @@ void read_tallies_xml(pugi::xml_node root)
 
   // Check for user filters and allocate
   for (auto node_filt : root.children("filter")) {
-    auto f = Filter::create(node_filt);
+    Filter::create(node_filt);
   }
 
   // ==========================================================================
@@ -1008,7 +1008,7 @@ void read_tallies_xml(pugi::xml_node root)
 
   // Check for user tallies
   int n = 0;
-  for (auto node : root.children("tally"))
+  for ([[maybe_unused]] auto node : root.children("tally"))
     ++n;
   if (n == 0 && mpi::master) {
     warning("No tallies present in tallies.xml file.");

@@ -1201,7 +1201,7 @@ void read_cells(pugi::xml_node node)
 {
   // Count the number of cells.
   int n_cells = 0;
-  for (pugi::xml_node cell_node : node.children("cell")) {
+  for ([[maybe_unused]] pugi::xml_node cell_node : node.children("cell")) {
     n_cells++;
   }
 
@@ -1629,7 +1629,6 @@ vector<ParentCell> Cell::exhaustive_find_parent_cells(int32_t instance) const
   int32_t univ_idx = this->universe_;
 
   while (true) {
-    const auto& univ = model::universes[univ_idx];
     prev_univ_idx = univ_idx;
 
     // search for a cell that is filled w/ this universe
