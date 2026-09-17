@@ -1007,9 +1007,8 @@ void read_tallies_xml(pugi::xml_node root)
   // READ TALLY DATA
 
   // Check for user tallies
-  int n = 0;
-  for ([[maybe_unused]] auto node : root.children("tally"))
-    ++n;
+  auto tally_nodes = root.children("tally");
+  int n = std::distance(tally_nodes.begin(), tally_nodes.end());
   if (n == 0 && mpi::master) {
     warning("No tallies present in tallies.xml file.");
   }

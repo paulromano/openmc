@@ -920,6 +920,9 @@ void FlatSourceDomain::convert_source_regions_to_tallies(int64_t start_sr_id)
     p.r() = source_regions_.position(sr);
     p.r_last() = source_regions_.position(sr);
     p.u() = {1.0, 0.0, 0.0};
+    // The return value is not checked because the position was recorded by a
+    // ray that actually traversed this source region, so the search cannot
+    // fail.
     exhaustive_find_cell(p);
 
     // Loop over energy groups (so as to support energy filters)

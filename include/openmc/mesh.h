@@ -632,7 +632,7 @@ public:
   double phi(int i) const { return grid_[1][i]; }
   double z(int i) const { return grid_[2][i]; }
 
-  int set_grid();
+  int set_grid() override;
 
   // Data members
   array<vector<double>, 3> grid_;
@@ -696,7 +696,7 @@ public:
   double theta(int i) const { return grid_[1][i]; }
   double phi(int i) const { return grid_[2][i]; }
 
-  int set_grid();
+  int set_grid() override;
 
   // Data members
   array<vector<double>, 3> grid_;

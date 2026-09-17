@@ -1200,10 +1200,8 @@ vector<int32_t> Region::surfaces() const
 void read_cells(pugi::xml_node node)
 {
   // Count the number of cells.
-  int n_cells = 0;
-  for ([[maybe_unused]] pugi::xml_node cell_node : node.children("cell")) {
-    n_cells++;
-  }
+  auto cell_nodes = node.children("cell");
+  int n_cells = std::distance(cell_nodes.begin(), cell_nodes.end());
 
   // Loop over XML cell elements and populate the array.
   model::cells.reserve(n_cells);
