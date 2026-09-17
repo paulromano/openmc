@@ -64,6 +64,22 @@ public:
   //! Get the bare-particle rest mass in [u]
   double mass() const;
 
+  //! Atomic number for a nucleon or nucleus; zero otherwise
+  constexpr int atomic_number() const
+  {
+    if (pdg_number_ == PDG_PROTON)
+      return 1;
+    return is_nucleus() ? (pdg_number_ / 10000) % 1000 : 0;
+  }
+
+  //! Mass number for a nucleon or nucleus; zero otherwise
+  constexpr int mass_number() const
+  {
+    if (pdg_number_ == PDG_NEUTRON || pdg_number_ == PDG_PROTON)
+      return 1;
+    return is_nucleus() ? (pdg_number_ / 10) % 1000 : 0;
+  }
+
   // Convert to string representation
   std::string str() const;
 

@@ -56,8 +56,8 @@ struct FixtureCase {
   std::string name;
   int z_t, a_t, n_emitted;
   double e_in;
-  recoil::AtomicNumbers emitted[3];
-  recoil::AtomicNumbers ion;
+  recoil::NuclearNumbers emitted[3];
+  recoil::NuclearNumbers ion;
   double q, u0, e_event, e_shape, e_x;
 };
 
@@ -170,7 +170,7 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
 
     // event endpoint: every other product is charged to the budget at rest, so
     // the ion recoils against the daughter plus the rest
-    recoil::AtomicNumbers daughter {c.z_t, c.a_t + 1};
+    recoil::NuclearNumbers daughter {c.z_t, c.a_t + 1};
     double rest = 0.0;
     bool used_ion = false;
     for (int i = 0; i < c.n_emitted; ++i) {
@@ -202,11 +202,11 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
 TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
 {
   // These would still have to hold if every stored number were wrong.
-  const recoil::AtomicNumbers alpha {2, 4}, proton {1, 1}, neutron {0, 1};
+  const recoil::NuclearNumbers alpha {2, 4}, proton {1, 1}, neutron {0, 1};
 
   SECTION("an inelastic channel releases nothing")
   {
-    for (auto target : {recoil::AtomicNumbers {6, 12}, {26, 56}, {82, 208}}) {
+    for (auto target : {recoil::NuclearNumbers {6, 12}, {26, 56}, {82, 208}}) {
       bool ok = false;
       double q = recoil::mass_difference_q(target, &neutron, 1, ok);
       REQUIRE(ok);
@@ -235,7 +235,7 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
 
   SECTION("multi-neutron closure reserves the residual translation")
   {
-    recoil::AtomicNumbers neutrons[2] {{0, 1}, {0, 1}};
+    recoil::NuclearNumbers neutrons[2] {{0, 1}, {0, 1}};
     bool ok = false;
     double q = recoil::mass_difference_q({26, 56}, neutrons, 2, ok);
     REQUIRE(ok);
@@ -262,7 +262,7 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
     REQUIRE_FALSE(ok);
     // an impossible daughter is caught too
     ok = true;
-    recoil::AtomicNumbers many[3] = {alpha, alpha, alpha};
+    recoil::NuclearNumbers many[3] = {alpha, alpha, alpha};
     recoil::mass_difference_q({2, 4}, many, 3, ok);
     REQUIRE_FALSE(ok);
   }
@@ -285,7 +285,7 @@ TEST_CASE("Recoil particle masses")
           Approx(MASS_ELECTRON * AMU_EV).epsilon(1e-12));
   REQUIRE(recoil::particle_mass_ev(ParticleType::neutron()) ==
           Approx(MASS_NEUTRON_EV).epsilon(1e-9));
-  for (auto za : {recoil::AtomicNumbers {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4},
+  for (auto za : {recoil::NuclearNumbers {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4},
          {3, 7}, {26, 56}}) {
     ParticleType type = za.Z == 1 && za.A == 1 ? ParticleType::proton()
                                                : ParticleType {za.Z, za.A, 0};

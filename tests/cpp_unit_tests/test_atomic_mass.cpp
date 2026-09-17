@@ -75,3 +75,43 @@ TEST_CASE("Particle masses are bare rest masses")
   p.type() = ParticleType {26, 56};
   REQUIRE(p.mass() == Approx(nuclear_mass(26, 56) * AMU_EV));
 }
+
+TEST_CASE("Particle nuclear numbers")
+{
+  using namespace openmc;
+
+  SECTION("nucleons")
+  {
+    REQUIRE(ParticleType::neutron().atomic_number() == 0);
+    REQUIRE(ParticleType::neutron().mass_number() == 1);
+    REQUIRE(ParticleType::proton().atomic_number() == 1);
+    REQUIRE(ParticleType::proton().mass_number() == 1);
+  }
+
+  SECTION("light ions")
+  {
+    REQUIRE(ParticleType::deuteron().atomic_number() == 1);
+    REQUIRE(ParticleType::deuteron().mass_number() == 2);
+    REQUIRE(ParticleType::triton().atomic_number() == 1);
+    REQUIRE(ParticleType::triton().mass_number() == 3);
+    REQUIRE(ParticleType::alpha().atomic_number() == 2);
+    REQUIRE(ParticleType::alpha().mass_number() == 4);
+  }
+
+  SECTION("nuclides and isomers")
+  {
+    REQUIRE(ParticleType {26, 56}.atomic_number() == 26);
+    REQUIRE(ParticleType {26, 56}.mass_number() == 56);
+    REQUIRE(ParticleType {95, 242, 1}.atomic_number() == 95);
+    REQUIRE(ParticleType {95, 242, 1}.mass_number() == 242);
+  }
+
+  SECTION("nonnuclear particles")
+  {
+    for (auto type : {ParticleType::photon(), ParticleType::electron(),
+           ParticleType::positron()}) {
+      REQUIRE(type.atomic_number() == 0);
+      REQUIRE(type.mass_number() == 0);
+    }
+  }
+}

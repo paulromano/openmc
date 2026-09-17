@@ -37,7 +37,7 @@ namespace openmc {
 namespace recoil {
 
 //! Charge and mass number of a nuclide or light ion
-struct AtomicNumbers {
+struct NuclearNumbers {
   int Z {0};
   int A {0};
 };
@@ -64,7 +64,7 @@ struct AtomicNumbers {
 //!
 //! \return zero when the mass is not tabulated. Mass-derived Q values require
 //!         tabulated masses and must fail when one is unavailable.
-double nuclear_mass_ev(AtomicNumbers za);
+double nuclear_mass_ev(NuclearNumbers za);
 
 //! Nuclear mass less \f$A\f$ mass units, in [eV]
 //!
@@ -73,7 +73,7 @@ double nuclear_mass_ev(AtomicNumbers za);
 //! order 1e6, and a double carries about sixteen digits, so the direct
 //! subtraction returns a Q good to only ten. The mass numbers cancel
 //! identically, so working in excesses of order 1e7 eV recovers five digits.
-double mass_excess_ev(AtomicNumbers za);
+double mass_excess_ev(NuclearNumbers za);
 
 //! Ground-state mass budget of an exit channel in [eV]
 //!
@@ -90,8 +90,8 @@ double mass_excess_ev(AtomicNumbers za);
 //! \param[in] n_emitted  Number of entries in \p emitted
 //! \param[out] ok        False if any required mass is missing or the channel
 //!                       leaves an impossible daughter
-double mass_difference_q(
-  AtomicNumbers target, const AtomicNumbers* emitted, int n_emitted, bool& ok);
+double mass_difference_q(NuclearNumbers target, const NuclearNumbers* emitted,
+  int n_emitted, bool& ok);
 
 //! Energy available in the final system's rest frame in [eV]
 //!
@@ -139,7 +139,7 @@ double remaining_internal_energy(
 //! an evaluated Q, because the MT one would reach for is often a level range.
 //!
 //! \return zero if a required mass is missing
-double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion);
+double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion);
 
 //! @}
 
@@ -234,11 +234,11 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 //! \param[in] emitted  Charge and mass number of the emitted particle
 //! \param[in] Z_t,A_t  Charge and mass number of the target
 double kalbach_slope(
-  double E_in, double E_cm, AtomicNumbers emitted, int Z_t, int A_t);
+  double E_in, double E_cm, NuclearNumbers emitted, int Z_t, int A_t);
 
 //! Kalbach-Mann slope parameter, taking the target from a Nuclide
 double kalbach_slope(
-  double E_in, double E_cm, AtomicNumbers emitted, const Nuclide& nuc);
+  double E_in, double E_cm, NuclearNumbers emitted, const Nuclide& nuc);
 
 //! Sample \f$f(\mu) \propto \cosh(a\mu) + r\sinh(a\mu)\f$ by exact inversion
 //!
@@ -319,7 +319,7 @@ struct AngularParams {
 //! \param[in] daughter      Charge and mass number of the recoil nucleus
 //! \param[in] par           Calibration parameters
 double kalbach_precompound_fraction(double E_cm, double E_max_shape,
-  double E_in, AtomicNumbers daughter, const AngularParams& par = {});
+  double E_in, NuclearNumbers daughter, const AngularParams& par = {});
 
 //! Natural logarithm of the unnormalized light-ion emission spectrum
 //!

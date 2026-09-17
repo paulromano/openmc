@@ -199,29 +199,12 @@ bool emitted_particles(int mt, EmittedParticles& out)
   return parse_channel(name.substr(3, name.size() - 4), out);
 }
 
-AtomicNumbers particle_za(ParticleType type)
+NuclearNumbers particle_za(ParticleType type)
 {
-  switch (type.pdg_number()) {
-  case PDG_NEUTRON:
-    return {0, 1};
-  case PDG_PROTON:
-    return {1, 1};
-  case PDG_DEUTERON:
-    return {1, 2};
-  case PDG_TRITON:
-    return {1, 3};
-  case PDG_ALPHA:
-    return {2, 4};
-  default:
-    if (type.is_nucleus()) {
-      int pdg = type.pdg_number();
-      return {(pdg / 10000) % 1000, (pdg / 10) % 1000};
-    }
-    return {};
-  }
+  return {type.atomic_number(), type.mass_number()};
 }
 
-ParticleType ion_type(AtomicNumbers za)
+ParticleType ion_type(NuclearNumbers za)
 {
   if (za.Z == 0 && za.A == 1)
     return ParticleType::neutron();
@@ -237,10 +220,10 @@ ParticleType ion_type(AtomicNumbers za)
 //! Push the charged ions of an exit channel onto a fixed-capacity list
 struct ChargedProducts {
   static constexpr int MAX = 8;
-  AtomicNumbers za[MAX];
+  NuclearNumbers za[MAX];
   int n {0};
 
-  bool add(AtomicNumbers value, int count)
+  bool add(NuclearNumbers value, int count)
   {
     if (count < 0 || count > MAX - n)
       return false;
@@ -261,9 +244,9 @@ struct ChargedProducts {
 //!
 //! The complement of ChargedProducts::fill(), which keeps only the charged
 //! ones. A mass budget needs every particle that leaves.
-int all_products(const EmittedParticles& e, AtomicNumbers* out, int capacity)
+int all_products(const EmittedParticles& e, NuclearNumbers* out, int capacity)
 {
-  const AtomicNumbers kinds[6] = {
+  const NuclearNumbers kinds[6] = {
     {0, 1}, {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4}};
   const int counts[6] = {
     e.neutron, e.proton, e.deuteron, e.triton, e.he3, e.alpha};
@@ -292,7 +275,7 @@ int all_products(const EmittedParticles& e, AtomicNumbers* out, int capacity)
 // nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
 //==============================================================================
 
-double breakup_energy(AtomicNumbers p)
+double breakup_energy(NuclearNumbers p)
 {
   if (p.Z == 1 && p.A == 2)
     return 2.224566;
@@ -307,7 +290,7 @@ double breakup_energy(AtomicNumbers p)
 
 //! Kalbach's semi-empirical separation energy in [MeV]
 double separation_energy(
-  AtomicNumbers compound, AtomicNumbers nucleus, AtomicNumbers particle)
+  NuclearNumbers compound, NuclearNumbers nucleus, NuclearNumbers particle)
 {
   double A_c = compound.A;
   double Z_c = compound.Z;
@@ -342,7 +325,7 @@ struct EmissionState {
   Direction momentum {};    //!< lab momentum of the undecayed system [eV]
   double mass {0.0};        //!< mass of the undecayed system [eV]
   double internal {0.0};    //!< kinetic energy available in its rest frame [eV]
-  AtomicNumbers za {};      //!< charge and mass number of the undecayed system
+  NuclearNumbers za {};     //!< charge and mass number of the undecayed system
   double emitted_kin {0.0}; //!< lab kinetic energy already given to products
 };
 
@@ -417,8 +400,8 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
   const EmittedParticles& emitted, bool& ok)
 {
   ok = true;
-  AtomicNumbers target {nuc.Z_, nuc.A_};
-  AtomicNumbers products[ChargedProducts::MAX + 4];
+  NuclearNumbers target {nuc.Z_, nuc.A_};
+  NuclearNumbers products[ChargedProducts::MAX + 4];
   int n = all_products(emitted, products, ChargedProducts::MAX + 4);
   if (n < 0) {
     ok = false;
@@ -459,22 +442,22 @@ double event_q(const Nuclide& nuc, const Reaction& rx,
 // the analysis repository and checked against a shared fixture.
 //==============================================================================
 
-double nuclear_mass_ev(AtomicNumbers za)
+double nuclear_mass_ev(NuclearNumbers za)
 {
   return nuclear_mass(za.Z, za.A) * AMU_EV;
 }
 
-double mass_excess_ev(AtomicNumbers za)
+double mass_excess_ev(NuclearNumbers za)
 {
   double m = nuclear_mass_ev(za);
   return m <= 0.0 ? 0.0 : m - za.A * AMU_EV;
 }
 
 double mass_difference_q(
-  AtomicNumbers target, const AtomicNumbers* emitted, int n_emitted, bool& ok)
+  NuclearNumbers target, const NuclearNumbers* emitted, int n_emitted, bool& ok)
 {
   ok = false;
-  AtomicNumbers daughter {target.Z, target.A + 1};
+  NuclearNumbers daughter {target.Z, target.A + 1};
   // Mass excesses rather than masses. A W-184 channel differences four numbers
   // of order 1.7e11 eV to reach one of order 1e6, and a double carries about
   // sixteen digits, so the direct subtraction returns a Q good to only ten.
@@ -527,13 +510,13 @@ double remaining_internal_energy(
   return budget - emitted_kin - momentum.dot(momentum) / (2.0 * mass);
 }
 
-double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
+double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion)
 {
   bool ok = false;
   double q = mass_difference_q(target, &ion, 1, ok);
   if (!ok)
     return 0.0;
-  AtomicNumbers daughter {target.Z - ion.Z, target.A + 1 - ion.A};
+  NuclearNumbers daughter {target.Z - ion.Z, target.A + 1 - ion.A};
   double m_b = nuclear_mass_ev(ion);
   double m_d = nuclear_mass_ev(daughter);
   double u = final_state_internal_energy(E_in, m_b + m_d, q);
@@ -545,11 +528,11 @@ double shape_endpoint(double E_in, AtomicNumbers target, AtomicNumbers ion)
 //==============================================================================
 
 double kalbach_slope(
-  double E_in, double E_cm, AtomicNumbers emitted, int Z_t, int A_t)
+  double E_in, double E_cm, NuclearNumbers emitted, int Z_t, int A_t)
 {
-  AtomicNumbers target {Z_t, A_t};
-  AtomicNumbers compound {target.Z, target.A + 1};
-  AtomicNumbers recoil {compound.Z - emitted.Z, compound.A - emitted.A};
+  NuclearNumbers target {Z_t, A_t};
+  NuclearNumbers compound {target.Z, target.A + 1};
+  NuclearNumbers recoil {compound.Z - emitted.Z, compound.A - emitted.A};
   if (recoil.Z < 0 || recoil.A <= 0 || recoil.Z > recoil.A)
     return 0.0;
 
@@ -570,7 +553,7 @@ double kalbach_slope(
 }
 
 double kalbach_slope(
-  double E_in, double E_cm, AtomicNumbers emitted, const Nuclide& nuc)
+  double E_in, double E_cm, NuclearNumbers emitted, const Nuclide& nuc)
 {
   return kalbach_slope(E_in, E_cm, emitted, nuc.Z_, nuc.A_);
 }
@@ -600,7 +583,7 @@ double particle_mass_ev(ParticleType type)
     return 0.0;
   if (std::abs(type.pdg_number()) == PDG_ELECTRON)
     return MASS_ELECTRON * AMU_EV;
-  AtomicNumbers za = particle_za(type);
+  NuclearNumbers za = particle_za(type);
   double mass = nuclear_mass_ev(za);
   if (mass > 0.0)
     return mass;
@@ -629,7 +612,7 @@ ParticleType recoil_particle_type(const Nuclide& nuc, int mt)
 }
 
 double kalbach_precompound_fraction(double E_cm, double E_max_shape,
-  double E_in, AtomicNumbers daughter, const AngularParams& par)
+  double E_in, NuclearNumbers daughter, const AngularParams& par)
 {
   if (daughter.A <= 0)
     return 0.0;
@@ -649,7 +632,7 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
 //! to the mass number only for this reduced-mass calculation, where the mass
 //! enters through a square root and the heavy-daughter contribution is already
 //! saturated.
-double gamow_mass_amu(AtomicNumbers za)
+double gamow_mass_amu(NuclearNumbers za)
 {
   double m = nuclear_mass_ev(za);
   return m > 0.0 ? m / AMU_EV : static_cast<double>(za.A);
@@ -775,7 +758,7 @@ namespace {
 //! Resolve one inertial mass, using the A-u fallback for an unlisted nuclide
 double inertial_mass_ev(ParticleType type)
 {
-  AtomicNumbers za = particle_za(type);
+  NuclearNumbers za = particle_za(type);
   double mass = nuclear_mass_ev(za);
   if (mass > 0.0)
     return mass;
@@ -846,7 +829,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 
   // Emission order affects which ion sees the larger budget; randomize it so
   // that no ion is systematically favored.
-  AtomicNumbers order[ChargedProducts::MAX];
+  NuclearNumbers order[ChargedProducts::MAX];
   for (int i = 0; i < ions.n; ++i)
     order[i] = ions.za[i];
   for (int i = ions.n - 1; i > 0; --i) {
@@ -855,10 +838,10 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
   }
 
   for (int i = 0; i < ions.n; ++i) {
-    AtomicNumbers b = order[i];
+    NuclearNumbers b = order[i];
     ParticleType b_type = ion_type(b);
     double m_b = particle_mass_ev(b_type);
-    AtomicNumbers d {state.za.Z - b.Z, state.za.A - b.A};
+    NuclearNumbers d {state.za.Z - b.Z, state.za.A - b.A};
     double m_d = state.mass - m_b;
     if (m_b <= 0.0 || m_d <= 0.0 || d.A <= 0 || d.Z < 0 || d.Z > d.A)
       return false;
