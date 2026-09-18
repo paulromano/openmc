@@ -235,10 +235,17 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx);
 //! directly and fail if it returns zero.
 double particle_mass_ev(ParticleType type);
 
+//! Fitted constants of the light-ion spectrum
+struct LightIonParams {
+  double r0 {1.3608964941027708}; //!< effective barrier radius in [fm]
+  double g {0.48566};             //!< scales the WKB barrier exponent
+  double nu {1.18221}; //!< endpoint exponent of the level-density factor
+};
+
 //! Center-of-mass kinetic energy of a light ion emitted from an excited system
 //!
 //! Samples the empirical evaporation spectrum described in
-//! \ref light_ion_pdf() by inverting a fixed-grid cumulative distribution
+//! \ref light_ion_log_pdf() by inverting a fixed-grid cumulative distribution
 //! constructed in log space.
 //!
 //! \param[in] E_max     Endpoint that sets the spectrum shape in [eV], namely
@@ -249,8 +256,9 @@ double particle_mass_ev(ParticleType type);
 //! \param[in] Z_b,A_b   Charge and mass number of the emitted ion
 //! \param[in] Z_d,A_d   Charge and mass number of the daughter nucleus
 //! \param[in] seed      Pseudorandom number seed pointer
+//! \param[in] par       Light-ion spectrum parameters
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed);
+  int Z_d, int A_d, uint64_t* seed, const LightIonParams& par = {});
 
 //! Kalbach-Mann slope parameter \f$a\f$ from the 1988 systematics
 //!
@@ -263,10 +271,6 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 double kalbach_slope(
   double E_in, double E_cm, NuclearNumbers emitted, int Z_t, int A_t);
 
-//! Kalbach-Mann slope parameter, taking the target from a Nuclide
-double kalbach_slope(
-  double E_in, double E_cm, NuclearNumbers emitted, const Nuclide& nuc);
-
 //! Sample \f$f(\mu) \propto \cosh(a\mu) + r\sinh(a\mu)\f$ by exact inversion
 //!
 //! \param[in] slope  Kalbach slope \f$a\f$
@@ -274,10 +278,16 @@ double kalbach_slope(
 //! \param[in] seed   Pseudorandom number seed pointer
 double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 
-//! Unnormalized light-ion emission spectrum
+//! Natural logarithm of the unnormalized light-ion emission spectrum
 //!
 //! \f[ P(E) \propto E\, T_C(E) \left(1 - E/E_\text{max}\right)^{\nu}, \qquad
 //!     T_C(E) = \left[1 + e^{2\pi g (\eta(E) - \eta(V_C))}\right]^{-1}, \f]
+//!
+//! which is evaluated as
+//!
+//! \f[ \ln P(E) = \ln E - \operatorname{softplus}
+//!     \big(2\pi g[\eta(E)-\eta(V_C)]\big)
+//!     + \nu \ln\!\left(1 - E/E_\text{max}\right). \f]
 //!
 //! with the Sommerfeld parameter and Coulomb barrier
 //!
@@ -305,19 +315,12 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //!       the exponent, without an artificial bound. This preserves relative
 //!       probabilities far below the barrier even when the direct density
 //!       underflows.
-double light_ion_pdf(
-  double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
-
-//! Fitted constants of the light-ion spectrum
 //!
-//! The struct keeps the authoritative parameters together and permits
-//! exact-code-path validation through the overloads below. Transport uses the
-//! default values.
-struct LightIonParams {
-  double r0 {1.3608964941027708}; //!< effective barrier radius in [fm]
-  double g {0.48566};             //!< scales the WKB barrier exponent
-  double nu {1.18221}; //!< endpoint exponent of the level-density factor
-};
+//! The logarithmic form is used because the sub-barrier spectrum spans
+//! hundreds of decades. It returns \f$-\infty\f$ outside
+//! \f$(0,E_\text{max})\f$.
+double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
+  int A_d, const LightIonParams& par = {});
 
 //! Fitted constants of the light-ion angular distribution
 //!
@@ -348,35 +351,6 @@ struct AngularParams {
 //! \param[in] par           Calibration parameters
 double kalbach_precompound_fraction(double E_cm, double E_max_shape,
   double E_in, NuclearNumbers daughter, const AngularParams& par = {});
-
-//! Natural logarithm of the unnormalized light-ion emission spectrum
-//!
-//! \f[ \ln P(E) = \ln E - \operatorname{softplus}
-//!     \big(2\pi g[\eta(E)-\eta(V_C)]\big)
-//!     + \nu \ln\!\left(1 - E/E_\text{max}\right) \f]
-//!
-//! This is the primitive; light_ion_pdf() exponentiates it. Sub-barrier the
-//! spectrum spans hundreds of decades, so calculations requiring relative
-//! probabilities there use this representation.
-//!
-//! \return \f$-\infty\f$ outside \f$(0, E_\text{max})\f$
-double light_ion_log_pdf(
-  double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
-
-//! Natural logarithm of the spectrum with explicit parameters
-double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
-  int A_d, const LightIonParams& par);
-
-//! Unnormalized light-ion emission spectrum with explicit parameters
-//!
-//! \f$ P(E) \propto E\,T_C(E)\,(1 - E/E_\text{max})^\nu \f$. A
-//! default-constructed LightIonParams selects the transport parameters.
-double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
-  const LightIonParams& par);
-
-//! Sample the light-ion spectrum with explicit parameters
-double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed, const LightIonParams& par);
 
 } // namespace recoil
 } // namespace openmc

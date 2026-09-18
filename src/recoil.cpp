@@ -421,12 +421,6 @@ double kalbach_slope(
     0.04 * x_1 + 1.8e-6 * x_1 * x_1 * x_1 + 6.7e-7 * m * x_3 * x_3 * x_3 * x_3);
 }
 
-double kalbach_slope(
-  double E_in, double E_cm, NuclearNumbers emitted, const Nuclide& nuc)
-{
-  return kalbach_slope(E_in, E_cm, emitted, nuc.Z_, nuc.A_);
-}
-
 //! Sample the Kalbach-Mann angular distribution
 double sample_kalbach_mu(double slope, double r, uint64_t* seed)
 {
@@ -526,24 +520,6 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
   return log_p;
 }
 
-double light_ion_log_pdf(
-  double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
-{
-  return light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, LightIonParams {});
-}
-
-double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
-  const LightIonParams& par)
-{
-  double log_p = light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par);
-  return log_p == -INFTY ? 0.0 : std::exp(log_p);
-}
-
-double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d)
-{
-  return light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, LightIonParams {});
-}
-
 double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   int Z_d, int A_d, uint64_t* seed, const LightIonParams& par)
 {
@@ -597,13 +573,6 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   double d = (denom > 0.0) ? 2.0 * r / denom : 0.0;
 
   return std::clamp(dE * k + d, 0.0, E_limit);
-}
-
-double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed)
-{
-  return sample_light_ion_energy(
-    E_max, E_limit, Z_b, A_b, Z_d, A_d, seed, LightIonParams {});
 }
 
 namespace {
@@ -727,7 +696,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
       mu = 2.0 * prn(seed) - 1.0;
     } else {
       AngularParams ang {};
-      double slope = ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc);
+      double slope =
+        ang.slope_scale * kalbach_slope(E_in, E_cm, b, nuc.Z_, nuc.A_);
       double r = kalbach_precompound_fraction(E_cm, E_max_shape, E_in, d, ang);
       mu = sample_kalbach_mu(slope, r, seed);
     }

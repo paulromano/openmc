@@ -50,6 +50,13 @@ bool agrees(double actual, double expected, double e_in)
            FIXTURE_FLOOR_EV);
 }
 
+//! Ordinary-density view of the logarithmic spectrum used by transport
+double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
+  const recoil::LightIonParams& par = {})
+{
+  return std::exp(recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par));
+}
+
 struct FixtureMass {
   int z, a;
   double mass;
@@ -504,15 +511,15 @@ TEST_CASE("Light-ion emission spectrum")
   const double E_max = 13.3e6;
   const int Z_b = 2, A_b = 4, Z_d = 24, A_d = 53;
 
-  REQUIRE(recoil::light_ion_pdf(0.0, E_max, Z_b, A_b, Z_d, A_d) == 0.0);
-  REQUIRE(recoil::light_ion_pdf(E_max, E_max, Z_b, A_b, Z_d, A_d) == 0.0);
-  REQUIRE(recoil::light_ion_pdf(2.0e6, E_max, Z_b, A_b, Z_d, A_d) <
-          0.01 * recoil::light_ion_pdf(9.0e6, E_max, Z_b, A_b, Z_d, A_d));
+  REQUIRE(light_ion_pdf(0.0, E_max, Z_b, A_b, Z_d, A_d) == 0.0);
+  REQUIRE(light_ion_pdf(E_max, E_max, Z_b, A_b, Z_d, A_d) == 0.0);
+  REQUIRE(light_ion_pdf(2.0e6, E_max, Z_b, A_b, Z_d, A_d) <
+          0.01 * light_ion_pdf(9.0e6, E_max, Z_b, A_b, Z_d, A_d));
 
   // Neutral light ions feel no barrier, so the spectrum is
   // E*(1 - E/E_max)^nu with the configured endpoint exponent.
   const recoil::LightIonParams params {};
-  double neutral = recoil::light_ion_pdf(0.5 * E_max, E_max, 0, 1, Z_d, A_d);
+  double neutral = light_ion_pdf(0.5 * E_max, E_max, 0, 1, Z_d, A_d);
   REQUIRE(
     neutral == Approx(0.5 * E_max * std::pow(0.5, params.nu)).epsilon(1e-12));
 
@@ -537,7 +544,7 @@ TEST_CASE("Light-ion emission spectrum")
     double num = 0.0, den = 0.0;
     for (int i = 0; i < NQ; ++i) {
       double E = E_max * (i + 0.5) / NQ;
-      double f = recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d);
+      double f = light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d);
       num += f * E;
       den += f;
     }
@@ -558,25 +565,6 @@ TEST_CASE("Light-ion emission spectrum")
   }
 }
 
-TEST_CASE("Light-ion spectrum: default and parameterized forms agree")
-{
-  // Exact-code-path validation relies on the default parameter object selecting
-  // the same constants as transport.
-  const recoil::LightIonParams params {};
-  for (int Z_b : {1, 2}) {
-    for (int A_b : {1, 4}) {
-      for (int Z_d : {6, 26, 74}) {
-        int A_d = 2 * Z_d + 2;
-        double E_max = 12.0e6;
-        for (double frac : {0.01, 0.1, 0.35, 0.5, 0.75, 0.95, 0.999}) {
-          double E = frac * E_max;
-          REQUIRE(recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d) ==
-                  recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params));
-        }
-      }
-    }
-  }
-}
 TEST_CASE("Light-ion spectrum: the endpoint exponent behaves as expected")
 {
   // A larger nu must soften the spectrum, i.e. lower its mean. Preserve the
@@ -588,7 +576,7 @@ TEST_CASE("Light-ion spectrum: the endpoint exponent behaves as expected")
     double E_max = 10.0e6, num = 0.0, den = 0.0, prev_f = 0.0, prev_E = 0.0;
     for (int i = 0; i <= N; ++i) {
       double E = E_max * i / N;
-      double f = recoil::light_ion_pdf(E, E_max, 1, 1, 26, 56, par);
+      double f = light_ion_pdf(E, E_max, 1, 1, 26, 56, par);
       if (i > 0) {
         num += 0.5 * (f * E + prev_f * prev_E) * (E - prev_E);
         den += 0.5 * (f + prev_f) * (E - prev_E);
@@ -600,31 +588,6 @@ TEST_CASE("Light-ion spectrum: the endpoint exponent behaves as expected")
   };
   REQUIRE(mean_of(2.0) < mean_of(1.0));
   REQUIRE(mean_of(1.0) < mean_of(0.5));
-}
-
-TEST_CASE("Light-ion spectrum: log space and the direct form agree")
-{
-  // Above the barrier the two must be the same number; below it only the log
-  // form has one.
-  const recoil::LightIonParams params {};
-  const double E_max = 12.0e6;
-  for (int Z_b : {0, 1, 2}) {
-    int A_b = (Z_b == 2) ? 4 : (Z_b == 1 ? 1 : 1);
-    for (int Z_d : {6, 26, 74}) {
-      int A_d = 2 * Z_d + 2;
-      for (double frac : {0.2, 0.5, 0.9}) {
-        double E = frac * E_max;
-        double direct =
-          recoil::light_ion_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
-        double logged =
-          recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
-        if (direct > 0.0) {
-          REQUIRE(std::log(direct) == Approx(logged).epsilon(1e-12));
-        }
-        REQUIRE(std::isfinite(logged));
-      }
-    }
-  }
 }
 
 TEST_CASE("Light-ion spectrum: no exponent floor below the barrier")
@@ -651,8 +614,7 @@ TEST_CASE("Light-ion spectrum: no exponent floor below the barrier")
   // region without changing its shape.
   REQUIRE(lp(2.0e4) < -745.0);
   REQUIRE(std::isfinite(lp(2.0e4)));
-  REQUIRE(
-    recoil::light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, params) == 0.0);
+  REQUIRE(light_ion_pdf(2.0e4, E_max, Z_b, A_b, Z_d, A_d, params) == 0.0);
 }
 
 TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
