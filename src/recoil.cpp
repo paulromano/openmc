@@ -383,12 +383,12 @@ constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
 
 //! Rest-mass energy release available to an event, in [eV]
 //!
-//! ENDF stores two Q values and OpenMC keeps only one of them. \c Reaction::
-//! q_value_ is MF=3 \c QI, the Q of the lowest state the MT represents, or an
-//! effective value chosen to put the threshold in the right place when the MT
-//! names no unique state. It is the required budget for a discrete level but
-//! can truncate continuum, level-range, and summation channels below their
-//! ground-state mass-difference Q.
+//! ENDF stores two Q values and OpenMC keeps only one of them. \c
+//! Reaction::q_value_ is MF=3 \c QI, the Q of the lowest state the MT
+//! represents, or an effective value chosen to put the threshold in the right
+//! place when the MT names no unique state. It is the required budget for a
+//! discrete level but can truncate continuum, level-range, and summation
+//! channels below their ground-state mass-difference Q.
 //!
 //! \param[in] nuc      Target nuclide
 //! \param[in] rx       Reaction that was sampled
