@@ -79,19 +79,9 @@ Direction neutron_momentum(double E, Direction u)
   return momentum_from_energy(MASS_NEUTRON_EV, E, u);
 }
 
-Direction photon_momentum(double E, Direction u)
-{
-  return E <= 0.0 ? Direction {} : E * u;
-}
-
 //==============================================================================
 // Exit-channel bookkeeping
 //==============================================================================
-
-NuclearNumbers particle_za(ParticleType type)
-{
-  return {type.atomic_number(), type.mass_number()};
-}
 
 ParticleType ion_type(NuclearNumbers za)
 {
@@ -99,10 +89,6 @@ ParticleType ion_type(NuclearNumbers za)
     return ParticleType::neutron();
   if (za.Z == 1 && za.A == 1)
     return ParticleType::proton();
-  if (za.Z == 1 && za.A == 2)
-    return ParticleType::deuteron();
-  if (za.Z == 1 && za.A == 3)
-    return ParticleType::triton();
   return ParticleType {za.Z, za.A, 0};
 }
 
@@ -112,20 +98,20 @@ struct ChargedProducts {
   NuclearNumbers za[MAX];
   int size {0};
 
-  bool add(NuclearNumbers value, int count)
+  explicit ChargedProducts(const ExitChannel& e)
   {
-    if (count < 0 || count > MAX - size)
-      return false;
-    for (int i = 0; i < count; ++i) {
-      za[size++] = value;
-    }
-    return true;
+    add({1, 1}, e.proton);
+    add({1, 2}, e.deuteron);
+    add({1, 3}, e.triton);
+    add({2, 3}, e.he3);
+    add({2, 4}, e.alpha);
   }
 
-  bool fill(const ExitChannel& e)
+  void add(NuclearNumbers value, int count)
   {
-    return add({1, 1}, e.proton) && add({1, 2}, e.deuteron) &&
-           add({1, 3}, e.triton) && add({2, 3}, e.he3) && add({2, 4}, e.alpha);
+    assert(count >= 0 && count <= MAX - size);
+    for (int i = 0; i < count; ++i)
+      za[size++] = value;
   }
 
   span<NuclearNumbers> to_span()
@@ -136,8 +122,8 @@ struct ChargedProducts {
 
 //! Fill \p out with the emitted particles of a channel, light ions and all
 //!
-//! The complement of ChargedProducts::fill(), which keeps only the charged
-//! ones. A mass budget needs every particle that leaves.
+//! The complement of ChargedProducts, which keeps only the charged ones. A mass
+//! budget needs every particle that leaves.
 int all_products(const ExitChannel& e, NuclearNumbers* out, int capacity)
 {
   const NuclearNumbers kinds[6] = {
@@ -446,7 +432,7 @@ double particle_mass_ev(ParticleType type)
     return 0.0;
   if (std::abs(type.pdg_number()) == PDG_ELECTRON)
     return MASS_ELECTRON * AMU_EV;
-  NuclearNumbers za = particle_za(type);
+  NuclearNumbers za {type.atomic_number(), type.mass_number()};
   double mass = nuclear_mass_ev(za);
   if (mass > 0.0)
     return mass;
@@ -472,17 +458,6 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
   return 1.0 / (1.0 + std::exp(-u));
 }
 
-//! Inertial mass in [amu] for the Gamow reduced mass
-//!
-//! Uses the shared nuclear-mass contract. A missing tabulated mass falls back
-//! to the mass number only for this reduced-mass calculation, where the mass
-//! enters through a square root and the heavy-daughter contribution is already
-//! saturated.
-double inertial_mass_amu(NuclearNumbers za)
-{
-  return particle_mass_ev(ion_type(za)) / AMU_EV;
-}
-
 double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
   int A_d, const LightIonParams& par)
 {
@@ -500,8 +475,10 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
     // falls, which is the widening of the barrier at lower energy; a
     // transmission with a fixed diffuseness falls at one rate everywhere and
     // cannot reproduce it. Normalized so that T = 1/2 at E = V_C.
-    double m_b = inertial_mass_amu({Z_b, A_b});
-    double m_d = inertial_mass_amu({Z_d, A_d});
+    // Use the A-u inertial fallback for an unlisted mass. These masses enter
+    // only through the square root of the reduced mass.
+    double m_b = particle_mass_ev(ion_type({Z_b, A_b})) / AMU_EV;
+    double m_d = particle_mass_ev(ion_type({Z_d, A_d})) / AMU_EV;
     double m_reduced = m_b * m_d / (m_b + m_d);
     // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
     double pref =
@@ -577,26 +554,16 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
 
 namespace {
 
-//! Resolve one inertial mass, using the A-u fallback for an unlisted nuclide
-double inertial_mass_ev(ParticleType type)
-{
-  NuclearNumbers za = particle_za(type);
-  double mass = nuclear_mass_ev(za);
-  if (mass > 0.0)
-    return mass;
-  return particle_mass_ev(type);
-}
-
 //! Additive nuclear mass of everything not yet emitted
 double remaining_system_mass(ParticleType recoil, int n_neutrons,
   const ChargedProducts& ions, bool include_ions)
 {
-  double mass = inertial_mass_ev(recoil);
+  double mass = particle_mass_ev(recoil);
   assert(mass > 0.0);
   mass += n_neutrons * MASS_NEUTRON_EV;
   if (include_ions) {
     for (int i = 0; i < ions.size; ++i) {
-      double ion_mass = inertial_mass_ev(ion_type(ions.za[i]));
+      double ion_mass = particle_mass_ev(ion_type(ions.za[i]));
       assert(ion_mass > 0.0);
       mass += ion_mass;
     }
@@ -757,28 +724,16 @@ struct PhotonKick {
 
 //! Scale a sampled capture cascade onto its energy budget
 //!
-//! Radiative capture leaves no massive light ion, so the recoil is kicked only
-//! by the photons, and the compound nucleus de-excites all the way to the
-//! ground state. The cascade therefore carries the *whole* excitation energy,
+//! Processed reaction data contain inclusive photon distributions rather than
+//! an eventwise correlated cascade, so independently sampled photons do not
+//! generally close the event energy balance. Apply one common scale factor so
+//! that the constructed cascade and recoil satisfy
 //!
 //! \f[ \sum_i E_i + E_R = E_\text{in} + Q, \f]
 //!
-//! an equality rather than a bound. OpenMC's processed reaction products supply
-//! inclusive photon spectra and average multiplicities, not an eventwise joint
-//! cascade. Photons drawn independently from those marginals do not obey the
-//! equality: their sum spans more than an order of magnitude about the budget
-//! and exceeds it in roughly 45% of events at 14 MeV, which inflates the width
-//! of the recoil spectrum by half.
-//!
-//! The cascade is therefore drawn first and then scaled by the single factor
-//! that satisfies the equality. Scaling rather than rejecting keeps the
-//! evaluated multiplicity exactly -- rejecting whole cascades would bias it
-//! low, because one with more photons is likelier to overshoot -- and keeps the
-//! mean photon energy within a couple of percent, where rejection would lose
-//! nearly half of it. It narrows the spread of individual photon energies, an
-//! explicit modeling choice for recoil-only samples. These photons are never
-//! transported or tallied; the transported cascade is sampled separately in
-//! sample_secondary_photons().
+//! while preserving the sampled directions and multiplicity. These photons are
+//! used only to determine recoil momentum; transported photons are sampled
+//! separately. See the recoil methods documentation for the full rationale.
 //!
 //! \param[in,out] kick    Cascade momentum and energy, scaled in place
 //! \param[in] p_in        Momentum carried into the reaction in [eV]
@@ -834,7 +789,8 @@ PhotonKick sample_photon_kick(
       double mu_gamma;
       product.sample(E_in, E_gamma, mu_gamma, seed);
       Direction u_gamma = rotate_angle(u_in, mu_gamma, nullptr, seed);
-      kick.momentum += photon_momentum(E_gamma, u_gamma);
+      if (E_gamma > 0.0)
+        kick.momentum += E_gamma * u_gamma;
       kick.energy += E_gamma;
     }
   }
@@ -913,9 +869,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   double q = rx.recoil_.q_value;
   ParticleType recoil = rx.recoil_.residual;
 
-  ChargedProducts ions;
-  bool products_fit = ions.fill(emitted);
-  assert(products_fit);
+  ChargedProducts ions {emitted};
 
   // Additional neutrons of a multiplicity > 1 channel. OpenMC transports only
   // one sampled neutron, so the others are sampled independently from the same
@@ -1003,9 +957,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   double q = rx.recoil_.q_value;
   ParticleType recoil = rx.recoil_.residual;
 
-  ChargedProducts ions;
-  bool products_fit = ions.fill(emitted);
-  assert(products_fit);
+  ChargedProducts ions {emitted};
 
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
