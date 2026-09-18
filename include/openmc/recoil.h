@@ -218,14 +218,6 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
 void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
   Direction u_in, const Reaction& rx);
 
-//! Identity of the recoil left by a reaction
-//!
-//! \param[in] nuc  Target nuclide
-//! \param[in] mt   Reaction MT number
-//! \return Recoil nucleus in its ground state; the target itself if the exit
-//!         channel cannot be determined from \p mt
-ParticleType recoil_particle_type(const Nuclide& nuc, int mt);
-
 //! Initialize the data needed to produce recoil products for one reaction
 //!
 //! This validates the exit channel and chooses its energy-release value while

@@ -213,6 +213,12 @@ double exprel(double x);
 //! \return log(1+x)/x without loss of precision near 0
 double log1prel(double x);
 
+//! Evaluate the softplus function without overflow
+//!
+//! \param x Real argument
+//! \return log(1 + exp(x))
+double softplus(double x);
+
 //! Evaluate the cylindrical Bessel function of the first kind J_n(x)
 //!
 //! Uses std::cyl_bessel_j where available (e.g., libstdc++). On standard

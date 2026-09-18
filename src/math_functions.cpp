@@ -946,6 +946,11 @@ double log1prel(double x)
   }
 }
 
+double softplus(double x)
+{
+  return std::max(x, 0.0) + std::log1p(std::exp(-std::abs(x)));
+}
+
 double cyl_bessel_j(int n, double x)
 {
   // Handle negative arguments via the parity relation

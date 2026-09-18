@@ -36,8 +36,9 @@ namespace {
 //! Conversion from angstroms to femtometers
 constexpr double ANGSTROM_TO_FM = 1.0e5;
 
-//! Coulomb constant alpha hbar c in [eV fm], from OpenMC's CODATA 2018
-//! constants (https://physics.nist.gov/cuu/Constants/archive2018.html)
+//! Coulomb constant e^2/(4 pi epsilon_0) = alpha hbar c in [eV fm], derived
+//! from OpenMC's CODATA 2018 constants
+//! (https://physics.nist.gov/cuu/Constants/archive2018.html)
 constexpr double COULOMB_EV_FM =
   PLANCK_C * ANGSTROM_TO_FM / (2.0 * PI * FINE_STRUCTURE);
 
@@ -50,11 +51,8 @@ constexpr int N_TABLE = 64;
 //! Negative infinity, for a log density that is identically zero
 constexpr double INFTY = std::numeric_limits<double>::infinity();
 
-//! Evaluate log(1 + e^x) without forming e^x for a large positive argument
-double softplus(double x)
-{
-  return std::max(x, 0.0) + std::log1p(std::exp(-std::abs(x)));
-}
+//! Nuclear numbers of a neutron
+constexpr NuclearNumbers NEUTRON_NUMBERS {0, 1};
 
 //! Maximum attempts to resample a modeled product inside the energy budget
 //!
@@ -130,7 +128,10 @@ struct ChargedProducts {
            add({1, 3}, e.triton) && add({2, 3}, e.he3) && add({2, 4}, e.alpha);
   }
 
-  span<NuclearNumbers> active() { return {za, static_cast<std::size_t>(size)}; }
+  span<NuclearNumbers> to_span()
+  {
+    return {za, static_cast<std::size_t>(size)};
+  }
 };
 
 //! Fill \p out with the emitted particles of a channel, light ions and all
@@ -140,7 +141,7 @@ struct ChargedProducts {
 int all_products(const ExitChannel& e, NuclearNumbers* out, int capacity)
 {
   const NuclearNumbers kinds[6] = {
-    {0, 1}, {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4}};
+    NEUTRON_NUMBERS, {1, 1}, {1, 2}, {1, 3}, {2, 3}, {2, 4}};
   const int counts[6] = {
     e.neutron, e.proton, e.deuteron, e.triton, e.he3, e.alpha};
   int n = 0;
@@ -168,16 +169,6 @@ int all_products(const ExitChannel& e, NuclearNumbers* out, int capacity)
 // nearly zero at low outgoing energy to 0.5-0.9 near the kinematic maximum.
 //==============================================================================
 
-double breakup_energy(NuclearNumbers p)
-{
-  // Binding energy from the CODATA bare-particle masses in atomic_mass.h.
-  double mass = nuclear_mass(p.Z, p.A);
-  if (mass <= 0.0)
-    return 0.0;
-  return (p.Z * MASS_PROTON + (p.A - p.Z) * MASS_NEUTRON - mass) * AMU_EV /
-         1.0e6;
-}
-
 //! Kalbach's semi-empirical separation energy in [MeV]
 //!
 //! The liquid-drop coefficients and emitted-particle binding correction are
@@ -193,6 +184,16 @@ double kalbach_separation_energy(
   double Z_a = daughter.Z;
   double N_a = daughter.A - daughter.Z;
 
+  // Binding energy of the emitted particle from the CODATA bare-particle
+  // masses in atomic_mass.h, converted to MeV.
+  double emitted_mass = nuclear_mass(emitted.Z, emitted.A);
+  double binding_energy =
+    emitted_mass > 0.0
+      ? (emitted.Z * MASS_PROTON + (emitted.A - emitted.Z) * MASS_NEUTRON -
+          emitted_mass) *
+          AMU_EV / 1.0e6
+      : 0.0;
+
   return 15.68 * (A_c - A_a) -
          28.07 *
            ((N_c - Z_c) * (N_c - Z_c) / A_c - (N_a - Z_a) * (N_a - Z_a) / A_a) -
@@ -200,7 +201,7 @@ double kalbach_separation_energy(
          33.22 * ((N_c - Z_c) * (N_c - Z_c) / std::pow(A_c, 4.0 / 3.0) -
                    (N_a - Z_a) * (N_a - Z_a) / std::pow(A_a, 4.0 / 3.0)) -
          0.717 * (Z_c * Z_c / std::cbrt(A_c) - Z_a * Z_a / std::cbrt(A_a)) +
-         1.211 * (Z_c * Z_c / A_c - Z_a * Z_a / A_a) - breakup_energy(emitted);
+         1.211 * (Z_c * Z_c / A_c - Z_a * Z_a / A_a) - binding_energy;
 }
 
 //! Kalbach angular-distribution slope parameter
@@ -219,8 +220,8 @@ struct EmissionState {
   Direction momentum {};         //!< lab momentum of undecayed system [eV]
   double mass {0.0};             //!< mass of undecayed system [eV]
   double energy_available {0.0}; //!< rest-frame kinetic energy [eV]
-  NuclearNumbers za {};          //!< identity of undecayed system
   double energy_emitted {0.0};   //!< lab kinetic energy given to products [eV]
+  NuclearNumbers za {};          //!< identity of undecayed system
 };
 
 //! Modeled light ion kept until the event can be completed and banked
@@ -280,7 +281,7 @@ double mass_excess_ev(NuclearNumbers za)
 std::optional<double> mass_difference_q(
   NuclearNumbers target, span<const NuclearNumbers> emitted)
 {
-  NuclearNumbers daughter = target + NuclearNumbers {0, 1};
+  NuclearNumbers daughter {target.Z, target.A + 1};
   // Mass excesses rather than masses. A W-184 channel differences four numbers
   // of order 1.7e11 eV to reach one of order 1e6, and a double carries about
   // sixteen digits, so the direct subtraction returns a Q good to only ten.
@@ -298,7 +299,7 @@ std::optional<double> mass_difference_q(
   if (nuclear_mass_ev(target) <= 0.0 || nuclear_mass_ev(daughter) <= 0.0)
     return std::nullopt;
 
-  return mass_excess_ev(target) + mass_excess_ev({0, 1}) -
+  return mass_excess_ev(target) + mass_excess_ev(NEUTRON_NUMBERS) -
          mass_excess_ev(daughter) - exit_excess;
 }
 
@@ -315,7 +316,7 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
     return;
 
   NuclearNumbers target {nuc.Z_, nuc.A_};
-  NuclearNumbers residual = target + NuclearNumbers {0, 1};
+  NuclearNumbers residual {target.Z, target.A + 1};
   for (int i = 0; i < n_products; ++i)
     residual -= products[i];
   if (!residual.is_valid())
@@ -383,7 +384,7 @@ double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion)
   auto q = mass_difference_q(target, span<const NuclearNumbers> {&ion, 1});
   if (!q)
     return 0.0;
-  NuclearNumbers daughter = target + NuclearNumbers {0, 1} - ion;
+  NuclearNumbers daughter {target.Z - ion.Z, target.A + 1 - ion.A};
   double m_b = nuclear_mass_ev(ion);
   double m_d = nuclear_mass_ev(daughter);
   double u = final_state_internal_energy(E_in, m_b + m_d, *q);
@@ -398,14 +399,15 @@ double kalbach_slope(
   double E_in, double E_cm, NuclearNumbers emitted, int Z_t, int A_t)
 {
   NuclearNumbers target {Z_t, A_t};
-  NuclearNumbers compound = target + NuclearNumbers {0, 1};
+  NuclearNumbers compound {target.Z, target.A + 1};
   NuclearNumbers recoil = compound - emitted;
   if (!recoil.is_valid())
     return 0.0;
 
   double epsilon_a = E_in * target.A / (target.A + 1.0) / 1.0e6;
   double epsilon_b = E_cm * (recoil.A + emitted.A) / (recoil.A * 1.0e6);
-  double e_a = epsilon_a + kalbach_separation_energy(compound, target, {0, 1});
+  double e_a =
+    epsilon_a + kalbach_separation_energy(compound, target, NEUTRON_NUMBERS);
   double e_b = epsilon_b + kalbach_separation_energy(compound, recoil, emitted);
   if (e_a <= 0.0 || e_b <= 0.0 || !std::isfinite(e_a) || !std::isfinite(e_b))
     return 0.0;
@@ -459,23 +461,6 @@ double particle_mass_ev(ParticleType type)
   if (type.is_nucleus() && za.A > 0)
     return za.A * AMU_EV;
   return 0.0;
-}
-
-ParticleType recoil_particle_type(const Nuclide& nuc, int mt)
-{
-  auto channel = reaction_exit_channel(mt);
-  if (!channel)
-    return nuc.particle_type();
-
-  const auto& e = *channel;
-  int emitted_A = e.neutron + e.proton + 2 * e.deuteron + 3 * e.triton +
-                  3 * e.he3 + 4 * e.alpha;
-  int emitted_Z = e.proton + e.deuteron + e.triton + 2 * e.he3 + 2 * e.alpha;
-
-  NuclearNumbers residual {nuc.Z_ - emitted_Z, nuc.A_ + 1 - emitted_A};
-  if (!residual.is_valid())
-    return nuc.particle_type();
-  return ion_type(residual);
 }
 
 double kalbach_precompound_fraction(double E_cm, double E_max_shape,
@@ -698,7 +683,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
 
   // Emission order affects which ion sees the larger budget; randomize it so
   // that no ion is systematically favored.
-  fisher_yates_shuffle(ions.active(), seed);
+  fisher_yates_shuffle(ions.to_span(), seed);
 
   for (int i = 0; i < ions.size; ++i) {
     NuclearNumbers b = ions.za[i];
@@ -978,14 +963,14 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   // system is the additive ground-state nuclear mass of its final products.
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
-  state.za = NuclearNumbers {nuc.Z_, nuc.A_} + NuclearNumbers {0, 1};
+  state.za = {nuc.Z_, nuc.A_ + 1};
 
   // Lab-frame kinetic energy release. The closure calculation subtracts the
   // translational energy of the final-state mass that has not yet decayed.
   double budget = E_in + q;
 
   state.momentum -= neutron_momentum(E_out, u_out);
-  state.za -= {0, 1};
+  state.za -= NEUTRON_NUMBERS;
   state.energy_emitted += E_out;
 
   bool include_ions = ions.size > 0 && settings::recoil.light_ion_model ==
@@ -1018,7 +1003,7 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
       EmissionState trial = state;
       trial.momentum -= neutron_momentum(E_extra, u_extra);
       trial.mass -= MASS_NEUTRON_EV;
-      trial.za -= {0, 1};
+      trial.za -= NEUTRON_NUMBERS;
       trial.energy_emitted += E_extra;
       if (update_internal_energy(trial, budget)) {
         state = trial;
@@ -1054,7 +1039,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   EmissionState state;
   state.momentum = neutron_momentum(E_in, u_in);
-  state.za = NuclearNumbers {nuc->Z_, nuc->A_} + NuclearNumbers {0, 1};
+  state.za = {nuc->Z_, nuc->A_ + 1};
 
   bool include_ions = ions.size > 0 && settings::recoil.light_ion_model ==
                                          RecoilLightIonModel::statistical;

@@ -10,6 +10,18 @@
 #include "openmc/random_lcg.h"
 #include "openmc/wmp.h"
 
+TEST_CASE("Test softplus")
+{
+  REQUIRE_THAT(
+    openmc::softplus(0.0), Catch::Matchers::WithinRel(std::log(2.0), 1.0e-15));
+  REQUIRE_THAT(openmc::softplus(1.0),
+    Catch::Matchers::WithinRel(std::log1p(std::exp(1.0)), 1.0e-15));
+
+  // These arguments would overflow or underflow in a direct evaluation.
+  REQUIRE(openmc::softplus(1000.0) == 1000.0);
+  REQUIRE(openmc::softplus(-1000.0) == 0.0);
+}
+
 TEST_CASE("Test t_percentile")
 {
   // The reference solutions come from scipy.stats.t.ppf
