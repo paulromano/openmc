@@ -4,6 +4,8 @@
 #ifndef OPENMC_RECOIL_H
 #define OPENMC_RECOIL_H
 
+#include <optional>
+
 #include "openmc/nuclide.h"
 #include "openmc/particle.h"
 #include "openmc/particle_data.h"
@@ -40,13 +42,40 @@ namespace recoil {
 struct NuclearNumbers {
   int Z {0};
   int A {0};
+
+  //! Whether the values identify a physically possible nucleon inventory
+  constexpr bool is_valid() const { return Z >= 0 && A > 0 && Z <= A; }
+
+  constexpr NuclearNumbers& operator+=(NuclearNumbers other)
+  {
+    Z += other.Z;
+    A += other.A;
+    return *this;
+  }
+
+  constexpr NuclearNumbers& operator-=(NuclearNumbers other)
+  {
+    Z -= other.Z;
+    A -= other.A;
+    return *this;
+  }
 };
+
+constexpr NuclearNumbers operator+(NuclearNumbers lhs, NuclearNumbers rhs)
+{
+  return lhs += rhs;
+}
+
+constexpr NuclearNumbers operator-(NuclearNumbers lhs, NuclearNumbers rhs)
+{
+  return lhs -= rhs;
+}
 
 //==============================================================================
 //! \name Kinematic contract
 //!
 //! Every energy budget, endpoint and excitation in this file comes from these
-//! shared expressions, so that the transport kernel and offline calibration
+//! shared expressions, so that the transport kernel and fitting implementation
 //! cannot disagree about what "the energy available to this channel" means.
 //! The Python half is \c recoil.kinematics in the analysis repository and both
 //! are checked against \c tests/data/kinematics_fixture.json.
@@ -86,12 +115,11 @@ double mass_excess_ev(NuclearNumbers za);
 //! below \f$Q_M\f$.
 //!
 //! \param[in] target     Charge and mass number of the target
-//! \param[in] emitted    Charge and mass number of each emitted particle
-//! \param[in] n_emitted  Number of entries in \p emitted
-//! \param[out] ok        False if any required mass is missing or the channel
-//!                       leaves an impossible daughter
-double mass_difference_q(NuclearNumbers target, const NuclearNumbers* emitted,
-  int n_emitted, bool& ok);
+//! \param[in] emitted  Charge and mass number of each emitted particle
+//! \return Ground-state mass difference, or no value if a required mass is
+//!         missing or the channel leaves an impossible daughter
+std::optional<double> mass_difference_q(
+  NuclearNumbers target, span<const NuclearNumbers> emitted);
 
 //! Energy available in the final system's rest frame in [eV]
 //!
@@ -125,11 +153,11 @@ double residual_excitation(double u, double e_cm, double m_b, double m_d);
 //! or completed event.
 //!
 //! \param[in] budget       Total laboratory kinetic-energy budget in [eV]
-//! \param[in] emitted_kin  Kinetic energy already assigned to products [eV]
+//! \param[in] energy_emitted  Kinetic energy assigned to products [eV]
 //! \param[in] momentum     Momentum of the remaining system in [eV]
 //! \param[in] mass         Rest mass of the remaining system in [eV]
 double remaining_internal_energy(
-  double budget, double emitted_kin, Direction momentum, double mass);
+  double budget, double energy_emitted, Direction momentum, double mass);
 
 //! Endpoint of the channel that emits \p ion alone from \p target, in [eV]
 //!
@@ -198,6 +226,13 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 //!         channel cannot be determined from \p mt
 ParticleType recoil_particle_type(const Nuclide& nuc, int mt);
 
+//! Initialize the data needed to produce recoil products for one reaction
+//!
+//! This validates the exit channel and chooses its energy-release value while
+//! nuclear data are loaded so those operations are not repeated during
+//! transport.
+void initialize_reaction(const Nuclide& nuc, Reaction& rx);
+
 //! Nuclear rest mass of a particle in [eV]
 //!
 //! Returns zero for photons and the free-particle mass for electrons. Nuclear
@@ -254,8 +289,9 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //!
 //! with the Sommerfeld parameter and Coulomb barrier
 //!
-//! \f[ \eta(E) = \frac{Z_b Z_d}{137.036}\sqrt{\frac{\mu c^2}{2E}}, \qquad
-//!     V_C = \frac{1.44\,\text{MeV fm}\, Z_b Z_d}
+//! \f[ \eta(E) = \frac{Z_b Z_d}{137.036}
+//!                  \sqrt{\frac{m_\mathrm{red} c^2}{2E}}, \qquad
+//!     V_C = \frac{\alpha\hbar c\, Z_b Z_d}
 //!                {r_0 (A_b^{1/3} + A_d^{1/3})}. \f]
 //!
 //! The factor \f$E\,T_C(E)\f$ stands in for the inverse-reaction cross section
@@ -269,7 +305,7 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //! barrier at lower energy; a transmission with a fixed diffuseness falls at
 //! one rate everywhere and cannot reproduce it. The effective radius
 //! \f$r_0\f$, the WKB strength \f$g\f$ and the exponent \f$\nu\f$ are
-//! calibrated against evaluated ENDF MF=6 charged-particle spectra rather than
+//! fitted against evaluated ENDF MF=6 charged-particle spectra rather than
 //! derived from an optical model; see the recoil section of the user
 //! documentation.
 //!
@@ -280,22 +316,22 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 double light_ion_pdf(
   double E, double E_max, int Z_b, int A_b, int Z_d, int A_d);
 
-//! Calibration constants of the light-ion spectrum
+//! Fitted constants of the light-ion spectrum
 //!
 //! The struct keeps the authoritative parameters together and permits
 //! exact-code-path validation through the overloads below. Transport uses the
 //! default values.
 struct LightIonParams {
-  double r0 {1.36093}; //!< effective barrier radius in [fm]
-  double g {0.48566};  //!< scales the WKB barrier exponent
+  double r0 {1.3608964941027708}; //!< effective barrier radius in [fm]
+  double g {0.48566};             //!< scales the WKB barrier exponent
   double nu {1.18221}; //!< endpoint exponent of the level-density factor
 };
 
-//! Calibration constants of the light-ion angular distribution
+//! Fitted constants of the light-ion angular distribution
 //!
 //! These constants define the logistic pre-equilibrium fraction used for
 //! continuum channels. Named levels are sampled isotropically in the center of
-//! mass. See the recoil methods documentation for the calibration basis and
+//! mass. See the recoil methods documentation for the fitting basis and
 //! expected differences from evaluated MF=6 data.
 struct AngularParams {
   double c0 {-8.42909};         //!< constant

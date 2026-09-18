@@ -1009,8 +1009,9 @@ void elastic_scatter(int i_nuclide, const Reaction& rx, double kT, Particle& p)
   if (std::abs(p.mu()) > 1.0)
     p.mu() = std::copysign(1.0, p.mu());
 
-  // Generate recoil
-  recoil::from_elastic(p, *nuc, E_in, u_in, p.E(), p.u());
+  if (settings::recoil_production) {
+    recoil::from_elastic(p, *nuc, E_in, u_in, p.E(), p.u());
+  }
 }
 
 void sab_scatter(int i_nuclide, int i_sab, Particle& p)
@@ -1365,7 +1366,9 @@ void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)
     p.wgt() *= yield;
   }
 
-  recoil::from_inelastic(p, nuc, rx, wgt_in, E_in, u_in, E_out, u_out, yield);
+  if (settings::recoil_production) {
+    recoil::from_inelastic(p, nuc, rx, wgt_in, E_in, u_in, E_out, u_out, yield);
+  }
 }
 
 void sample_secondary_photons(Particle& p, int i_nuclide)

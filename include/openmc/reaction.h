@@ -8,6 +8,7 @@
 
 #include "hdf5.h"
 
+#include "openmc/endf.h"
 #include "openmc/particle_data.h"
 #include "openmc/reaction_product.h"
 #include "openmc/span.h"
@@ -23,6 +24,14 @@ namespace openmc {
 
 class Reaction {
 public:
+  //! Data derived once for recoil production
+  struct RecoilData {
+    bool supported {false};
+    ExitChannel emitted;
+    ParticleType residual;
+    double q_value {0.0};
+  };
+
   //! Construct reaction from HDF5 data
   //! \param[in] group HDF5 group containing reaction data
   //! \param[in] temperatures Desired temperatures for cross sections
@@ -64,6 +73,7 @@ public:
   bool redundant_;                   //!< redundant reaction?
   vector<TemperatureXS> xs_;         //!< Cross section at each temperature
   vector<ReactionProduct> products_; //!< Reaction products
+  RecoilData recoil_;                //!< Initialized recoil-production data
 };
 
 //==============================================================================

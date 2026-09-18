@@ -9,6 +9,7 @@
 #include "openmc/message_passing.h"
 #include "openmc/photon.h"
 #include "openmc/random_lcg.h"
+#include "openmc/recoil.h"
 #include "openmc/search.h"
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
@@ -249,6 +250,9 @@ Nuclide::Nuclide(hid_t group, const vector<double>& temperature)
       hid_t rx_group = open_group(rxs_group, name.c_str());
       reactions_.push_back(
         make_unique<Reaction>(rx_group, temps_to_read, name_));
+      if (settings::recoil_production) {
+        recoil::initialize_reaction(*this, *reactions_.back());
+      }
 
       // Check for 0K elastic scattering
       const auto& rx = reactions_.back();

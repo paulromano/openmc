@@ -4,6 +4,8 @@
 #ifndef OPENMC_ENDF_H
 #define OPENMC_ENDF_H
 
+#include <optional>
+
 #include "hdf5.h"
 
 #include "openmc/constants.h"
@@ -32,6 +34,35 @@ bool is_disappearance(int MT);
 //! \param[in] MT ENDF MT value
 //! \return Whether corresponding reaction is an inelastic scattering reaction
 bool is_inelastic_scatter(int MT);
+
+//! Determine whether an MT number identifies a discrete charged-particle level
+//! \param[in] MT ENDF MT value
+//! \return Whether the reaction identifies one residual level
+bool is_discrete_charged_level(int MT);
+
+//! Determine whether an MT number identifies a discrete residual level
+//! \param[in] MT ENDF MT value
+//! \return Whether the reaction identifies one residual level
+bool is_discrete_level(int MT);
+
+//! Counts of light particles in an exclusive ENDF reaction channel
+struct ExitChannel {
+  int neutron {0};
+  int proton {0};
+  int deuteron {0};
+  int triton {0};
+  int he3 {0};
+  int alpha {0};
+};
+
+//! Determine the light particles emitted by an exclusive reaction
+//!
+//! Inclusive, summation, fission, and otherwise ambiguous MT numbers return no
+//! value because they do not identify a unique residual nucleus.
+//!
+//! \param[in] MT ENDF MT value
+//! \return Exit-channel counts, or no value for a nonexclusive reaction
+std::optional<ExitChannel> reaction_exit_channel(int MT);
 
 //! Determine whether an MT number matches a target MT, considering that the
 //! target may be a summation reaction.

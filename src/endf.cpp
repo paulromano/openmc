@@ -87,6 +87,77 @@ bool is_inelastic_scatter(int mt)
   }
 }
 
+bool is_discrete_charged_level(int mt)
+{
+  return (mt >= N_P0 && mt < N_PC) || (mt >= N_D0 && mt < N_DC) ||
+         (mt >= N_T0 && mt < N_TC) || (mt >= N_3HE0 && mt < N_3HEC) ||
+         (mt >= N_A0 && mt < N_AC);
+}
+
+bool is_discrete_level(int mt)
+{
+  return (mt >= N_N1 && mt < N_NC) || is_discrete_charged_level(mt);
+}
+
+std::optional<ExitChannel> reaction_exit_channel(int mt)
+{
+  if (mt == ELASTIC || (mt >= N_N1 && mt <= N_NC))
+    return ExitChannel {1};
+  if (mt >= N_P0 && mt <= N_PC)
+    return ExitChannel {0, 1};
+  if (mt >= N_D0 && mt <= N_DC)
+    return ExitChannel {0, 0, 1};
+  if (mt >= N_T0 && mt <= N_TC)
+    return ExitChannel {0, 0, 0, 1};
+  if (mt >= N_3HE0 && mt <= N_3HEC)
+    return ExitChannel {0, 0, 0, 0, 1};
+  if (mt >= N_A0 && mt <= N_AC)
+    return ExitChannel {0, 0, 0, 0, 0, 1};
+  if (mt >= N_2N0 && mt <= N_2NC)
+    return ExitChannel {2};
+
+  struct ChannelEntry {
+    int mt;
+    ExitChannel channel;
+  };
+  static constexpr ChannelEntry channels[] = {{N_2ND, {2, 0, 1}}, {N_2N, {2}},
+    {N_3N, {3}}, {N_NA, {1, 0, 0, 0, 0, 1}}, {N_N3A, {1, 0, 0, 0, 0, 3}},
+    {N_2NA, {2, 0, 0, 0, 0, 1}}, {N_3NA, {3, 0, 0, 0, 0, 1}}, {N_NP, {1, 1}},
+    {N_N2A, {1, 0, 0, 0, 0, 2}}, {N_2N2A, {2, 0, 0, 0, 0, 2}},
+    {N_ND, {1, 0, 1}}, {N_NT, {1, 0, 0, 1}}, {N_N3HE, {1, 0, 0, 0, 1}},
+    {N_ND2A, {1, 0, 1, 0, 0, 2}}, {N_NT2A, {1, 0, 0, 1, 0, 2}}, {N_4N, {4}},
+    {N_2NP, {2, 1}}, {N_3NP, {3, 1}}, {N_N2P, {1, 2}},
+    {N_NPA, {1, 1, 0, 0, 0, 1}}, {N_GAMMA, {}}, {N_P, {0, 1}}, {N_D, {0, 0, 1}},
+    {N_T, {0, 0, 0, 1}}, {N_3HE, {0, 0, 0, 0, 1}}, {N_A, {0, 0, 0, 0, 0, 1}},
+    {N_2A, {0, 0, 0, 0, 0, 2}}, {N_3A, {0, 0, 0, 0, 0, 3}}, {N_2P, {0, 2}},
+    {N_PA, {0, 1, 0, 0, 0, 1}}, {N_T2A, {0, 0, 0, 1, 0, 2}},
+    {N_D2A, {0, 0, 1, 0, 0, 2}}, {N_PD, {0, 1, 1}}, {N_PT, {0, 1, 0, 1}},
+    {N_DA, {0, 0, 1, 0, 0, 1}}, {N_5N, {5}}, {N_6N, {6}}, {N_2NT, {2, 0, 0, 1}},
+    {N_TA, {0, 0, 0, 1, 0, 1}}, {N_4NP, {4, 1}}, {N_3ND, {3, 0, 1}},
+    {N_NDA, {1, 0, 1, 0, 0, 1}}, {N_2NPA, {2, 1, 0, 0, 0, 1}}, {N_7N, {7}},
+    {N_8N, {8}}, {N_5NP, {5, 1}}, {N_6NP, {6, 1}}, {N_7NP, {7, 1}},
+    {N_4NA, {4, 0, 0, 0, 0, 1}}, {N_5NA, {5, 0, 0, 0, 0, 1}},
+    {N_6NA, {6, 0, 0, 0, 0, 1}}, {N_7NA, {7, 0, 0, 0, 0, 1}},
+    {N_4ND, {4, 0, 1}}, {N_5ND, {5, 0, 1}}, {N_6ND, {6, 0, 1}},
+    {N_3NT, {3, 0, 0, 1}}, {N_4NT, {4, 0, 0, 1}}, {N_5NT, {5, 0, 0, 1}},
+    {N_6NT, {6, 0, 0, 1}}, {N_2N3HE, {2, 0, 0, 0, 1}},
+    {N_3N3HE, {3, 0, 0, 0, 1}}, {N_4N3HE, {4, 0, 0, 0, 1}}, {N_3N2P, {3, 2}},
+    {N_3N2A, {3, 0, 0, 0, 0, 2}}, {N_3NPA, {3, 1, 0, 0, 0, 1}},
+    {N_DT, {0, 0, 1, 1}}, {N_NPD, {1, 1, 1}}, {N_NPT, {1, 1, 0, 1}},
+    {N_NDT, {1, 0, 1, 1}}, {N_NP3HE, {1, 1, 0, 0, 1}},
+    {N_ND3HE, {1, 0, 1, 0, 1}}, {N_NT3HE, {1, 0, 0, 1, 1}},
+    {N_NTA, {1, 0, 0, 1, 0, 1}}, {N_2N2P, {2, 2}}, {N_P3HE, {0, 1, 0, 0, 1}},
+    {N_D3HE, {0, 0, 1, 0, 1}}, {N_3HEA, {0, 0, 0, 0, 1, 1}}, {N_4N2P, {4, 2}},
+    {N_4N2A, {4, 0, 0, 0, 0, 2}}, {N_4NPA, {4, 1, 0, 0, 0, 1}}, {N_3P, {0, 3}},
+    {N_N3P, {1, 3}}, {N_3N2PA, {3, 2, 0, 0, 0, 1}}, {N_5N2P, {5, 2}}};
+
+  for (const auto& entry : channels) {
+    if (entry.mt == mt)
+      return entry.channel;
+  }
+  return std::nullopt;
+}
+
 bool mt_matches(int event_mt, int target_mt)
 {
   // Direct match

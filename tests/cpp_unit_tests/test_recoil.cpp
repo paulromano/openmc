@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -8,7 +9,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "openmc/constants.h"
+#include "openmc/endf.h"
 #include "openmc/particle_type.h"
+#include "openmc/random_dist.h"
 #include "openmc/random_lcg.h"
 #include "openmc/recoil.h"
 
@@ -110,6 +113,197 @@ Fixture read_fixture()
 
 } // namespace
 
+TEST_CASE("ENDF recoil exit channels")
+{
+  auto check = [](int mt, ExitChannel expected) {
+    auto channel = reaction_exit_channel(mt);
+    REQUIRE(channel.has_value());
+    CHECK(channel->neutron == expected.neutron);
+    CHECK(channel->proton == expected.proton);
+    CHECK(channel->deuteron == expected.deuteron);
+    CHECK(channel->triton == expected.triton);
+    CHECK(channel->he3 == expected.he3);
+    CHECK(channel->alpha == expected.alpha);
+  };
+
+  check(ELASTIC, {1});
+  check(N_N1, {1});
+  check(N_NC, {1});
+  check(N_2N0, {2});
+  check(N_2NC, {2});
+  check(N_P0, {0, 1});
+  check(N_PC, {0, 1});
+  check(N_D0, {0, 0, 1});
+  check(N_DC, {0, 0, 1});
+  check(N_T0, {0, 0, 0, 1});
+  check(N_TC, {0, 0, 0, 1});
+  check(N_3HE0, {0, 0, 0, 0, 1});
+  check(N_3HEC, {0, 0, 0, 0, 1});
+  check(N_A0, {0, 0, 0, 0, 0, 1});
+  check(N_AC, {0, 0, 0, 0, 0, 1});
+
+  struct Case {
+    int mt;
+    ExitChannel channel;
+  };
+  const Case cases[] = {
+    {N_2ND, {2, 0, 1}},
+    {N_2N, {2}},
+    {N_3N, {3}},
+    {N_NA, {1, 0, 0, 0, 0, 1}},
+    {N_N3A, {1, 0, 0, 0, 0, 3}},
+    {N_2NA, {2, 0, 0, 0, 0, 1}},
+    {N_3NA, {3, 0, 0, 0, 0, 1}},
+    {N_NP, {1, 1}},
+    {N_N2A, {1, 0, 0, 0, 0, 2}},
+    {N_2N2A, {2, 0, 0, 0, 0, 2}},
+    {N_ND, {1, 0, 1}},
+    {N_NT, {1, 0, 0, 1}},
+    {N_N3HE, {1, 0, 0, 0, 1}},
+    {N_ND2A, {1, 0, 1, 0, 0, 2}},
+    {N_NT2A, {1, 0, 0, 1, 0, 2}},
+    {N_4N, {4}},
+    {N_2NP, {2, 1}},
+    {N_3NP, {3, 1}},
+    {N_N2P, {1, 2}},
+    {N_NPA, {1, 1, 0, 0, 0, 1}},
+    {N_GAMMA, {}},
+    {N_P, {0, 1}},
+    {N_D, {0, 0, 1}},
+    {N_T, {0, 0, 0, 1}},
+    {N_3HE, {0, 0, 0, 0, 1}},
+    {N_A, {0, 0, 0, 0, 0, 1}},
+    {N_2A, {0, 0, 0, 0, 0, 2}},
+    {N_3A, {0, 0, 0, 0, 0, 3}},
+    {N_2P, {0, 2}},
+    {N_PA, {0, 1, 0, 0, 0, 1}},
+    {N_T2A, {0, 0, 0, 1, 0, 2}},
+    {N_D2A, {0, 0, 1, 0, 0, 2}},
+    {N_PD, {0, 1, 1}},
+    {N_PT, {0, 1, 0, 1}},
+    {N_DA, {0, 0, 1, 0, 0, 1}},
+    {N_5N, {5}},
+    {N_6N, {6}},
+    {N_2NT, {2, 0, 0, 1}},
+    {N_TA, {0, 0, 0, 1, 0, 1}},
+    {N_4NP, {4, 1}},
+    {N_3ND, {3, 0, 1}},
+    {N_NDA, {1, 0, 1, 0, 0, 1}},
+    {N_2NPA, {2, 1, 0, 0, 0, 1}},
+    {N_7N, {7}},
+    {N_8N, {8}},
+    {N_5NP, {5, 1}},
+    {N_6NP, {6, 1}},
+    {N_7NP, {7, 1}},
+    {N_4NA, {4, 0, 0, 0, 0, 1}},
+    {N_5NA, {5, 0, 0, 0, 0, 1}},
+    {N_6NA, {6, 0, 0, 0, 0, 1}},
+    {N_7NA, {7, 0, 0, 0, 0, 1}},
+    {N_4ND, {4, 0, 1}},
+    {N_5ND, {5, 0, 1}},
+    {N_6ND, {6, 0, 1}},
+    {N_3NT, {3, 0, 0, 1}},
+    {N_4NT, {4, 0, 0, 1}},
+    {N_5NT, {5, 0, 0, 1}},
+    {N_6NT, {6, 0, 0, 1}},
+    {N_2N3HE, {2, 0, 0, 0, 1}},
+    {N_3N3HE, {3, 0, 0, 0, 1}},
+    {N_4N3HE, {4, 0, 0, 0, 1}},
+    {N_3N2P, {3, 2}},
+    {N_3N2A, {3, 0, 0, 0, 0, 2}},
+    {N_3NPA, {3, 1, 0, 0, 0, 1}},
+    {N_DT, {0, 0, 1, 1}},
+    {N_NPD, {1, 1, 1}},
+    {N_NPT, {1, 1, 0, 1}},
+    {N_NDT, {1, 0, 1, 1}},
+    {N_NP3HE, {1, 1, 0, 0, 1}},
+    {N_ND3HE, {1, 0, 1, 0, 1}},
+    {N_NT3HE, {1, 0, 0, 1, 1}},
+    {N_NTA, {1, 0, 0, 1, 0, 1}},
+    {N_2N2P, {2, 2}},
+    {N_P3HE, {0, 1, 0, 0, 1}},
+    {N_D3HE, {0, 0, 1, 0, 1}},
+    {N_3HEA, {0, 0, 0, 0, 1, 1}},
+    {N_4N2P, {4, 2}},
+    {N_4N2A, {4, 0, 0, 0, 0, 2}},
+    {N_4NPA, {4, 1, 0, 0, 0, 1}},
+    {N_3P, {0, 3}},
+    {N_N3P, {1, 3}},
+    {N_3N2PA, {3, 2, 0, 0, 0, 1}},
+    {N_5N2P, {5, 2}},
+  };
+  for (const auto& c : cases)
+    check(c.mt, c.channel);
+
+  for (int mt :
+    {MISC, N_LEVEL, N_FISSION, N_DISAPPEAR, N_XP, N_XD, N_XT, N_X3HE, N_XA}) {
+    CHECK_FALSE(reaction_exit_channel(mt).has_value());
+  }
+}
+
+TEST_CASE("ENDF discrete recoil levels")
+{
+  CHECK(is_discrete_level(N_N1));
+  CHECK(is_discrete_level(N_N40));
+  CHECK_FALSE(is_discrete_level(N_NC));
+
+  for (auto bounds :
+    {std::pair {N_P0, N_PC}, std::pair {N_D0, N_DC}, std::pair {N_T0, N_TC},
+      std::pair {N_3HE0, N_3HEC}, std::pair {N_A0, N_AC}}) {
+    CHECK(is_discrete_charged_level(bounds.first));
+    CHECK(is_discrete_charged_level(bounds.second - 1));
+    CHECK_FALSE(is_discrete_charged_level(bounds.second));
+    CHECK(is_discrete_level(bounds.first));
+  }
+}
+
+TEST_CASE("Generic Fisher-Yates shuffle")
+{
+  uint64_t seed = 17;
+  int single[] {4};
+  auto seed_before = seed;
+  fisher_yates_shuffle(span<int> {}, &seed);
+  fisher_yates_shuffle(span<int> {single, 1}, &seed);
+  CHECK(seed == seed_before);
+  CHECK(single[0] == 4);
+
+  int first[] {0, 1, 2, 3, 4, 5};
+  int second[] {0, 1, 2, 3, 4, 5};
+  int original[] {0, 1, 2, 3, 4, 5};
+  uint64_t first_seed = 12345;
+  uint64_t second_seed = first_seed;
+  fisher_yates_shuffle(span<int> {first, 6}, &first_seed);
+  fisher_yates_shuffle(span<int> {second, 6}, &second_seed);
+  CHECK(std::equal(std::begin(first), std::end(first), std::begin(second)));
+  CHECK(std::is_permutation(std::begin(first), std::end(first),
+    std::begin(original), std::end(original)));
+  CHECK_FALSE(
+    std::equal(std::begin(first), std::end(first), std::begin(original)));
+}
+
+TEST_CASE("Nuclear-number arithmetic")
+{
+  recoil::NuclearNumbers compound {26, 57};
+  recoil::NuclearNumbers alpha {2, 4};
+  auto daughter = compound - alpha;
+  CHECK(daughter.Z == 24);
+  CHECK(daughter.A == 53);
+  CHECK(daughter.is_valid());
+  daughter += alpha;
+  CHECK(daughter.Z == compound.Z);
+  CHECK(daughter.A == compound.A);
+  CHECK_FALSE((recoil::NuclearNumbers {-1, 1}).is_valid());
+  CHECK_FALSE((recoil::NuclearNumbers {3, 2}).is_valid());
+}
+
+TEST_CASE("Kalbach separation-energy systematics")
+{
+  // Independent evaluation of Kalbach's published liquid-drop expression for
+  // 14 MeV neutron-induced alpha emission from Fe-56 at E_cm = 8 MeV.
+  CHECK(recoil::kalbach_slope(14.0e6, 8.0e6, {2, 4}, 26, 56) ==
+        Approx(0.720158564746175).epsilon(1.0e-12));
+}
+
 TEST_CASE("Kinematic contract: masses agree with the Python implementation")
 {
   Fixture fx = read_fixture();
@@ -162,11 +356,11 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
   for (const auto& c : fx.cases) {
     INFO(c.name << " at E_in = " << c.e_in << " eV");
 
-    bool ok = false;
-    double q =
-      recoil::mass_difference_q({c.z_t, c.a_t}, c.emitted, c.n_emitted, ok);
-    REQUIRE(ok);
-    REQUIRE(agrees(q, c.q, c.e_in));
+    auto q = recoil::mass_difference_q(
+      {c.z_t, c.a_t}, span<const recoil::NuclearNumbers> {
+                        c.emitted, static_cast<std::size_t>(c.n_emitted)});
+    REQUIRE(q);
+    REQUIRE(agrees(*q, c.q, c.e_in));
 
     // event endpoint: every other product is charged to the budget at rest, so
     // the ion recoils against the daughter plus the rest
@@ -185,7 +379,7 @@ TEST_CASE("Kinematic contract: budgets and endpoints agree with Python")
     }
     double m_b = recoil::nuclear_mass_ev(c.ion);
     double m_d = recoil::nuclear_mass_ev(daughter) + rest;
-    double u0 = recoil::final_state_internal_energy(c.e_in, m_b + m_d, q);
+    double u0 = recoil::final_state_internal_energy(c.e_in, m_b + m_d, *q);
     REQUIRE(agrees(u0, c.u0, c.e_in));
     REQUIRE(agrees(recoil::two_body_endpoint(u0, m_b, m_d), c.e_event, c.e_in));
 
@@ -207,10 +401,10 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
   SECTION("an inelastic channel releases nothing")
   {
     for (auto target : {recoil::NuclearNumbers {6, 12}, {26, 56}, {82, 208}}) {
-      bool ok = false;
-      double q = recoil::mass_difference_q(target, &neutron, 1, ok);
-      REQUIRE(ok);
-      REQUIRE(std::abs(q) < 1.0e-3);
+      auto q = recoil::mass_difference_q(
+        target, span<const recoil::NuclearNumbers> {&neutron, 1});
+      REQUIRE(q);
+      REQUIRE(std::abs(*q) < 1.0e-3);
     }
   }
 
@@ -236,12 +430,12 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
   SECTION("multi-neutron closure reserves the residual translation")
   {
     recoil::NuclearNumbers neutrons[2] {{0, 1}, {0, 1}};
-    bool ok = false;
-    double q = recoil::mass_difference_q({26, 56}, neutrons, 2, ok);
-    REQUIRE(ok);
+    auto q = recoil::mass_difference_q(
+      {26, 56}, span<const recoil::NuclearNumbers> {neutrons, 2});
+    REQUIRE(q);
 
     double e_in = 14.0e6;
-    double budget = e_in + q;
+    double budget = e_in + *q;
     double e_out = 0.5 * (budget - 1.0);
     REQUIRE(2.0 * e_out <= budget);
 
@@ -257,14 +451,14 @@ TEST_CASE("Kinematic contract: invariants hold independently of the fixture")
   SECTION("a missing mass is reported, not invented")
   {
     REQUIRE(recoil::nuclear_mass_ev({60, 300}) == 0.0);
-    bool ok = true;
-    recoil::mass_difference_q({60, 300}, &proton, 1, ok);
-    REQUIRE_FALSE(ok);
+    auto q = recoil::mass_difference_q(
+      {60, 300}, span<const recoil::NuclearNumbers> {&proton, 1});
+    REQUIRE_FALSE(q);
     // an impossible daughter is caught too
-    ok = true;
     recoil::NuclearNumbers many[3] = {alpha, alpha, alpha};
-    recoil::mass_difference_q({2, 4}, many, 3, ok);
-    REQUIRE_FALSE(ok);
+    q = recoil::mass_difference_q(
+      {2, 4}, span<const recoil::NuclearNumbers> {many, 3});
+    REQUIRE_FALSE(q);
   }
 
   SECTION("the triton is the nucleus, not the H-3 atom")

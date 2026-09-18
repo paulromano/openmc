@@ -603,7 +603,7 @@ The parameter values used by transport are
      - Value
      - Role
    * - :math:`r_0`
-     - 1.36093 fm
+     - 1.36089649 fm
      - Effective radius in :eq:`recoil-coulomb-barrier`
    * - :math:`g`
      - 0.48566
@@ -640,6 +640,84 @@ published 1988 systematics. OpenMC applies one fitted scale factor,
 .. math::
 
     a = s_a a_{\mathrm{K88}}.
+
+For completeness, the implemented Kalbach slope is
+
+.. math::
+    :label: recoil-kalbach-slope
+
+    a_{\mathrm{K88}} = 0.04X_1
+      + 1.8\times 10^{-6}X_1^3
+      + 6.7\times 10^{-7}mX_3^4,
+
+where :math:`m=2` for alpha emission and :math:`m=1` for the other light ions,
+and
+
+.. math::
+
+    X_1 = \min(e_a,130)\frac{e_b}{e_a},
+    \qquad
+    X_3 = \min(e_a,41)\frac{e_b}{e_a}.
+
+All energies in these two expressions are expressed numerically in MeV. The
+entrance- and exit-channel energies are
+
+.. math::
+
+    e_a = \epsilon_a + S_a,
+    \qquad
+    e_b = \epsilon_b + S_b,
+
+.. math::
+
+    \epsilon_a = E_{\mathrm{in}}\frac{A_T}{A_T+1},
+    \qquad
+    \epsilon_b = E_b^{\mathrm{cm}}\frac{A_D+A_b}{A_D}.
+
+Here :math:`S_a` is the separation energy for removing the incident neutron
+from the compound nucleus and returning to the target, while :math:`S_b` is the
+separation energy for emitting ion :math:`b` and leaving daughter :math:`D`.
+OpenMC evaluates both using the liquid-drop expression specified by Kalbach
+[Kalbach1988]_. For a compound nucleus :math:`C` and the nucleus :math:`D`
+left after one particle is removed,
+
+.. math::
+    :label: recoil-kalbach-separation
+
+    \begin{aligned}
+    S_b ={}& 15.68(A_C-A_D) \\
+          &-28.07\left[
+            \frac{(N_C-Z_C)^2}{A_C}
+            -\frac{(N_D-Z_D)^2}{A_D}
+          \right] \\
+          &-18.56\left(A_C^{2/3}-A_D^{2/3}\right) \\
+          &+33.22\left[
+            \frac{(N_C-Z_C)^2}{A_C^{4/3}}
+            -\frac{(N_D-Z_D)^2}{A_D^{4/3}}
+          \right] \\
+          &-0.717\left(
+            \frac{Z_C^2}{A_C^{1/3}}
+            -\frac{Z_D^2}{A_D^{1/3}}
+          \right) \\
+          &+1.211\left(
+            \frac{Z_C^2}{A_C}
+            -\frac{Z_D^2}{A_D}
+          \right)-B_b .
+    \end{aligned}
+
+The result is in MeV. The symbols :math:`A`, :math:`Z`, and :math:`N=A-Z`
+denote mass, proton, and neutron numbers. The correction :math:`B_b` is the
+binding energy of the emitted particle,
+
+.. math::
+
+    B_b = \left[Z_bm_p+(A_b-Z_b)m_n-m_b\right]c^2.
+
+For a reaction that ultimately emits several particles, :math:`D` in
+:eq:`recoil-kalbach-separation` is the intermediate nucleus after removal of
+the one particle whose angular slope is being calculated; it is not necessarily
+the final residual nucleus. OpenMC evaluates :math:`B_b` from the same CODATA
+bare-particle masses used elsewhere in recoil kinematics.
 
 The processed ACE data do not retain the evaluated :math:`r`, so OpenMC must
 supply a surrogate for the balance between symmetric compound emission and

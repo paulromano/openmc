@@ -2,6 +2,9 @@
 #define OPENMC_RANDOM_DIST_H
 
 #include <cstdint> // for uint64_t
+#include <utility> // for swap
+
+#include "openmc/span.h"
 
 namespace openmc {
 
@@ -26,6 +29,22 @@ double uniform_distribution(double a, double b, uint64_t* seed);
 //==============================================================================
 
 int64_t uniform_int_distribution(int64_t a, int64_t b, uint64_t* seed);
+
+//==============================================================================
+//! Randomly permute a contiguous sequence with the Fisher-Yates algorithm
+//!
+//! \param values Sequence to permute
+//! \param seed A pointer to the pseudorandom seed
+//==============================================================================
+
+template<typename T>
+void fisher_yates_shuffle(span<T> values, uint64_t* seed)
+{
+  for (std::size_t i = values.size(); i > 1; --i) {
+    std::size_t j = uniform_int_distribution(0, i - 1, seed);
+    std::swap(values[i - 1], values[j]);
+  }
+}
 
 //==============================================================================
 //! Samples an energy from the Maxwell fission distribution based on a direct
