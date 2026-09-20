@@ -972,10 +972,7 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   // Radiative capture: independently sample photon multiplicity, energies, and
   // directions from this reaction's inclusive photon products, then constrain
-  // the constructed cascade to the event energy budget. The resulting recoil
-  // is kinematically exact for a fully specified single-photon final state but
-  // model-dependent for a cascade because the processed data do not provide
-  // inter-photon correlations.
+  // the constructed cascade to the event energy budget.
   if (rx.mt_ == N_GAMMA) {
     PhotonKick kick = sample_photon_kick(rx, E_in, u_in, p.current_seed());
     constrain_photon_kick(kick, state.momentum, state.mass, budget);
