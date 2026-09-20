@@ -390,12 +390,12 @@ For radiative capture, momentum conservation gives
     \mathbf{p}_R =
     \mathbf{p}_{n,\mathrm{in}}-\sum_k\mathbf{p}_{\gamma,k},
 
-where :math:`\mathbf{p}_{\gamma,k}` is the momentum of cascade photon
-:math:`k`. Processed reaction data provide inclusive photon distributions
-and average yields, not the event-by-event joint distribution of a cascade.
-OpenMC converts each yield to a stochastic integer multiplicity and samples
-photon energies and directions independently. A common scale factor is then
-applied to the sampled photon energies so that
+where :math:`\mathbf{p}_{\gamma,k}` is the momentum of emitted photon :math:`k`.
+Processed reaction data provide inclusive photon distributions and average
+yields, not the event-by-event joint distribution of a cascade. OpenMC converts
+each yield to a stochastic integer multiplicity and samples photon energies and
+directions independently. A common scale factor is then applied to the sampled
+photon energies so that
 
 .. math::
 
@@ -404,7 +404,9 @@ applied to the sampled photon energies so that
 This procedure preserves the sampled multiplicity and enforces energy and
 momentum conservation. It is exact for a fully specified single-photon final
 state. A multiphoton recoil spectrum remains model dependent because the
-processed data do not supply correlations among cascade photons.
+processed data do not supply the correlations between photons in a physical
+de-excitation cascade. Energy and momentum conservation alone do not recover
+those correlations or establish a sequence of nuclear transitions.
 
 With survival biasing, OpenMC creates the implicit nonfission absorption
 secondary with the corresponding absorbed weight and then continues the

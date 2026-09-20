@@ -147,7 +147,8 @@ def test_capture_recoil_scale(run_in_tmpdir):
     mid = np.sqrt(e_bins[:-1] * e_bins[1:])
     mean_recoil = (mean * mid).sum() / mean.sum()
     # A single 7.6 MeV photon gives E_R = E_g^2 / (2 M c^2) ~ 550 eV; the
-    # cascade spreads that over several photons, so require the right decade.
+    # sampled emission divides the energy among several photons, so require
+    # the right decade.
     assert 20.0 < mean_recoil < 1000.0
 
 

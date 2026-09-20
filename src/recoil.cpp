@@ -716,18 +716,18 @@ void sample_reaction_neutron(const Nuclide& nuc, const Reaction& rx,
   u_out = rotate_angle(u_in, mu, nullptr, seed);
 }
 
-//! Sample the photons of a reaction and return their total momentum and energy
-struct PhotonKick {
+//! Total momentum and energy of photons sampled for recoil production
+struct PhotonEmission {
   Direction momentum {};
   double energy {0.0};
 };
 
-//! Scale a sampled capture cascade onto its energy budget
+//! Scale sampled capture-photon energies to satisfy the reaction energy budget
 //!
 //! Processed reaction data contain inclusive photon distributions rather than
 //! an eventwise correlated cascade, so independently sampled photons do not
 //! generally close the event energy balance. Apply one common scale factor so
-//! that the constructed cascade and recoil satisfy
+//! that the sampled photons and recoil satisfy
 //!
 //! \f[ \sum_i E_i + E_R = E_\text{in} + Q, \f]
 //!
@@ -735,25 +735,25 @@ struct PhotonKick {
 //! used only to determine recoil momentum; transported photons are sampled
 //! separately. See the recoil methods documentation for the full rationale.
 //!
-//! \param[in,out] kick    Cascade momentum and energy, scaled in place
+//! \param[in,out] emission    Total photon momentum and energy, scaled in place
 //! \param[in] p_in        Momentum carried into the reaction in [eV]
 //! \param[in] mass        Mass of the recoiling compound nucleus in [eV]
 //! \param[in] budget      Energy available to the exit channel in [eV]
-void constrain_photon_kick(
-  PhotonKick& kick, Direction p_in, double mass, double budget)
+void constrain_photon_emission(
+  PhotonEmission& emission, Direction p_in, double mass, double budget)
 {
-  if (kick.energy <= 0.0 || mass <= 0.0 || budget <= 0.0)
+  if (emission.energy <= 0.0 || mass <= 0.0 || budget <= 0.0)
     return;
 
   // Solve lambda^2 |P|^2/(2m) + lambda (S - p.P/m) + |p|^2/(2m) - budget = 0
-  double a = kick.momentum.dot(kick.momentum) / (2.0 * mass);
-  double b = kick.energy - p_in.dot(kick.momentum) / mass;
+  double a = emission.momentum.dot(emission.momentum) / (2.0 * mass);
+  double b = emission.energy - p_in.dot(emission.momentum) / mass;
   double c = p_in.dot(p_in) / (2.0 * mass) - budget;
 
   double lambda;
   if (a > 0.0) {
     // The quadratic coefficient is of order the recoil energy and the linear
-    // one of order the cascade energy, so the textbook root formula loses
+    // one of order the total photon energy, so the textbook root formula loses
     // essentially all of its significant digits here. Use the factored form.
     double disc = std::max(b * b - 4.0 * a * c, 0.0);
     double q = -0.5 * (b + std::copysign(std::sqrt(disc), b));
@@ -764,14 +764,14 @@ void constrain_photon_kick(
 
   if (!(lambda > 0.0) || !std::isfinite(lambda))
     return;
-  kick.momentum *= lambda;
-  kick.energy *= lambda;
+  emission.momentum *= lambda;
+  emission.energy *= lambda;
 }
 
-PhotonKick sample_photon_kick(
+PhotonEmission sample_photon_emission(
   const Reaction& rx, double E_in, Direction u_in, uint64_t* seed)
 {
-  PhotonKick kick;
+  PhotonEmission emission;
   for (const auto& product : rx.products_) {
     if (!product.particle_.is_photon())
       continue;
@@ -790,11 +790,11 @@ PhotonKick sample_photon_kick(
       product.sample(E_in, E_gamma, mu_gamma, seed);
       Direction u_gamma = rotate_angle(u_in, mu_gamma, nullptr, seed);
       if (E_gamma > 0.0)
-        kick.momentum += E_gamma * u_gamma;
-      kick.energy += E_gamma;
+        emission.momentum += E_gamma * u_gamma;
+      emission.energy += E_gamma;
     }
   }
-  return kick;
+  return emission;
 }
 
 //! Finish an event: model the missing light ions and bank all products
@@ -972,12 +972,13 @@ void from_absorption(Particle& p, int i_nuclide, double weight, double E_in,
 
   // Radiative capture: independently sample photon multiplicity, energies, and
   // directions from this reaction's inclusive photon products, then constrain
-  // the constructed cascade to the event energy budget.
+  // the sampled photon energies to the event energy budget.
   if (rx.mt_ == N_GAMMA) {
-    PhotonKick kick = sample_photon_kick(rx, E_in, u_in, p.current_seed());
-    constrain_photon_kick(kick, state.momentum, state.mass, budget);
-    state.momentum -= kick.momentum;
-    state.energy_emitted += kick.energy;
+    PhotonEmission emission =
+      sample_photon_emission(rx, E_in, u_in, p.current_seed());
+    constrain_photon_emission(emission, state.momentum, state.mass, budget);
+    state.momentum -= emission.momentum;
+    state.energy_emitted += emission.energy;
   }
 
   if (!update_internal_energy(state, budget)) {
