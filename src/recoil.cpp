@@ -7,6 +7,7 @@
 #include "openmc/math_functions.h"
 #include "openmc/message_passing.h"
 #include "openmc/nuclide.h"
+#include "openmc/physics.h"
 #include "openmc/random_dist.h"
 #include "openmc/random_lcg.h"
 #include "openmc/reaction.h"
@@ -688,27 +689,6 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
   return true;
 }
 
-//! Sample an outgoing neutron from a reaction, converting CM to LAB if needed
-// Keep this transformation in functional parity with the transported-neutron
-// path in inelastic_scatter().
-void sample_reaction_neutron(const Nuclide& nuc, const Reaction& rx,
-  double E_in, Direction u_in, uint64_t* seed, double& E_out, Direction& u_out)
-{
-  double mu;
-  rx.products_[0].sample(E_in, E_out, mu, seed);
-
-  if (rx.scatter_in_cm_) {
-    double E_cm = E_out;
-    double A = nuc.awr_;
-    E_out = E_cm + (E_in + 2.0 * mu * (A + 1.0) * std::sqrt(E_in * E_cm)) /
-                     ((A + 1.0) * (A + 1.0));
-    mu = mu * std::sqrt(E_cm / E_out) + std::sqrt(E_in / E_out) / (A + 1.0);
-  }
-  if (std::abs(mu) > 1.0)
-    mu = std::copysign(1.0, mu);
-  u_out = rotate_angle(u_in, mu, nullptr, seed);
-}
-
 //! Total momentum and energy of photons sampled for recoil production
 struct PhotonEmission {
   Direction momentum {};
@@ -911,11 +891,11 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   }
 
   for (int i = 0; i < n_extra; ++i) {
-    double E_extra;
-    Direction u_extra;
     bool accepted = false;
     for (int attempt = 0; attempt < MAX_BUDGET_TRIES; ++attempt) {
-      sample_reaction_neutron(
+      double E_extra;
+      Direction u_extra;
+      sample_inelastic_neutron(
         nuc, rx, E_in, u_in, p.current_seed(), E_extra, u_extra);
       EmissionState trial = state;
       trial.momentum -= neutron_momentum(E_extra, u_extra);

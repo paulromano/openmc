@@ -1313,36 +1313,39 @@ void sample_fission_neutron(
   site->u = rotate_angle(p.u(), mu, nullptr, seed);
 }
 
+void sample_inelastic_neutron(const Nuclide& nuc, const Reaction& rx,
+  double E_in, Direction u_in, uint64_t* seed, double& E_out, Direction& u_out,
+  double* mu_out)
+{
+  double mu;
+  rx.products_[0].sample(E_in, E_out, mu, seed);
+
+  if (rx.scatter_in_cm_) {
+    double E_cm = E_out;
+    double A = nuc.awr_;
+    E_out = E_cm + (E_in + 2.0 * mu * (A + 1.0) * std::sqrt(E_in * E_cm)) /
+                     ((A + 1.0) * (A + 1.0));
+    mu = mu * std::sqrt(E_cm / E_out) + std::sqrt(E_in / E_out) / (A + 1.0);
+  }
+
+  if (std::abs(mu) > 1.0)
+    mu = std::copysign(1.0, mu);
+
+  u_out = rotate_angle(u_in, mu, nullptr, seed);
+  if (mu_out)
+    *mu_out = mu;
+}
+
 void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p)
 {
   Direction u_in = p.u();
   double E_in = p.E();
 
-  auto sample_neutron_out = [&](
-                              double& E_out, double& mu_out, Direction& u_out) {
-    rx.products_[0].sample(E_in, E_out, mu_out, p.current_seed());
-
-    if (rx.scatter_in_cm_) {
-      double E_cm = E_out;
-      double A = nuc.awr_;
-      E_out =
-        E_cm + (E_in + 2.0 * mu_out * (A + 1.0) * std::sqrt(E_in * E_cm)) /
-                 ((A + 1.0) * (A + 1.0));
-      mu_out = mu_out * std::sqrt(E_cm / E_out) +
-               1.0 / (A + 1.0) * std::sqrt(E_in / E_out);
-    }
-
-    if (std::abs(mu_out) > 1.0) {
-      mu_out = std::copysign(1.0, mu_out);
-    }
-
-    u_out = rotate_angle(u_in, mu_out, nullptr, p.current_seed());
-  };
-
   double E_out;
   double mu_out;
   Direction u_out;
-  sample_neutron_out(E_out, mu_out, u_out);
+  sample_inelastic_neutron(
+    nuc, rx, E_in, u_in, p.current_seed(), E_out, u_out, &mu_out);
 
   p.E() = E_out;
   p.mu() = mu_out;

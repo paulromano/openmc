@@ -87,6 +87,12 @@ Direction sample_cxs_target_velocity(
 void sample_fission_neutron(
   int i_nuclide, const Reaction& rx, SourceSite* site, Particle& p);
 
+//! Sample an outgoing inelastic neutron and transform it to the laboratory
+//! frame
+void sample_inelastic_neutron(const Nuclide& nuc, const Reaction& rx,
+  double E_in, Direction u_in, uint64_t* seed, double& E_out, Direction& u_out,
+  double* mu_out = nullptr);
+
 //! handles all reactions with a single secondary neutron (other than fission),
 //! i.e. level scattering, (n,np), (n,na), etc.
 void inelastic_scatter(const Nuclide& nuc, const Reaction& rx, Particle& p);
