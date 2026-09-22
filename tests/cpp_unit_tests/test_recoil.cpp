@@ -54,7 +54,8 @@ bool agrees(double actual, double expected, double e_in)
 double light_ion_pdf(double E, double E_max, int Z_b, int A_b, int Z_d, int A_d,
   const recoil::LightIonParams& par = {})
 {
-  return std::exp(recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, par));
+  return std::exp(
+    recoil::light_ion_log_pdf(E, E_max, {Z_b, A_b}, {Z_d, A_d}, par));
 }
 
 struct FixtureMass {
@@ -337,7 +338,7 @@ TEST_CASE("Light-ion spectrum agrees with the Python implementation")
   double worst = 0.0;
   for (const auto& r : fx.log_pdf) {
     double got =
-      recoil::light_ion_log_pdf(r.e, r.e_max, r.z_b, r.a_b, r.z_d, r.a_d);
+      recoil::light_ion_log_pdf(r.e, r.e_max, {r.z_b, r.a_b}, {r.z_d, r.a_d});
     INFO("Z_b=" << r.z_b << " A_b=" << r.a_b << " Z_d=" << r.z_d
                 << " A_d=" << r.a_d << " E=" << r.e);
     REQUIRE(std::isfinite(got));
@@ -531,7 +532,7 @@ TEST_CASE("Light-ion emission spectrum")
     double max_sampled = 0.0;
     for (int i = 0; i < N; ++i) {
       double E = recoil::sample_light_ion_energy(
-        E_max, E_max, Z_b, A_b, Z_d, A_d, &seed);
+        E_max, E_max, {Z_b, A_b}, {Z_d, A_d}, &seed);
       REQUIRE(E >= 0.0);
       REQUIRE(E <= E_max);
       sum += E;
@@ -558,7 +559,7 @@ TEST_CASE("Light-ion emission spectrum")
     const double E_limit = 4.0e6;
     for (int i = 0; i < 20000; ++i) {
       double E = recoil::sample_light_ion_energy(
-        E_max, E_limit, Z_b, A_b, Z_d, A_d, &seed);
+        E_max, E_limit, {Z_b, A_b}, {Z_d, A_d}, &seed);
       REQUIRE(E <= E_limit);
       REQUIRE(E >= 0.0);
     }
@@ -599,7 +600,7 @@ TEST_CASE("Light-ion spectrum: no exponent floor below the barrier")
   const int Z_b = 2, A_b = 3, Z_d = 74, A_d = 184; // He-3 on tungsten
 
   auto lp = [&](double E) {
-    return recoil::light_ion_log_pdf(E, E_max, Z_b, A_b, Z_d, A_d, params);
+    return recoil::light_ion_log_pdf(E, E_max, {Z_b, A_b}, {Z_d, A_d}, params);
   };
   REQUIRE(std::isfinite(lp(0.2e6)));
   REQUIRE(lp(0.2e6) < lp(0.4e6));
@@ -653,7 +654,7 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     std::vector<double> f(NQ + 1);
     for (int i = 0; i <= NQ; ++i) {
       f[i] = recoil::light_ion_log_pdf(
-        c.E_limit * i / NQ, c.E_max, c.Z_b, c.A_b, c.Z_d, c.A_d, params);
+        c.E_limit * i / NQ, c.E_max, {c.Z_b, c.A_b}, {c.Z_d, c.A_d}, params);
       log_peak = std::max(log_peak, f[i]);
     }
     REQUIRE(std::isfinite(log_peak));
@@ -674,7 +675,7 @@ TEST_CASE("Light-ion sampler reproduces the spectrum it is given")
     double max_drawn = 0.0;
     for (int i = 0; i < N; ++i) {
       double E = recoil::sample_light_ion_energy(
-        c.E_max, c.E_limit, c.Z_b, c.A_b, c.Z_d, c.A_d, &seed, params);
+        c.E_max, c.E_limit, {c.Z_b, c.A_b}, {c.Z_d, c.A_d}, &seed, params);
       REQUIRE(E >= 0.0);
       REQUIRE(E <= c.E_limit);
       int bin = std::min(static_cast<int>(E / c.E_limit * NQ), NQ - 1);
@@ -708,14 +709,14 @@ TEST_CASE("Light-ion sampler is bounded and never fabricates a value")
 
   // A channel with no probability anywhere returns zero rather than a guess
   REQUIRE(recoil::sample_light_ion_energy(
-            0.0, 0.0, 2, 4, 24, 52, &seed, params) == 0.0);
+            0.0, 0.0, {2, 4}, {24, 52}, &seed, params) == 0.0);
   REQUIRE(recoil::sample_light_ion_energy(
-            -1.0, 1.0e6, 2, 4, 24, 52, &seed, params) == 0.0);
+            -1.0, 1.0e6, {2, 4}, {24, 52}, &seed, params) == 0.0);
 
   // A limit above the endpoint is clipped to it, not honoured
   for (int i = 0; i < 1000; ++i) {
     double E = recoil::sample_light_ion_energy(
-      5.0e6, 9.0e6, 2, 4, 24, 52, &seed, params);
+      5.0e6, 9.0e6, {2, 4}, {24, 52}, &seed, params);
     REQUIRE(E <= 5.0e6);
   }
 
@@ -731,7 +732,7 @@ TEST_CASE("Light-ion sampler is bounded and never fabricates a value")
     double last_energy = -1.0;
     for (int i = 0; i < 2000; ++i) {
       double E = recoil::sample_light_ion_energy(
-        15.0e6, limit, 2, 4, 74, 184, &seed, params);
+        15.0e6, limit, {2, 4}, {74, 184}, &seed, params);
       REQUIRE(E >= 0.0);
       REQUIRE(E <= limit);
       if (E != last_energy)

@@ -458,17 +458,17 @@ double kalbach_precompound_fraction(double E_cm, double E_max_shape,
   return 1.0 / (1.0 + std::exp(-u));
 }
 
-double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
-  int A_d, const LightIonParams& par)
+double light_ion_log_pdf(double E, double E_max, NuclearNumbers emitted,
+  NuclearNumbers daughter, const LightIonParams& par)
 {
   if (!(E > 0.0) || E >= E_max || !std::isfinite(E_max))
     return -INFTY;
 
   double log_p = std::log(E) + par.nu * std::log1p(-E / E_max);
-  if (Z_b > 0 && Z_d > 0) {
-    double radius = par.r0 * (std::cbrt(static_cast<double>(A_b)) +
-                               std::cbrt(static_cast<double>(A_d)));
-    double barrier = COULOMB_EV_FM * Z_b * Z_d / radius;
+  if (emitted.Z > 0 && daughter.Z > 0) {
+    double radius = par.r0 * (std::cbrt(static_cast<double>(emitted.A)) +
+                               std::cbrt(static_cast<double>(daughter.A)));
+    double barrier = COULOMB_EV_FM * emitted.Z * daughter.Z / radius;
 
     // Sommerfeld parameter eta = Z_b Z_D alpha sqrt(m_red c^2 / 2E). The
     // E^-1/2 inside the exponent makes the decay constant itself grow as E
@@ -477,12 +477,12 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
     // cannot reproduce it. Normalized so that T = 1/2 at E = V_C.
     // Use the A-u inertial fallback for an unlisted mass. These masses enter
     // only through the square root of the reduced mass.
-    double m_b = particle_mass_ev(ion_type({Z_b, A_b})) / AMU_EV;
-    double m_d = particle_mass_ev(ion_type({Z_d, A_d})) / AMU_EV;
+    double m_b = particle_mass_ev(ion_type(emitted)) / AMU_EV;
+    double m_d = particle_mass_ev(ion_type(daughter)) / AMU_EV;
     double m_reduced = m_b * m_d / (m_b + m_d);
     // FINE_STRUCTURE is the *inverse* fine-structure constant in OpenMC
-    double pref =
-      Z_b * Z_d / FINE_STRUCTURE * std::sqrt(0.5 * m_reduced * AMU_EV);
+    double pref = emitted.Z * daughter.Z / FINE_STRUCTURE *
+                  std::sqrt(0.5 * m_reduced * AMU_EV);
     double arg =
       par.g * 2.0 * PI *
       (pref / std::sqrt(E) - pref / std::sqrt(std::max(barrier, 1.0)));
@@ -497,8 +497,9 @@ double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
   return log_p;
 }
 
-double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed, const LightIonParams& par)
+double sample_light_ion_energy(double E_max, double E_limit,
+  NuclearNumbers emitted, NuclearNumbers daughter, uint64_t* seed,
+  const LightIonParams& par)
 {
   if (!(E_max > 0.0) || !std::isfinite(E_max))
     return 0.0;
@@ -513,7 +514,7 @@ double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
   double log_peak = -INFTY;
   const double dE = E_limit / N_TABLE;
   for (int i = 0; i <= N_TABLE; ++i) {
-    f[i] = light_ion_log_pdf(dE * i, E_max, Z_b, A_b, Z_d, A_d, par);
+    f[i] = light_ion_log_pdf(dE * i, E_max, emitted, daughter, par);
     if (f[i] > log_peak)
       log_peak = f[i];
   }
@@ -572,26 +573,19 @@ double remaining_system_mass(ParticleType recoil, int n_neutrons,
 }
 
 //! Create a recoil secondary particle
-bool bank_recoil(Particle& p, double weight, Direction p_recoil, double mass,
+void bank_recoil(Particle& p, double weight, Direction p_recoil, double mass,
   ParticleType type)
 {
   if (weight <= 0.0)
-    return false;
+    return;
 
   double p2 = p_recoil.dot(p_recoil);
   if (!std::isfinite(p2) || p2 <= 0.0)
-    return false;
-
-  if (mass <= 0.0 || !std::isfinite(mass))
-    return false;
-
+    return;
   double E = p2 / (2.0 * mass);
-  if (!std::isfinite(E) || E <= 0.0)
-    return false;
-
   double p_magnitude = std::sqrt(p2);
   Direction u_recoil = p_recoil / p_magnitude;
-  return p.create_secondary(weight, u_recoil, E, type);
+  p.create_secondary(weight, u_recoil, E, type);
 }
 
 //! Emit the light charged particles that the library does not describe
@@ -648,8 +642,7 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
       // two-body and the light-ion energy is fixed by the reaction Q value.
       E_cm = E_max_event;
     } else {
-      E_cm = sample_light_ion_energy(
-        E_max_shape, E_max_event, b.Z, b.A, d.Z, d.A, seed);
+      E_cm = sample_light_ion_energy(E_max_shape, E_max_event, b, d, seed);
     }
     if (E_cm <= 0.0 || E_cm > E_max_event || !std::isfinite(E_cm))
       return false;

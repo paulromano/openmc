@@ -253,12 +253,13 @@ struct LightIonParams {
 //!                      ion alone
 //! \param[in] E_limit   Largest energy this event can afford in [eV]; the
 //!                      spectrum is sampled truncated to [0, E_limit]
-//! \param[in] Z_b,A_b   Charge and mass number of the emitted ion
-//! \param[in] Z_d,A_d   Charge and mass number of the daughter nucleus
+//! \param[in] emitted   Charge and mass number of the emitted ion
+//! \param[in] daughter  Charge and mass number of the daughter nucleus
 //! \param[in] seed      Pseudorandom number seed pointer
 //! \param[in] par       Light-ion spectrum parameters
-double sample_light_ion_energy(double E_max, double E_limit, int Z_b, int A_b,
-  int Z_d, int A_d, uint64_t* seed, const LightIonParams& par = {});
+double sample_light_ion_energy(double E_max, double E_limit,
+  NuclearNumbers emitted, NuclearNumbers daughter, uint64_t* seed,
+  const LightIonParams& par = {});
 
 //! Kalbach-Mann slope parameter \f$a\f$ from the 1988 systematics
 //!
@@ -319,8 +320,8 @@ double sample_kalbach_mu(double slope, double r, uint64_t* seed);
 //! The logarithmic form is used because the sub-barrier spectrum spans
 //! hundreds of decades. It returns \f$-\infty\f$ outside
 //! \f$(0,E_\text{max})\f$.
-double light_ion_log_pdf(double E, double E_max, int Z_b, int A_b, int Z_d,
-  int A_d, const LightIonParams& par = {});
+double light_ion_log_pdf(double E, double E_max, NuclearNumbers emitted,
+  NuclearNumbers daughter, const LightIonParams& par = {});
 
 //! Fitted constants of the light-ion angular distribution
 //!
