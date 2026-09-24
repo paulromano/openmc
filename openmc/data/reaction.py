@@ -898,10 +898,15 @@ class Reaction(EqualityMixin):
 
     @property
     def q_value(self):
+        """Deprecated alias for :attr:`q_reaction`."""
+        warn('q_value is deprecated; use q_reaction instead.',
+             FutureWarning, stacklevel=2)
         return self.q_reaction
 
     @q_value.setter
     def q_value(self, q_value):
+        warn('q_value is deprecated; use q_reaction instead.',
+             FutureWarning, stacklevel=2)
         self.q_reaction = q_value
 
     @property
