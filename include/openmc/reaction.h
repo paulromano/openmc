@@ -4,11 +4,11 @@
 #ifndef OPENMC_REACTION_H
 #define OPENMC_REACTION_H
 
-#include <limits>
 #include <string>
 
 #include "hdf5.h"
 
+#include "openmc/constants.h"
 #include "openmc/particle_data.h"
 #include "openmc/reaction_product.h"
 #include "openmc/span.h"
@@ -62,7 +62,7 @@ public:
   int mt_;            //!< ENDF MT value
   double q_reaction_; //!< Reaction Q value in [eV]
   //! Evaluated ENDF QM [eV]; NaN if unavailable (negative Q values are valid).
-  double q_mass_difference_ {std::numeric_limits<double>::quiet_NaN()};
+  double q_mass_difference_ {FP_UNSET};
   int breakup_flag_ {-1};    //!< ENDF LR; -1 if unavailable, 0 for no breakup
   bool scatter_in_cm_;       //!< scattering system in center-of-mass?
   bool redundant_;           //!< redundant reaction?

@@ -4,7 +4,6 @@
 #ifndef OPENMC_NUCLIDE_H
 #define OPENMC_NUCLIDE_H
 
-#include <limits>
 #include <unordered_map>
 #include <utility> // for pair
 
@@ -95,7 +94,7 @@ public:
   int A_;            //!< Mass number
   int metastable_;   //!< Metastable state
   //! Target excitation [eV]; NaN if unavailable.
-  double excitation_energy_ {std::numeric_limits<double>::quiet_NaN()};
+  double excitation_energy_ {FP_UNSET};
   double awr_;    //!< Atomic weight ratio
   int64_t index_; //!< Index in the nuclides array
 
