@@ -4,6 +4,7 @@
 #ifndef OPENMC_NUCLIDE_H
 #define OPENMC_NUCLIDE_H
 
+#include <limits>
 #include <unordered_map>
 #include <utility> // for pair
 
@@ -93,8 +94,10 @@ public:
   int Z_;            //!< Atomic number
   int A_;            //!< Mass number
   int metastable_;   //!< Metastable state
-  double awr_;       //!< Atomic weight ratio
-  int64_t index_;    //!< Index in the nuclides array
+  //! Target excitation [eV]; NaN if unavailable.
+  double excitation_energy_ {std::numeric_limits<double>::quiet_NaN()};
+  double awr_;    //!< Atomic weight ratio
+  int64_t index_; //!< Index in the nuclides array
 
   // Temperature dependent cross section data
   vector<double> kTs_;                //!< temperatures in eV (k*T)
