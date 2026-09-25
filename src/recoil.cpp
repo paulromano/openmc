@@ -312,11 +312,11 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   auto q_mass =
     mass_difference_q(target, span<const NuclearNumbers> {products,
                                 static_cast<std::size_t>(n_products)});
-  double q = q_mass.value_or(rx.q_value_);
+  double q = q_mass.value_or(rx.q_reaction_);
   if (is_discrete_level(rx.mt_)) {
-    if (!q_mass || rx.q_value_ <= *q_mass) {
-      q = rx.q_value_;
-    } else if (rx.q_value_ <= *q_mass + Q_LEVEL_TOLERANCE) {
+    if (!q_mass || rx.q_reaction_ <= *q_mass) {
+      q = rx.q_reaction_;
+    } else if (rx.q_reaction_ <= *q_mass + Q_LEVEL_TOLERANCE) {
       q = *q_mass;
     } else {
       if (mpi::master) {
@@ -324,7 +324,7 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
           "Recoil production is disabled for {} MT={} because its evaluated "
           "Q value ({:.6g} MeV) exceeds the ground-state mass-difference Q "
           "value ({:.6g} MeV) by more than {:.3g} MeV.",
-          nuc.name_, rx.mt_, rx.q_value_ / 1.0e6, *q_mass / 1.0e6,
+          nuc.name_, rx.mt_, rx.q_reaction_ / 1.0e6, *q_mass / 1.0e6,
           Q_LEVEL_TOLERANCE / 1.0e6));
       }
       return;

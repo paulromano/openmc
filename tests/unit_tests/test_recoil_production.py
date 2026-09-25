@@ -191,7 +191,7 @@ def test_discrete_alpha_products_close_the_banked_energy(run_in_tmpdir):
     nuclide = 'B10'
     lib = openmc.data.IncidentNeutron.from_hdf5(
         openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
-    budget = energy + lib[800].q_value
+    budget = energy + lib[800].q_reaction
 
     # A 240 eV bin width resolves sub-keV departures from energy closure.
     e_bins = np.linspace(0.0, budget * 1.001, 20001)
@@ -212,7 +212,7 @@ def test_triton_channel_uses_a_feasible_product_budget(run_in_tmpdir):
     nuclide = 'Li6'
     lib = openmc.data.IncidentNeutron.from_hdf5(
         openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
-    budget = energy + lib[105].q_value
+    budget = energy + lib[105].q_reaction
     e_bins = np.linspace(0.0, budget * 1.001, 2001)
     model = _one_collision_model(
         nuclide, energy, ['H3', 'He4'], e_bins, mts=[105],
@@ -244,7 +244,7 @@ def test_multi_neutron_within_energy_budget(run_in_tmpdir):
     awr = lib.atomic_weight_ratio
     # The residual momentum cannot exceed the incident momentum plus the
     # momentum of neutrons sharing E + Q, so bound the recoil generously.
-    q = lib[16].q_value
+    q = lib[16].q_reaction
     p_in = np.sqrt(energy)
     p_out = 2.0 * np.sqrt(max(energy + q, 0.0))
     e_max = (p_in + p_out) ** 2 / awr
