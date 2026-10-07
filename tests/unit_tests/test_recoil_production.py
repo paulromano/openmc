@@ -1,9 +1,94 @@
 """Physics checks on recoil (primary knock-on atom) production."""
 
+from pathlib import Path
+import shutil
+
+import h5py
 import numpy as np
 import pytest
 
 import openmc
+
+
+@pytest.mark.parametrize('lr,ion_model,emitted', [
+    (None, 'statistical', True), (0, 'statistical', True),
+    (31, 'statistical', True), (33, 'statistical', True),
+    (33, 'statistical', False), (33, 'none', True),
+    (1, 'statistical', True), (99, 'statistical', True)])
+def test_residual_breakup_metadata(run_in_tmpdir, lr, ion_model, emitted):
+    """Missing LR preserves legacy behavior; known breakup changes the products."""
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Li7')['path']
+    path = Path('Li7.h5').resolve()
+    shutil.copy2(source, path)
+    with h5py.File(path, 'r+') as handle:
+        attrs = handle['Li7/reactions/reaction_052'].attrs
+        if lr is not None:
+            attrs['breakup_flag'] = lr
+        elif 'breakup_flag' in attrs:
+            del attrs['breakup_flag']
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    model = _one_collision_model(
+        'Li7', 5.e6, ['H3', 'He4', 'Li7'], [0., 10.e6], mts=[52],
+        recoil={'light_ion_model': ion_model, 'emitted_ions': emitted})
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    triton, alpha, lithium = _run(model, run_in_tmpdir).ravel()
+    if lr in (None, 0, 31):
+        assert lithium > 0 and triton == alpha == 0
+    elif lr == 33 and ion_model == 'statistical':
+        assert alpha > 0 and lithium == 0
+        assert triton == (alpha if emitted else 0)
+    else:
+        assert triton == alpha == lithium == 0
+
+
+@pytest.mark.parametrize('group,key,value', [
+    ('Li7', 'excitation_energy', -1.),
+    ('Li7', 'excitation_energy', float('nan')),
+    ('Li7/reactions/reaction_052', 'breakup_flag', -2),
+    ('Li7/reactions/reaction_052', 'q_mass_difference', float('inf'))])
+def test_invalid_recoil_metadata_is_not_a_legacy_default(
+        run_in_tmpdir, group, key, value):
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Li7')['path']
+    path = Path('Li7.h5').resolve()
+    shutil.copy2(source, path)
+    with h5py.File(path, 'r+') as handle:
+        handle[group].attrs[key] = value
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    model = _one_collision_model('Li7', 5.e6, ['Li7'], [0., 10.e6], particles=1)
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    with pytest.raises(RuntimeError, match='Invalid'):
+        model.run(output=False)
+
+
+def test_recoil_metadata_reinitializes(run_in_tmpdir):
+    """C API finalization must not retain a previous library's breakup cache."""
+    import openmc.lib
+
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Li7')['path']
+    path = Path('Li7.h5').resolve()
+    shutil.copy2(source, path)
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    model = _one_collision_model('Li7', 5.e6, ['He4', 'Li7'], [0., 10.e6], mts=[52])
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    for lr in (33, 0, 33):
+        with h5py.File(path, 'r+') as handle:
+            handle['Li7/reactions/reaction_052'].attrs['breakup_flag'] = lr
+        model.init_lib(output=False)
+        try:
+            openmc.lib.run()
+            alpha, lithium = openmc.lib.tallies[model.tallies[0].id].mean.ravel()
+            if lr == 33:
+                assert alpha > 0 and lithium == 0
+            else:
+                assert lithium > 0 and alpha == 0
+        finally:
+            model.finalize_lib()
 
 
 def _one_collision_model(nuclide, energy, products, e_bins, mts=None,

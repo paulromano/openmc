@@ -116,8 +116,9 @@ product energies and to decide whether a reconstructed final state is
 physically possible. It enters the event energy balance in
 :eq:`recoil-budget`.
 
-The ground-state Q value is the rest-mass energy released when all products
-are left in their ground states. If :math:`M_T` is the target nuclear mass,
+The ground-state Q value is the rest-mass energy released when the target and
+all products are in their ground states. If :math:`M_T` is the ground-state
+target nuclear mass,
 :math:`m_n` is the neutron mass, :math:`M_R` is the ground-state mass of
 the final residual, and :math:`m_i` are the masses of all other final
 particles, mass-energy balance gives
@@ -132,18 +133,81 @@ The tabulated target and residual masses are based on AME2020 [AME2020]_.
 OpenMC uses bare nuclear masses consistently in the Q value and the subsequent
 kinematic calculations.
 
+A metastable target also supplies its stored excitation energy
+:math:`E_T^*`. Adding this entrance-side internal energy to mass-energy
+balance gives the available release
+
+.. math::
+
+    Q_{\mathrm{available}} = Q_M + E_T^* .
+
+OpenMC reads :math:`E_T^*` from the HDF5 target's ``excitation_energy``
+attribute. If that attribute is absent, it assumes zero excitation, including
+for a metastable target. This legacy-data default does not recover missing
+evaluated information. Excitation changes the energy budget, not the
+ground-state inertial masses used in the nonrelativistic model.
+
 ENDF File 3 distinguishes the mass-difference value ``QM`` from the reaction
 value ``QI`` [ENDF102]_. For a lumped channel (reactions that represent the sum
 over all final states, e.g., MT=103), ``QI`` and ``QM`` generally agree. For a
 continuum member of a split representation (e.g., MT=649), ``QI`` is an
 effective threshold value and can be several MeV below the ground-state energy
-release. OpenMC therefore uses :math:`Q_M` for continuum, lumped, and
+release. OpenMC therefore uses :math:`Q_{\mathrm{available}}` for continuum, lumped, and
 multiparticle channels. It uses the evaluated ``QI`` for an MT number that names
 one residual level, because that value includes the excitation energy of the
-named level.
+named level and the target excitation. It does not add :math:`E_T^*` to
+``QI`` again. The HDF5 ``q_mass_difference`` attribute preserves evaluated
+``QM``, but recoil budgets use the mass-table calculation above; conventions
+for including metastable excitation in evaluated ``QM`` are not uniform.
+
+The pure-channel energy limit used to set the light-ion surrogate's shape
+also includes :math:`E_T^*` once. Empirical angular-systematics parameters
+retain their incident-kinetic-energy definition.
 
 In the equations that follow, :math:`Q` denotes the event Q value selected by
 these rules.
+
+Residual breakup
+---------------
+
+The ENDF residual-breakup flag ``LR`` identifies decay of the initial residual
+after the reaction specified by MT [ENDF102]_. An MT naming a discrete level
+therefore does not always describe a two-body final state. OpenMC reads LR
+from the reaction's HDF5 ``breakup_flag`` attribute. An absent flag defaults
+to no breakup; LR=0 and gamma-only LR=31 retain the ordinary channel treatment.
+
+For Li7 discrete neutron inelastic reactions with LR=33 and a single neutron
+product, OpenMC reconstructs triton and alpha emission from the remaining
+system. Channels with additional photon or other evaluated products are not
+supported by this breakup model. The transported neutron is unchanged.
+Let :math:`\mathbf P` be the incident momentum minus the outgoing neutron
+momentum, :math:`E_n'` its energy, and :math:`m_t` and :math:`m_\alpha` the
+triton and alpha masses. Subtracting the neutron energy and the translation
+of the final ion pair from the total budget gives its internal energy,
+
+.. math::
+
+    U = E_{\mathrm{in}} + Q_{\mathrm{available}} - E_n'
+        - \frac{|\mathbf P|^2}{2(m_t + m_\alpha)} .
+
+Here the mass difference uses the final neutron, triton, and alpha, not the
+intermediate Li7 level. Negative :math:`U` rejects recoil reconstruction without
+resampling the neutron. In the pair's rest frame equal and opposite momenta
+give :math:`E_t^{\mathrm{cm}} = U m_\alpha/(m_t+m_\alpha)` and
+:math:`E_\alpha^{\mathrm{cm}} = U m_t/(m_t+m_\alpha)`. OpenMC samples their orientation
+isotropically and boosts both momenta by the pair velocity
+:math:`\mathbf P/(m_t+m_\alpha)`. This conserves the model's energy and momentum,
+but isotropy is an approximation, not an evaluated breakup correlation.
+The triton is an emitted ion and the alpha is the final residual.
+
+This reconstruction requires ``light_ion_model='statistical'``. Setting
+``emitted_ions=False`` suppresses scoring the triton but leaves the alpha
+reconstruction unchanged. Other nonzero breakup flags, except LR=31, currently
+disable recoil production for that reaction with an initialization warning;
+they do not change neutron transport.
+
+Sequential energy accounting
+----------------------------
 
 The total ground-state rest mass of the final particles is
 
@@ -847,9 +911,12 @@ Limitations
   slowing down are not modeled.
 - De-excitation photon momentum is neglected except for radiative capture.
 - Fission fragments are not produced.
-- MT=5 and any other reaction whose exclusive exit channel cannot be inferred
-  from the MT number create no recoil secondary particle. These reactions may
+- MT=5 and any other reaction whose exclusive exit channel is unsupported
+  create no recoil secondary particle. These reactions may
   contain appreciable charged-particle production in some evaluations.
+- Explicit residual-breakup flags other than the supported Li7 triton--alpha
+  model and gamma-only LR=31 produce no recoil particles. Missing target
+  excitation and breakup metadata use zero-excitation/no-breakup defaults.
 - Multi-neutron and multiparticle final states are reconstructed from
   independently sampled marginal distributions rather than a correlated joint
   distribution.

@@ -1,6 +1,7 @@
 #include "openmc/reaction.h"
 
 #include <algorithm> // for remove_if
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <utility> // for move
@@ -10,6 +11,7 @@
 #include "openmc/chain.h"
 #include "openmc/constants.h"
 #include "openmc/endf.h"
+#include "openmc/error.h"
 #include "openmc/hdf5_interface.h"
 #include "openmc/random_lcg.h"
 #include "openmc/search.h"
@@ -32,9 +34,13 @@ Reaction::Reaction(
   }
   if (attribute_exists(group, "q_mass_difference")) {
     read_attribute(group, "q_mass_difference", q_mass_difference_);
+    if (!std::isfinite(q_mass_difference_))
+      fatal_error(fmt::format("Invalid mass-difference Q value for {}.", name));
   }
   if (attribute_exists(group, "breakup_flag")) {
     read_attribute(group, "breakup_flag", breakup_flag_);
+    if (breakup_flag_ < 0)
+      fatal_error(fmt::format("Invalid residual breakup flag for {}.", name));
   }
   read_attribute(group, "mt", mt_);
   int tmp;

@@ -167,7 +167,9 @@ double remaining_internal_energy(
 //! an evaluated Q, because the MT one would reach for is often a level range.
 //!
 //! \return zero if a required mass is missing
-double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion);
+//! \param[in] target_excitation Target excitation above ground [eV]
+double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion,
+  double target_excitation = 0.0);
 
 //! @}
 

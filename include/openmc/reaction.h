@@ -28,9 +28,11 @@ public:
   //! Data derived once for recoil production
   struct RecoilData {
     bool supported {false};
+    bool two_body_breakup {false}; //!< Residual decays to two ground-state ions
     ExitChannel emitted;
     ParticleType residual;
     double q_value {0.0};
+    double target_excitation {0.0}; //!< Zero when absent from legacy data [eV]
   };
 
   //! Construct reaction from HDF5 data

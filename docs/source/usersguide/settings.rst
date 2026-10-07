@@ -918,6 +918,15 @@ Bound thermal scattering described by :math:`S(\alpha,\beta)` data or by
 NCrystal, fission fragments, and multi-group transport are outside the current
 recoil-production scope and do not create recoil secondary particles.
 
+Recoil production uses target excitation and residual-breakup metadata from
+the nuclear-data HDF5 files when present. Older files missing these attributes
+use zero target excitation and no residual breakup; these defaults may omit
+important physics for metastable targets or breakup channels. There is no
+additional settings input for these data. Use a library containing the
+metadata when those effects matter. Li7 discrete inelastic breakup into a
+triton and alpha is supported; other explicitly identified particle-breakup
+modes currently produce an initialization warning and no recoil particles.
+
 Two options control the model:
 
 .. code-block:: python

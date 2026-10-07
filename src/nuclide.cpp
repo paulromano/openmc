@@ -22,6 +22,7 @@
 
 #include <algorithm> // for sort, min_element
 #include <cassert>
+#include <cmath>
 #include <string> // for to_string, stoi
 
 namespace openmc {
@@ -63,6 +64,10 @@ Nuclide::Nuclide(hid_t group, const vector<double>& temperature)
   read_attribute(group, "metastable", metastable_);
   if (attribute_exists(group, "excitation_energy")) {
     read_attribute(group, "excitation_energy", excitation_energy_);
+    if (!std::isfinite(excitation_energy_) || excitation_energy_ < 0.0) {
+      fatal_error(
+        fmt::format("Invalid target excitation energy for {}.", name_));
+    }
   }
   read_attribute(group, "atomic_weight_ratio", awr_);
 

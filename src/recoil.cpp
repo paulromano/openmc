@@ -297,6 +297,26 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   if (!emitted)
     return;
 
+  // LR describes decay of the initial residual, not a replacement MT.
+  // Only Li7 -> t + alpha is modeled here; its processed first neutron is
+  // retained and the residual decay is isotropic in its rest frame.
+  bool breakup = rx.breakup_flag_ > 0 && rx.breakup_flag_ != 31;
+  if (breakup) {
+    bool lithium = nuc.Z_ == 3 && nuc.A_ == 7 && rx.breakup_flag_ == 33 &&
+                   rx.mt_ >= N_N1 && rx.mt_ < N_NC &&
+                   rx.products_.size() == 1 &&
+                   rx.products_[0].particle_.is_neutron();
+    if (!lithium) {
+      if (mpi::master) {
+        warning(fmt::format("Recoil production is disabled for {} MT={} "
+                            "because residual breakup LR={} is unsupported.",
+          nuc.name_, rx.mt_, rx.breakup_flag_));
+      }
+      return;
+    }
+    emitted->triton = 1;
+  }
+
   NuclearNumbers products[16];
   int n_products = all_products(*emitted, products, 16);
   if (n_products < 0)
@@ -312,8 +332,18 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   auto q_mass =
     mass_difference_q(target, span<const NuclearNumbers> {products,
                                 static_cast<std::size_t>(n_products)});
-  double q = q_mass.value_or(rx.q_reaction_);
-  if (is_discrete_level(rx.mt_)) {
+  double excitation =
+    std::isnan(nuc.excitation_energy_) ? 0.0 : nuc.excitation_energy_;
+  if (q_mass)
+    *q_mass += excitation;
+  // A breakup QI describes formation of the intermediate, not the final
+  // triton/alpha budget. It cannot stand in for missing final-product masses.
+  if (breakup && !q_mass)
+    return;
+  // Elastic scattering leaves the target in the same state and releases no
+  // excitation, even when its ground-state mass budget includes that energy.
+  double q = rx.mt_ == ELASTIC ? 0.0 : q_mass.value_or(rx.q_reaction_);
+  if (is_discrete_level(rx.mt_) && !breakup) {
     if (!q_mass || rx.q_reaction_ <= *q_mass) {
       q = rx.q_reaction_;
     } else if (rx.q_reaction_ <= *q_mass + Q_LEVEL_TOLERANCE) {
@@ -322,8 +352,8 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
       if (mpi::master) {
         warning(fmt::format(
           "Recoil production is disabled for {} MT={} because its evaluated "
-          "Q value ({:.6g} MeV) exceeds the ground-state mass-difference Q "
-          "value ({:.6g} MeV) by more than {:.3g} MeV.",
+          "Q value ({:.6g} MeV) exceeds the mass-difference Q value plus "
+          "target excitation ({:.6g} MeV) by more than {:.3g} MeV.",
           nuc.name_, rx.mt_, rx.q_reaction_ / 1.0e6, *q_mass / 1.0e6,
           Q_LEVEL_TOLERANCE / 1.0e6));
       }
@@ -332,9 +362,11 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   }
 
   rx.recoil_.supported = true;
+  rx.recoil_.two_body_breakup = breakup;
   rx.recoil_.emitted = *emitted;
   rx.recoil_.residual = ion_type(residual);
   rx.recoil_.q_value = q;
+  rx.recoil_.target_excitation = excitation;
 }
 
 double final_state_internal_energy(double E_in, double m_final, double q)
@@ -366,7 +398,8 @@ double remaining_internal_energy(
   return budget - energy_emitted - momentum.dot(momentum) / (2.0 * mass);
 }
 
-double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion)
+double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion,
+  double target_excitation)
 {
   auto q = mass_difference_q(target, span<const NuclearNumbers> {&ion, 1});
   if (!q)
@@ -374,7 +407,8 @@ double shape_endpoint(double E_in, NuclearNumbers target, NuclearNumbers ion)
   NuclearNumbers daughter {target.Z - ion.Z, target.A + 1 - ion.A};
   double m_b = nuclear_mass_ev(ion);
   double m_d = nuclear_mass_ev(daughter);
-  double u = final_state_internal_energy(E_in, m_b + m_d, *q);
+  double u =
+    final_state_internal_energy(E_in, m_b + m_d, *q + target_excitation);
   return two_body_endpoint(u, m_b, m_d);
 }
 
@@ -632,7 +666,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     double E_max_event = two_body_endpoint(state.energy_available, m_b, m_d);
     if (E_max_event <= 0.0 || !std::isfinite(E_max_event))
       return false;
-    double E_max_shape = shape_endpoint(E_in, {nuc.Z_, nuc.A_}, b);
+    double E_max_shape =
+      shape_endpoint(E_in, {nuc.Z_, nuc.A_}, b, rx.recoil_.target_excitation);
     // The single-ion channel has the larger Q, so its endpoint normally
     // dominates; the guard covers a missing mass, which returns zero.
     E_max_shape = std::max(E_max_event, E_max_shape);
@@ -841,6 +876,34 @@ void from_inelastic(Particle& p, const Nuclide& nuc, const Reaction& rx,
   const auto& emitted = rx.recoil_.emitted;
   double q = rx.recoil_.q_value;
   ParticleType recoil = rx.recoil_.residual;
+
+  if (rx.recoil_.two_body_breakup) {
+    // The neutron is already committed to transport. Divide the energy left
+    // after its emission between t and alpha, including the translation of
+    // their additive final mass. This preserves the Galilean energy contract.
+    if (yield != 1.0 ||
+        settings::recoil.light_ion_model != RecoilLightIonModel::statistical)
+      return;
+    double m_t = nuclear_mass_ev({1, 3});
+    double m_a = nuclear_mass_ev({2, 4});
+    Direction momentum =
+      neutron_momentum(E_in, u_in) - neutron_momentum(E_out, u_out);
+    EmissionState state;
+    state.momentum = momentum;
+    state.mass = m_t + m_a;
+    state.energy_emitted = E_out;
+    if (!update_internal_energy(state, E_in + q))
+      return;
+    double energy_cm = two_body_endpoint(state.energy_available, m_t, m_a);
+    double mu = 2.0 * prn(p.current_seed()) - 1.0;
+    Direction direction = rotate_angle(u_in, mu, nullptr, p.current_seed());
+    Direction p_t = m_t / state.mass * momentum +
+                    momentum_from_energy(m_t, energy_cm, direction);
+    if (settings::recoil.emitted_ions)
+      bank_recoil(p, wgt, p_t, m_t, ParticleType(1, 3));
+    bank_recoil(p, wgt, momentum - p_t, m_a, recoil);
+    return;
+  }
 
   ChargedProducts ions {emitted};
 

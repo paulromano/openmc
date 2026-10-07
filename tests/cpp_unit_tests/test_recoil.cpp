@@ -18,6 +18,20 @@
 using namespace openmc;
 using Catch::Approx;
 
+TEST_CASE("Target excitation increases the light-ion shape energy once")
+{
+  recoil::NuclearNumbers target {61, 148};
+  recoil::NuclearNumbers ion {1, 1};
+  double m_ion = recoil::nuclear_mass_ev(ion);
+  double m_daughter = recoil::nuclear_mass_ev({60, 148});
+  double ground = recoil::shape_endpoint(14.e6, target, ion);
+  double excited = recoil::shape_endpoint(14.e6, target, ion, 137900.0);
+  REQUIRE(ground > 0.0);
+  REQUIRE(
+    excited - ground == Approx(137900.0 * m_daughter / (m_ion + m_daughter)));
+  REQUIRE(recoil::shape_endpoint(14.e6, target, ion, 0.0) == ground);
+}
+
 //==============================================================================
 // The shared kinematic fixture
 //
