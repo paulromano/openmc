@@ -554,6 +554,17 @@ or direct-reaction calculation. It uses compact, physically motivated
 functional forms whose fixed coefficients were fitted to evaluated ENDF
 charged-particle distributions.
 
+A summed reaction can also identify a single final nuclear state. OpenMC
+uses two-body kinematics for MT=103--107 when the exit channel contains one
+ion and an intact He4 or He6 residual, with no photon products in the processed
+reaction and no indicated residual decay (``LR`` absent or zero). Neither
+nucleus has a particle-bound excited state [Tilley1992]_ [Tilley2002]_. Within
+this nonradiative model, the residual therefore remains in its ground state
+and the ion receives the maximum energy from :eq:`recoil-max-energy`.
+This covers Li6(n,t)He4 and Li6(n,p)He6 without requiring charged-particle laws
+in the processed library. The set of residuals is deliberately limited to
+these two documented cases. Other summed channels retain the surrogate.
+
 When several products are missing, OpenMC emits them sequentially in the rest
 frame of the undecayed system. The transported neutron, if present, is used
 first because its evaluated sample must remain unchanged. The missing products
@@ -940,6 +951,10 @@ An MT number in the discrete charged-particle bands (MT=600-849) identifies a
 two-body residual level, but its charged-particle angular distribution is also
 absent from ACE. OpenMC samples those directions isotropically in the
 center-of-mass frame rather than applying a continuum pre-equilibrium model.
+The same isotropic prescription applies to the summed single-ion channels
+with a ground-state-only residual described above. Two-body energy assignment
+does not determine the emission angle; their laboratory energy spectra can
+therefore differ from evaluations with anisotropic emission.
 
 Sampling and event completion
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1041,3 +1056,11 @@ References
 .. [Williams1971] F. C. Williams, "Particle-Hole State Density in the Uniform
    Spacing Model," *Nuclear Physics A* **166**, 231-240 (1971).
    `<https://doi.org/10.1016/0375-9474(71)90426-X>`_
+
+.. [Tilley1992] D. R. Tilley, H. R. Weller, and G. M. Hale, "Energy Levels
+   of Light Nuclei A = 4," *Nuclear Physics A* **541**, 1-104 (1992),
+   Table 4.3. `<https://nucldata.tunl.duke.edu/nucldata/HTML/A=4/04_03_1992.pdf>`_
+
+.. [Tilley2002] D. R. Tilley et al., "Energy Levels of Light Nuclei A = 5,
+   6, 7," *Nuclear Physics A* **708**, 3-163 (2002), Table 6.1.
+   `<https://nucldata.tunl.duke.edu/nucldata/HTML/A=6/06_01_2002.pdf>`_

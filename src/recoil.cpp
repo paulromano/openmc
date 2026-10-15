@@ -367,6 +367,18 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   rx.recoil_.residual = ion_type(residual);
   rx.recoil_.q_value = q;
   rx.recoil_.target_excitation = excitation;
+  // He4 and He6 have no particle-bound excited states. Their intact,
+  // nonradiative single-ion channels must leave a ground-state residual.
+  // TUNL evaluations: Tilley et al., Nucl. Phys. A 541 (1992) 1, Table 4.3;
+  // and Nucl. Phys. A 708 (2002) 3, Table 6.1. Keep this initial set explicit.
+  bool ground_state_only =
+    residual.Z == 2 && (residual.A == 4 || residual.A == 6);
+  bool summed_single_ion = rx.mt_ >= N_P && rx.mt_ <= N_A && n_products == 1;
+  bool no_photons = std::none_of(rx.products_.begin(), rx.products_.end(),
+    [](const auto& product) { return product.particle_.is_photon(); });
+  rx.recoil_.two_body_charged = is_discrete_charged_level(rx.mt_) ||
+                                (summed_single_ion && ground_state_only &&
+                                  rx.breakup_flag_ <= 0 && no_photons);
   if (rx.mt_ >= 600 && rx.mt_ <= 849 && rx.mt_ % 50 == 49 &&
       !std::isnan(rx.q_mass_difference_)) {
     // ENDF-102, File 3: QI - QM = ELIS - Ex. For a continuum
@@ -690,9 +702,9 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     E_max_shape = std::max(E_max_event, E_max_shape);
 
     double E_cm;
-    if (is_discrete_charged_level(rx.mt_)) {
-      // MT=600-849 name a single recoil level, so the exit channel is exactly
-      // two-body and the light-ion energy is fixed by the reaction Q value.
+    if (rx.recoil_.two_body_charged) {
+      // A named level or a ground-state-only intact residual fixes the
+      // light-ion energy through two-body kinematics.
       E_cm = E_max_event;
     } else {
       E_cm = sample_light_ion_energy(E_max_shape, E_max_event, b, d, seed);
@@ -701,10 +713,10 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
       return false;
 
     double mu;
-    if (is_discrete_charged_level(rx.mt_)) {
+    if (rx.recoil_.two_body_charged) {
       // Kalbach's systematics describe continuum pre-equilibrium emission, not
-      // a named residual level. With no evaluated charged-particle angle for
-      // these two-body channels, sample the center-of-mass direction
+      // a specified residual state. With no evaluated charged-particle angle
+      // for these two-body channels, sample the center-of-mass direction
       // isotropically.
       mu = 2.0 * prn(seed) - 1.0;
     } else {

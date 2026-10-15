@@ -331,26 +331,62 @@ def test_discrete_alpha_products_close_the_banked_energy(run_in_tmpdir):
     assert abs(product_mean.sum() - budget) < 500.0
 
 
-def test_triton_channel_uses_a_feasible_product_budget(run_in_tmpdir):
-    """Li-6 MT=105 exercises the bare triton and very-light residual path."""
-    energy = 2.0e6
+@pytest.mark.parametrize('mt,energy,products', [
+    (105, 2.e6, ['H3', 'He4']), (103, 5.e6, ['H1', 'He6'])])
+def test_ground_state_only_products_close_the_energy(
+        run_in_tmpdir, mt, energy, products):
+    """Summed single-ion channels cannot excite an intact He4 or He6 residual."""
     nuclide = 'Li6'
     lib = openmc.data.IncidentNeutron.from_hdf5(
         openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path'])
-    budget = energy + lib[105].q_reaction
+    budget = energy + lib[mt].q_reaction
     e_bins = np.linspace(0.0, budget * 1.001, 2001)
     model = _one_collision_model(
-        nuclide, energy, ['H3', 'He4'], e_bins, mts=[105],
+        nuclide, energy, products, e_bins, mts=[mt],
         particles=50000, density=0.534)
     mean = _run(model, run_in_tmpdir).reshape(2, -1)
     assert np.all(mean.sum(axis=1) > 0.0)
 
     midpoint = 0.5 * (e_bins[1:] + e_bins[:-1])
     product_mean = (mean * midpoint).sum(axis=1) / mean.sum(axis=1)
-    # MT=105 is a continuum surrogate channel, so the unspent part is residual
-    # excitation rather than a requirement that the two kinetic energies sum
-    # to the full ground-state Q-value.
-    assert 0.0 < product_mean.sum() < budget
+    # Allow histogram resolution and the small evaluated/AME mass difference.
+    assert abs(product_mean.sum() - budget) < 5000.0
+
+
+@pytest.mark.parametrize('lr,photons,two_body', [
+    (None, False, True), (0, False, True),
+    (31, False, False), (0, True, False)])
+def test_ground_state_only_rule_respects_decay_metadata(
+        run_in_tmpdir, lr, photons, two_body):
+    """Known photon emission prevents the summed-channel two-body inference."""
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Li6')['path']
+    path = Path('Li6.h5').resolve()
+    shutil.copy2(source, path)
+    with h5py.File(path, 'r+') as handle:
+        reactions = handle['Li6/reactions']
+        reaction = reactions['reaction_105']
+        budget = 2.e6 + reaction.attrs.get('q_reaction', reaction.attrs.get('Q_value'))
+        if lr is None:
+            if 'breakup_flag' in reaction.attrs:
+                del reaction.attrs['breakup_flag']
+        else:
+            reaction.attrs['breakup_flag'] = lr
+        if photons:
+            handle.copy(reactions['reaction_102/product_0'], reaction, 'product_0')
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    edges = np.linspace(0., budget*1.001, 2001)
+    model = _one_collision_model('Li6', 2.e6, ['H3', 'He4'], edges,
+        mts=[105], particles=30000, density=.534)
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    spectra = _run(model, run_in_tmpdir).reshape(2, -1)
+    assert np.all(spectra.sum(axis=1) > 0.)
+    means = spectra @ (.5*(edges[1:]+edges[:-1])) / spectra.sum(axis=1)
+    if two_body:
+        assert abs(means.sum()-budget) < 5000.
+    else:
+        assert means.sum() < .98*budget
 
 
 def test_multi_neutron_within_energy_budget(run_in_tmpdir):

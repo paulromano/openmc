@@ -29,6 +29,7 @@ public:
   struct RecoilData {
     bool supported {false};
     bool two_body_breakup {false}; //!< Residual decays to two ground-state ions
+    bool two_body_charged {false}; //!< One ion and a specified residual state
     ExitChannel emitted;
     ParticleType residual;
     double q_value {0.0};
