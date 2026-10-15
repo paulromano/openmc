@@ -168,6 +168,23 @@ count the initial excitation twice. The evaluated ``QM`` is stored in the
 HDF5 ``q_mass_difference`` attribute; the recoil model calculates its
 ground-state mass difference from AME2020.
 
+For split continuum charged-particle channels (MT=649, 699, 749, 799, and
+849), the threshold also identifies the lowest residual excitation included
+in that component. The ENDF relation between ``QI``, ``QM``, and nuclear
+excitation [ENDF102]_ gives
+
+.. math::
+    :label: recoil-continuum-excitation
+
+    E_{R,\min}^* = E_T^* + Q_M^{\mathrm{ENDF}} - Q_I .
+
+Here :math:`Q_M^{\mathrm{ENDF}}` is the evaluated ``QM`` and :math:`Q_I` is
+the evaluated ``QI``. OpenMC keeps this minimum excitation in the residual
+when sampling the emitted ion. The total energy release still follows the
+mass-derived convention above. When ``q_mass_difference`` is absent, the
+minimum excitation defaults to zero. A negative inferred value produces an
+initialization warning and also uses zero.
+
 OpenMC obtains :math:`E_T^*` from the target's HDF5 ``excitation_energy``
 attribute. Files without that attribute use :math:`E_T^*=0`, so their
 mass-derived energy budgets omit any target excitation. The kinematic model
@@ -599,9 +616,14 @@ calculates this maximum using :math:`Q_{\mathrm{available}}`, including any
 target excitation supplied in the HDF5 file.
 :math:`E_{\max}^{\mathrm{event}}` is calculated from the energy remaining in the
 event being reconstructed and is the upper limit on the sampled value of
-:math:`E`. The two values are equal for a one-ion channel. The event-specific
-maximum can be lower when another product has already consumed some of the
-available energy.
+:math:`E`. For an inclusive one-ion channel the two values are equal.
+For a split continuum component, OpenMC subtracts the minimum excitation
+in :eq:`recoil-continuum-excitation` from the remaining internal energy
+before applying :eq:`recoil-max-energy`. This truncates and
+renormalizes the inclusive surrogate distribution to the allowed residual
+states while retaining its fitted shape parameters. The event-specific
+maximum can also be lower when another product has already consumed some
+of the available energy.
 
 As the emitted ion takes a larger share of the available energy, less excitation
 remains in the daughter nucleus and fewer daughter configurations are available.

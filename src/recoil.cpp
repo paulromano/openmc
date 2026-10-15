@@ -367,6 +367,22 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   rx.recoil_.residual = ion_type(residual);
   rx.recoil_.q_value = q;
   rx.recoil_.target_excitation = excitation;
+  if (rx.mt_ >= 600 && rx.mt_ <= 849 && rx.mt_ % 50 == 49 &&
+      !std::isnan(rx.q_mass_difference_)) {
+    // ENDF-102, File 3: QI - QM = ELIS - Ex. For a continuum
+    // component QI sets its threshold, hence the lowest residual excitation.
+    // Keep this state restriction separate from the mass-derived energy
+    // release.
+    double minimum = excitation + rx.q_mass_difference_ - rx.q_reaction_;
+    if (minimum < 0.0) {
+      warning(
+        fmt::format("Negative continuum residual excitation for {} MT={}; "
+                    "using zero minimum excitation.",
+          nuc.name_, rx.mt_));
+    } else {
+      rx.recoil_.minimum_excitation = minimum;
+    }
+  }
 }
 
 double final_state_internal_energy(double E_in, double m_final, double q)
@@ -663,7 +679,8 @@ bool emit_light_ions(Particle& p, const Nuclide& nuc, const Reaction& rx,
     // Kinematic endpoints for this event and for the pure channel that emits
     // this ion alone. The latter sets the spectrum shape. Both use the same
     // kinematic contract and remove the entrance-channel translational energy.
-    double E_max_event = two_body_endpoint(state.energy_available, m_b, m_d);
+    double E_max_event = two_body_endpoint(
+      state.energy_available - rx.recoil_.minimum_excitation, m_b, m_d);
     if (E_max_event <= 0.0 || !std::isfinite(E_max_event))
       return false;
     double E_max_shape =

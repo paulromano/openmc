@@ -33,6 +33,8 @@ public:
     ParticleType residual;
     double q_value {0.0};
     double target_excitation {0.0}; //!< Zero when absent from legacy data [eV]
+    double minimum_excitation {
+      0.0}; //!< Lowest residual excitation in a continuum component [eV]
   };
 
   //! Construct reaction from HDF5 data

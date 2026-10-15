@@ -91,6 +91,46 @@ def test_recoil_metadata_reinitializes(run_in_tmpdir):
             model.finalize_lib()
 
 
+@pytest.mark.parametrize('excitation,minimum', [
+    (0., None), (0., 8.e6), (137900., 8.e6), (0., -1.e6), (0., 20.e6)])
+def test_continuum_charged_excitation_limit(run_in_tmpdir, excitation, minimum):
+    """A synthetic continuum component retains its required residual excitation."""
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Fe56')['path']
+    path = Path('Fe56.h5').resolve()
+    shutil.copy2(source, path)
+    with h5py.File(path, 'r+') as handle:
+        target = handle['Fe56']
+        target.attrs['excitation_energy'] = excitation
+        reactions = target['reactions']
+        reactions.move('reaction_103', 'reaction_649')
+        attrs = reactions['reaction_649'].attrs
+        attrs['mt'] = 649
+        qi = attrs.get('q_reaction', attrs.get('Q_value'))
+        if minimum is None:
+            if 'q_mass_difference' in attrs:
+                del attrs['q_mass_difference']
+        else:
+            attrs['q_mass_difference'] = qi + minimum - excitation
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    # With an 8 MeV minimum excitation, the proton must stay below 4 MeV
+    # at 14 MeV incident energy, including the laboratory boost. The
+    # unrestricted distribution strongly populates energies above that bound.
+    model = _one_collision_model('Fe56', 14.e6, ['H1'], [0., 4.e6, 20.e6],
+        mts=[649], recoil={'emitted_ions': True}, particles=50000)
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    low, high = _run(model, run_in_tmpdir).ravel()
+    if minimum is not None and minimum > 14.e6:
+        assert low == high == 0
+        return
+    assert low > 0
+    if minimum is not None and minimum > 0:
+        assert high == 0
+    else:
+        assert high > 0
+
+
 def _one_collision_model(nuclide, energy, products, e_bins, mts=None,
                          recoil=None, particles=20000, density=5.0,
                          radius=0.4):
