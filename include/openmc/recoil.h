@@ -239,9 +239,10 @@ double particle_mass_ev(ParticleType type);
 
 //! Fitted constants of the light-ion spectrum
 struct LightIonParams {
-  double r0 {1.3608964941027708}; //!< effective barrier radius in [fm]
-  double g {0.48566};             //!< scales the WKB barrier exponent
-  double nu {1.18221}; //!< endpoint exponent of the level-density factor
+  double r0 {1.4316396961335198}; //!< effective barrier radius in [fm]
+  double g {0.45709435780153407}; //!< scales the WKB barrier exponent
+  double nu {
+    1.12661746211371}; //!< endpoint exponent of the level-density factor
 };
 
 //! Center-of-mass kinetic energy of a light ion emitted from an excited system

@@ -737,13 +737,13 @@ The parameter values used by transport are
      - Value
      - Role
    * - :math:`r_0`
-     - 1.36089649 fm
+     - 1.43163970 fm
      - Effective radius in :eq:`recoil-coulomb-barrier`
    * - :math:`g`
-     - 0.48566
+     - 0.45709436
      - Scale on the WKB-inspired exponent
    * - :math:`\nu`
-     - 1.18221
+     - 1.12661746
      - Exponent of the empirical maximum-energy factor
 
 Angular distribution
