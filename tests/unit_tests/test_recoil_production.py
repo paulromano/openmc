@@ -110,7 +110,8 @@ def test_continuum_charged_excitation_limit(run_in_tmpdir, excitation, minimum):
             if 'q_mass_difference' in attrs:
                 del attrs['q_mass_difference']
         else:
-            attrs['q_mass_difference'] = qi + minimum - excitation
+            attrs['q_mass_difference'] = qi
+            attrs['q_reaction'] = qi + excitation - minimum
     library = openmc.data.DataLibrary()
     library.register_file(path)
     library.export_to_xml('cross_sections.xml')
@@ -136,11 +137,12 @@ def test_continuum_charged_excitation_limit(run_in_tmpdir, excitation, minimum):
     (144630., 50690., 0., True), (-200000., 1.e6, 0., True),
     (144630., 50690., 137900., True),
     (144630., 50690., 0., False),
-    (300000., 0., 0., True), (0., -1000., 0., True),
-    (0., -.11, 0., True)])
+    (300000., 0., 0., True), (300000., 0., 0., False),
+    (0., -1000., 0., True),
+    (0., -.11, 0., True), (None, 0., 0., True)])
 def test_discrete_charged_level_budget(
         run_in_tmpdir, offset, level, excitation, metadata):
-    """Reconcile masses without changing the evaluated residual excitation."""
+    """Evaluated QM takes precedence, preserving QI and level spacings."""
     amu = 931.49410242e6
     neutron = openmc.data.NEUTRON_MASS
     proton = 1.007276466621
@@ -148,7 +150,7 @@ def test_discrete_charged_level_budget(
     residual = openmc.data.atomic_mass('Mn56') - 25 * electron
     target = openmc.data.atomic_mass('Fe56') - 26 * electron
     ground_q = (target + neutron - residual - proton) * amu
-    qm = ground_q + offset
+    qm = 0. if offset is None else ground_q + offset
     qi = qm + excitation - level
     source = openmc.data.DataLibrary.from_xml().get_by_material('Fe56')['path']
     path = Path('Fe56.h5').resolve()
@@ -168,8 +170,8 @@ def test_discrete_charged_level_budget(
     library = openmc.data.DataLibrary()
     library.register_file(path)
     library.export_to_xml('cross_sections.xml')
-    rejected = offset - level > 250000. or (metadata and level < -1.)
-    q = (ground_q + excitation - max(0., level) if metadata else
+    rejected = level < -1. if metadata else offset - level > 250000.
+    q = (qm + excitation - max(0., level) if metadata else
          min(qi, ground_q + excitation))
     energy = 14.e6
     total_mass = proton + residual
@@ -187,6 +189,36 @@ def test_discrete_charged_level_budget(
     below, inside, above = _run(model, run_in_tmpdir).ravel()
     assert below == above == 0
     assert inside == 0 if rejected else inside > 0
+
+
+@pytest.mark.parametrize('nuclide,mt,residual', [
+    ('Fe56', 102, 'Fe57'), ('Fe56', 16, 'Fe55'),
+    ('Fe56', 103, 'Mn56'), ('Li7', 52, 'He4')])
+def test_evaluated_q_controls_recoil_budget(run_in_tmpdir, nuclide, mt, residual):
+    """Capture, multiparticle, summed-ion, and breakup budgets prefer QM."""
+    source = openmc.data.DataLibrary.from_xml().get_by_material(nuclide)['path']
+    path = Path(f'{nuclide}.h5').resolve()
+    shutil.copy2(source, path)
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    for qm in (None, -100.e6):
+        with h5py.File(path, 'r+') as handle:
+            attrs = handle[f'{nuclide}/reactions/reaction_{mt:03d}'].attrs
+            if qm is None:
+                if 'q_mass_difference' in attrs:
+                    del attrs['q_mass_difference']
+            else:
+                # Deliberately close the energy budget without changing the
+                # cross section: this must not fall back to the mass table.
+                attrs['q_mass_difference'] = qm
+            if nuclide == 'Li7':
+                attrs['breakup_flag'] = 33
+        model = _one_collision_model(nuclide, 14.e6, [residual], [0., 30.e6],
+            mts=[mt], particles=50000)
+        model.materials.cross_sections = Path('cross_sections.xml').resolve()
+        value = _run(model, run_in_tmpdir).item()
+        assert value > 0 if qm is None else value == 0
 
 
 def _one_collision_model(nuclide, energy, products, e_bins, mts=None,

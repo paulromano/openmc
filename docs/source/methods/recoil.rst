@@ -128,9 +128,10 @@ particles. Mass-energy balance gives
     Q_M =
     \left(M_T + m_n - M_R - \sum_i m_i\right)c^2 .
 
-The tabulated target and residual masses are based on AME2020 [AME2020]_.
-OpenMC uses bare nuclear masses consistently in the Q value and the subsequent
-kinematic calculations.
+OpenMC uses the evaluated ground-state Q value when available. Otherwise,
+it calculates :eq:`recoil-qm` using tabulated target and residual masses
+based on AME2020 [AME2020]_. Bare nuclear masses are used consistently in
+this fallback calculation and in the momentum and kinetic-energy formulas.
 
 A metastable target occupies an excited nuclear state. Its excitation energy
 :math:`E_T^*` is the energy above the target's ground state and contributes
@@ -159,37 +160,36 @@ value ``QI`` [ENDF102]_. For a lumped channel (reactions that represent the sum
 over all final states, e.g., MT=103), ``QI`` and ``QM`` generally agree. For a
 continuum member of a split representation (e.g., MT=649), ``QI`` is an
 effective threshold value and can be several MeV below the ground-state energy
-release. For continuum, lumped, and multiparticle channels, OpenMC calculates
-:math:`Q_{\mathrm{available}}` from the AME2020 masses and target excitation.
-For discrete charged-particle levels, OpenMC retains the evaluated residual
-excitation while using its own ground-state mass budget. Combining the
-definition of :math:`Q_{\mathrm{level}}` with the evaluated values gives
+release. OpenMC reads ``QM`` from the HDF5 ``q_mass_difference`` attribute
+and uses it as :math:`Q_M` whenever present, including a value of zero.
+It calculates the mass-derived fallback only when that attribute is absent.
+Continuum, lumped, capture, and multiparticle channels use
+:math:`Q_{\mathrm{available}}=Q_M+E_T^*`.
+
+Discrete neutron and charged-particle levels use ``QI``, which already
+includes the initial and final excitation energies. Combining its definition
+with the evaluated ground-state Q gives
 
 .. math::
 
-    E_R^* &= E_T^* + Q_M^{\mathrm{ENDF}} - Q_I, \\
-    Q_{\mathrm{used}} &= Q_M^{\mathrm{AME}} + E_T^* - E_R^*
-                      = Q_I + Q_M^{\mathrm{AME}} - Q_M^{\mathrm{ENDF}} .
+    E_R^* = E_T^* + Q_M^{\mathrm{ENDF}} - Q_I .
 
-Here :math:`Q_M^{\mathrm{ENDF}}` is ``QM``, :math:`Q_I` is ``QI``, and
-:math:`Q_M^{\mathrm{AME}}` is the ground-state mass difference calculated
-with OpenMC's masses. Levels with the same evaluated ``QM`` receive the
-same Q adjustment, preserving their spacings. The target excitation is
-already included in ``QI`` and must not be added again. OpenMC obtains
-``QM`` from the HDF5 ``q_mass_difference`` attribute. If ``QM`` or a
-required mass is unavailable, it uses ``QI``, capped at the available
-mass-derived budget when that budget is known. Discrete neutron channels
-retain ``QI`` with this same cap; their sampled neutron kinematics are
-unchanged.
+Here :math:`Q_M^{\mathrm{ENDF}}` is ``QM`` and :math:`Q_I` is ``QI``.
+Using ``QI`` preserves the
+evaluated level spacings without an external mass-table adjustment. Target
+excitation must not be added to ``QI`` again. During initialization, a
+negative inferred residual excitation disables recoil production for that
+reaction and produces a warning. A negative value within 1 eV of zero is
+treated as rounding of the independently specified Q values; in that case,
+the event Q is capped at ``QM`` plus target excitation.
 
-During initialization, a level ``QI`` exceeding the mass-derived budget
-plus target excitation by more than 0.25 MeV disables recoil production
-for that reaction and produces a warning. This compatibility check also
-applies when ``QM`` is present. A negative excitation inferred from
-``QM``, ``QI``, and target excitation likewise disables the charged-particle
-recoil channel, with a 1 eV allowance for independently rounded Q values.
-A negative excitation within this allowance is set to zero. These checks do not
-alter the evaluated cross sections or neutron transport.
+For legacy files without ``QM``, a discrete level's ``QI`` is capped at
+the mass-derived budget plus target excitation. An excess greater than
+0.25 MeV disables that recoil channel with a warning. If the masses are
+also unavailable, ``QI`` is used without this check. For other channels,
+``QI`` is a last-resort fallback when both ``QM`` and the required masses
+are missing, except for residual breakup as described below. None of these
+rules changes the evaluated cross sections or sampled neutron kinematics.
 
 For split continuum charged-particle channels (MT=649, 699, 749, 799, and
 849), the threshold also identifies the lowest residual excitation included
@@ -203,14 +203,14 @@ excitation [ENDF102]_ gives
 
 Here :math:`Q_M^{\mathrm{ENDF}}` is the evaluated ``QM`` and :math:`Q_I` is
 the evaluated ``QI``. OpenMC keeps this minimum excitation in the residual
-when sampling the emitted ion. The total energy release still follows the
-mass-derived convention above. When ``q_mass_difference`` is absent, the
+when sampling the emitted ion. The total energy release follows the
+evaluated-Q-first policy above. When ``q_mass_difference`` is absent, the
 minimum excitation defaults to zero. A negative inferred value produces an
 initialization warning and also uses zero.
 
 OpenMC obtains :math:`E_T^*` from the target's HDF5 ``excitation_energy``
 attribute. Files without that attribute use :math:`E_T^*=0`, so their
-mass-derived energy budgets omit any target excitation. The kinematic model
+ground-state energy budgets omit any target excitation. The kinematic model
 uses ground-state masses for momentum and kinetic-energy calculations and
 accounts for excitation through the energy balance.
 
@@ -452,7 +452,10 @@ other products are outside the scope of this model.
 Let :math:`E_{n,\mathrm{out}}` be the outgoing neutron's kinetic energy and
 :math:`\mathbf P=\mathbf p_{n,\mathrm{in}}-\mathbf p_{n,\mathrm{out}}`
 the total momentum of the ion pair. The Q value for the complete reaction
-uses the masses of the final neutron, triton, and alpha particle. Denote the
+uses evaluated ``QM`` when available, otherwise the masses of the final
+neutron, triton, and alpha particle. If both are unavailable, recoil production
+is disabled for this channel: ``QI`` describes formation of the intermediate
+and cannot supply the complete breakup budget. Denote the
 ion masses by :math:`m_t` and :math:`m_\alpha`. The pair has laboratory
 kinetic energy :math:`E_{\mathrm{in}}+Q_{\mathrm{available}}-E_{n,\mathrm{out}}`.
 Subtracting its center-of-mass translational energy gives the energy available
@@ -646,11 +649,14 @@ described next.
 :eq:`recoil-light-ion` serve different purposes.
 :math:`E_{\max}^{\mathrm{shape}}` is the two-body maximum for a channel that
 emits this ion alone and sets the scale in the power-law factor. OpenMC
-calculates this maximum using :math:`Q_{\mathrm{available}}`, including any
-target excitation supplied in the HDF5 file.
+calculates this fitted shape scale using the mass-derived Q for that
+hypothetical single-ion channel, including any target excitation supplied
+in the HDF5 file. That channel can have different products from the actual
+reaction, so its shape scale is distinct from the evaluated event budget.
 :math:`E_{\max}^{\mathrm{event}}` is calculated from the energy remaining in the
 event being reconstructed and is the upper limit on the sampled value of
-:math:`E`. For an inclusive one-ion channel the two values are equal.
+:math:`E`. OpenMC raises the shape scale to the event limit if necessary,
+so the power-law factor remains defined throughout the sampling interval.
 For a split continuum component, OpenMC subtracts the minimum excitation
 in :eq:`recoil-continuum-excitation` from the remaining internal energy
 before applying :eq:`recoil-max-energy`. This truncates and

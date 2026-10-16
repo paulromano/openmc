@@ -325,54 +325,44 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
   if (!residual.is_valid())
     return;
 
-  auto q_mass =
-    mass_difference_q(target, span<const NuclearNumbers> {products,
-                                static_cast<std::size_t>(n_products)});
+  bool evaluated_q = !std::isnan(rx.q_mass_difference_);
+  auto q_available = evaluated_q ? rx.q_mass_difference_
+                                 : mass_difference_q(target,
+                                     span<const NuclearNumbers> {products,
+                                       static_cast<std::size_t>(n_products)});
   double excitation =
     std::isnan(nuc.excitation_energy_) ? 0.0 : nuc.excitation_energy_;
-  if (q_mass)
-    *q_mass += excitation;
+  if (q_available)
+    *q_available += excitation;
   // A breakup QI describes formation of the intermediate, not the final
-  // triton/alpha budget. It cannot stand in for missing final-product masses.
-  if (breakup && !q_mass)
+  // triton/alpha budget. Use QM for the complete reaction, or final-product
+  // masses when QM is absent.
+  if (breakup && !q_available)
     return;
   // Elastic scattering leaves the target in the same state and releases no
   // excitation, even when its ground-state mass budget includes that energy.
-  double q = rx.mt_ == ELASTIC ? 0.0 : q_mass.value_or(rx.q_reaction_);
+  double q = rx.mt_ == ELASTIC ? 0.0 : q_available.value_or(rx.q_reaction_);
   if (is_discrete_level(rx.mt_) && !breakup) {
-    if (!q_mass || rx.q_reaction_ <= *q_mass) {
+    // QI includes the initial and final excitations. With evaluated QM,
+    // only a negative residual excitation is inconsistent. Missing QM
+    // retains the compatibility allowance for external mass-table differences.
+    constexpr double Q_ROUNDING_TOLERANCE = 1.0;
+    double tolerance = evaluated_q ? Q_ROUNDING_TOLERANCE : Q_LEVEL_TOLERANCE;
+    if (!q_available || rx.q_reaction_ <= *q_available) {
       q = rx.q_reaction_;
-    } else if (rx.q_reaction_ <= *q_mass + Q_LEVEL_TOLERANCE) {
-      q = *q_mass;
+    } else if (rx.q_reaction_ <= *q_available + tolerance) {
+      q = *q_available;
     } else {
       if (mpi::master) {
         warning(fmt::format(
           "Recoil production is disabled for {} MT={} because its evaluated "
-          "Q value ({:.6g} MeV) exceeds the mass-difference Q value plus "
+          "Q value ({:.6g} MeV) exceeds the {} Q value plus "
           "target excitation ({:.6g} MeV) by more than {:.3g} MeV.",
-          nuc.name_, rx.mt_, rx.q_reaction_ / 1.0e6, *q_mass / 1.0e6,
-          Q_LEVEL_TOLERANCE / 1.0e6));
+          nuc.name_, rx.mt_, rx.q_reaction_ / 1.0e6,
+          evaluated_q ? "evaluated mass-difference" : "mass-derived",
+          *q_available / 1.0e6, tolerance / 1.0e6));
       }
       return;
-    }
-    if (is_discrete_charged_level(rx.mt_) && q_mass &&
-        !std::isnan(rx.q_mass_difference_)) {
-      // ENDF-102, File 3: Ex = ELIS + QM - QI. Keep this excitation
-      // when replacing the evaluated ground-state mass difference by our
-      // mass-derived budget. Independently capping QI would merge levels.
-      double level = excitation + rx.q_mass_difference_ - rx.q_reaction_;
-      // Independently rounded ENDF Q values can differ at the sub-eV level.
-      constexpr double Q_ROUNDING_TOLERANCE = 1.0;
-      if (level < -Q_ROUNDING_TOLERANCE) {
-        if (mpi::master) {
-          warning(fmt::format("Recoil production is disabled for {} MT={} "
-                              "because QM, QI, and target excitation imply "
-                              "a negative residual excitation ({:.6g} MeV).",
-            nuc.name_, rx.mt_, level / 1.0e6));
-        }
-        return;
-      }
-      q = *q_mass - std::max(0.0, level);
     }
   }
 
@@ -398,7 +388,7 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
       !std::isnan(rx.q_mass_difference_)) {
     // ENDF-102, File 3: QI - QM = ELIS - Ex. For a continuum
     // component QI sets its threshold, hence the lowest residual excitation.
-    // Keep this state restriction separate from the mass-derived energy
+    // Keep this state restriction separate from the ground-state energy
     // release.
     double minimum = excitation + rx.q_mass_difference_ - rx.q_reaction_;
     if (minimum < 0.0) {
