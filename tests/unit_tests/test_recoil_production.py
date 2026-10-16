@@ -131,6 +131,64 @@ def test_continuum_charged_excitation_limit(run_in_tmpdir, excitation, minimum):
         assert high > 0
 
 
+@pytest.mark.parametrize('offset,level,excitation,metadata', [
+    (144630., 0., 0., True), (144630., 1000., 0., True),
+    (144630., 50690., 0., True), (-200000., 1.e6, 0., True),
+    (144630., 50690., 137900., True),
+    (144630., 50690., 0., False),
+    (300000., 0., 0., True), (0., -1000., 0., True),
+    (0., -.11, 0., True)])
+def test_discrete_charged_level_budget(
+        run_in_tmpdir, offset, level, excitation, metadata):
+    """Reconcile masses without changing the evaluated residual excitation."""
+    amu = 931.49410242e6
+    neutron = openmc.data.NEUTRON_MASS
+    proton = 1.007276466621
+    electron = 5.48579909065e-4
+    residual = openmc.data.atomic_mass('Mn56') - 25 * electron
+    target = openmc.data.atomic_mass('Fe56') - 26 * electron
+    ground_q = (target + neutron - residual - proton) * amu
+    qm = ground_q + offset
+    qi = qm + excitation - level
+    source = openmc.data.DataLibrary.from_xml().get_by_material('Fe56')['path']
+    path = Path('Fe56.h5').resolve()
+    shutil.copy2(source, path)
+    with h5py.File(path, 'r+') as handle:
+        target_data = handle['Fe56']
+        target_data.attrs['excitation_energy'] = excitation
+        reactions = target_data['reactions']
+        reactions.move('reaction_103', 'reaction_600')
+        attrs = reactions['reaction_600'].attrs
+        attrs['mt'] = 600
+        attrs['q_reaction'] = qi
+        if metadata:
+            attrs['q_mass_difference'] = qm
+        elif 'q_mass_difference' in attrs:
+            del attrs['q_mass_difference']
+    library = openmc.data.DataLibrary()
+    library.register_file(path)
+    library.export_to_xml('cross_sections.xml')
+    rejected = offset - level > 250000. or (metadata and level < -1.)
+    q = (ground_q + excitation - max(0., level) if metadata else
+         min(qi, ground_q + excitation))
+    energy = 14.e6
+    total_mass = proton + residual
+    internal = energy + q - energy * neutron / total_mass
+    ion_cm = internal * residual / total_mass
+    boost = energy * neutron * proton / total_mass**2
+    width = 2 * np.sqrt(ion_cm * boost)
+    # A 100 eV margin permits mass-table rounding while resolving the 1 keV
+    # separation between the first two synthetic levels.
+    lower, upper = ion_cm + boost - width - 100., ion_cm + boost + width + 100.
+    model = _one_collision_model('Fe56', energy, ['H1'],
+        [0., lower, upper, 20.e6], mts=[600],
+        recoil={'emitted_ions': True}, particles=30000)
+    model.materials.cross_sections = Path('cross_sections.xml').resolve()
+    below, inside, above = _run(model, run_in_tmpdir).ravel()
+    assert below == above == 0
+    assert inside == 0 if rejected else inside > 0
+
+
 def _one_collision_model(nuclide, energy, products, e_bins, mts=None,
                          recoil=None, particles=20000, density=5.0,
                          radius=0.4):

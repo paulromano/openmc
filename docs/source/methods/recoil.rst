@@ -161,12 +161,35 @@ continuum member of a split representation (e.g., MT=649), ``QI`` is an
 effective threshold value and can be several MeV below the ground-state energy
 release. For continuum, lumped, and multiparticle channels, OpenMC calculates
 :math:`Q_{\mathrm{available}}` from the AME2020 masses and target excitation.
-For an MT number identifying a single residual level, it uses the evaluated
-``QI``, which already accounts for the initial and final nuclear states as
-in :math:`Q_{\mathrm{level}}`. Adding target excitation to that value would
-count the initial excitation twice. The evaluated ``QM`` is stored in the
-HDF5 ``q_mass_difference`` attribute; the recoil model calculates its
-ground-state mass difference from AME2020.
+For discrete charged-particle levels, OpenMC retains the evaluated residual
+excitation while using its own ground-state mass budget. Combining the
+definition of :math:`Q_{\mathrm{level}}` with the evaluated values gives
+
+.. math::
+
+    E_R^* &= E_T^* + Q_M^{\mathrm{ENDF}} - Q_I, \\
+    Q_{\mathrm{used}} &= Q_M^{\mathrm{AME}} + E_T^* - E_R^*
+                      = Q_I + Q_M^{\mathrm{AME}} - Q_M^{\mathrm{ENDF}} .
+
+Here :math:`Q_M^{\mathrm{ENDF}}` is ``QM``, :math:`Q_I` is ``QI``, and
+:math:`Q_M^{\mathrm{AME}}` is the ground-state mass difference calculated
+with OpenMC's masses. Levels with the same evaluated ``QM`` receive the
+same Q adjustment, preserving their spacings. The target excitation is
+already included in ``QI`` and must not be added again. OpenMC obtains
+``QM`` from the HDF5 ``q_mass_difference`` attribute. If ``QM`` or a
+required mass is unavailable, it uses ``QI``, capped at the available
+mass-derived budget when that budget is known. Discrete neutron channels
+retain ``QI`` with this same cap; their sampled neutron kinematics are
+unchanged.
+
+During initialization, a level ``QI`` exceeding the mass-derived budget
+plus target excitation by more than 0.25 MeV disables recoil production
+for that reaction and produces a warning. This compatibility check also
+applies when ``QM`` is present. A negative excitation inferred from
+``QM``, ``QI``, and target excitation likewise disables the charged-particle
+recoil channel, with a 1 eV allowance for independently rounded Q values.
+A negative excitation within this allowance is set to zero. These checks do not
+alter the evaluated cross sections or neutron transport.
 
 For split continuum charged-particle channels (MT=649, 699, 749, 799, and
 849), the threshold also identifies the lowest residual excitation included

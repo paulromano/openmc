@@ -237,12 +237,8 @@ bool update_internal_energy(EmissionState& state, double budget)
   return true;
 }
 
-//! How far an evaluated level Q may sit above the ground-state mass budget
-//!
-//! A level Q above the ground-state budget means a negative excitation, which
-//! is unphysical. This tolerance accommodates differences between evaluated
-//! and AME2020 masses while remaining well below a physical level spacing that
-//! would indicate an inconsistent evaluation.
+//! Maximum accepted excess of a level Q over the available mass budget [eV].
+//! This checks QI before mass reconciliation; it is not a level spacing.
 constexpr double Q_LEVEL_TOLERANCE = 0.25e6;
 
 } // namespace
@@ -358,6 +354,25 @@ void initialize_reaction(const Nuclide& nuc, Reaction& rx)
           Q_LEVEL_TOLERANCE / 1.0e6));
       }
       return;
+    }
+    if (is_discrete_charged_level(rx.mt_) && q_mass &&
+        !std::isnan(rx.q_mass_difference_)) {
+      // ENDF-102, File 3: Ex = ELIS + QM - QI. Keep this excitation
+      // when replacing the evaluated ground-state mass difference by our
+      // mass-derived budget. Independently capping QI would merge levels.
+      double level = excitation + rx.q_mass_difference_ - rx.q_reaction_;
+      // Independently rounded ENDF Q values can differ at the sub-eV level.
+      constexpr double Q_ROUNDING_TOLERANCE = 1.0;
+      if (level < -Q_ROUNDING_TOLERANCE) {
+        if (mpi::master) {
+          warning(fmt::format("Recoil production is disabled for {} MT={} "
+                              "because QM, QI, and target excitation imply "
+                              "a negative residual excitation ({:.6g} MeV).",
+            nuc.name_, rx.mt_, level / 1.0e6));
+        }
+        return;
+      }
+      q = *q_mass - std::max(0.0, level);
     }
   }
 
